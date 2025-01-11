@@ -10,7 +10,7 @@ This guide provides a concise overview of how to use ONNX Runtime Execution Prov
 
     - CUDA:                      Leverage NVIDIA GPUs for accelerated inference.
     - TensorRT:                  Optimize inference on NVIDIA GPUs using TensorRT.
-    - Android-Qualcomm-QNN:      Utilize Qualcomm's Neural Processing SDK on Android devices.
+    - Android-Qualcomm-QNN:      Utilize Qualcomm AI Engine Direct SDK (QNN) on Android devices.
 
 ### Upcoming Support
 
@@ -34,7 +34,7 @@ The following execution providers are planned for future integration:
 
     - CUDA:                      利用NVIDIA GPU进行加速推理。
     - TensorRT:                  使用TensorRT优化NVIDIA GPU上的推理。
-    - Android-Qualcomm-QNN:      在Android设备上使用Qualcomm的神经处理SDK。
+    - Android-Qualcomm-QNN:      在Android设备上使用Qualcomm的AI Engine Direct SDK (QNN)。
 
 ### 即将支持
 
@@ -58,7 +58,7 @@ The following execution providers are planned for future integration:
 
     - CUDA:                      NVIDIA GPUを活用して推論を加速します。
     - TensorRT:                  TensorRTを使用してNVIDIA GPUでの推論を最適化します。
-    - Android-Qualcomm-QNN:      AndroidデバイスでQualcommのニューラルプロセッシングSDKを利用します。
+    - Android-Qualcomm-QNN:      AndroidデバイスでQualcomm の AI Engine Direct SDK (QNN) を利用します。
 
 ### 今後のサポート
 
@@ -71,27 +71,5 @@ The following execution providers are planned for future integration:
     - AMD-MIGraphX:              MIGraphXを使用してAMD GPUでの推論を加速します。
     - AMD-VitisAI:               AMDデバイス用にVitis AIを統合します。
     - Android-XNNPACK:           AndroidでXNNPACKを使用して推論を最適化します。
-
----
-
-## Supported Execution Providers
-
-    - CUDA:                      Leverage NVIDIA GPUs for accelerated inference.
-    - TensorRT:                  Optimize inference on NVIDIA GPUs using TensorRT.
-    - Android-Qualcomm-QNN:      Utilize Qualcomm's Neural Processing SDK on Android devices.
-
----
-
-## Upcoming Support
-
-The following execution providers are planned for future integration:
-
-    - Intel-OpenVINO:            For optimized inference on Intel hardware.
-    - Windows-DirectML:          Leverage DirectML on Windows platforms.
-    - Apple-CoreML:              Integrate CoreML for Apple devices.
-    - AMD-ROCm:                  Use AMD's ROCm platform for GPU acceleration.
-    - AMD-MIGraphX:              Accelerate inference on AMD GPUs with MIGraphX.
-    - AMD-VitisAI:               Integrate Vitis AI for AMD devices.
-    - Android-XNNPACK:           Optimize inference on Android with XNNPACK.
 
 ---

@@ -58,6 +58,11 @@ sudo apt-get -y install cuda-toolkit-12-6
 # Driver Installer
 sudo apt-get install -y nvidia-open
 sudo apt-get install -y cuda-drivers
+
+# Install cuDNN libraries
+sudo apt-get -y install cudnn9-cuda-12
+# or others version:
+sudo apt-get -y install cudnn8-cuda-11
 ```
 
 ---

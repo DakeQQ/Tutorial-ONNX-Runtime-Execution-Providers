@@ -35,13 +35,15 @@ Visit the [NVIDIA CUDA Toolkit Archive](https://developer.nvidia.com/cuda-toolki
 
 **Example:** CUDA Toolkit 12.6
 
-![Screenshot showing CUDA selection process](#)
+![Screenshot showing CUDA selection process](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2012-02-42.png)
 
 ---
 
 ## Step 3: Configure the CUDA Toolkit
 
 Follow the instructions provided on the website to configure your system. Below is an example for CUDA Toolkit 12.6.
+![Screenshot showing CUDA Toolkit Installer](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2012-03-17.png)
+![Screenshot showing Installer Instructions](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2012-03-35.png)
 
 ```bash
 # CUDA Toolkit Installer
@@ -105,14 +107,15 @@ Run the following commands to verify that your system recognizes the GPU:
 ```bash
 nvidia-smi
 ```
-
 If successful, you will see your GPU details.
+![Screenshot showing GPU Details](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2012-27-47.png)
 
+
+This should display the CUDA version.
 ```bash
 nvcc -V
 ```
-
-This should display the CUDA version.
+![Screenshot showing CUDA Version](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2012-27-26.png)
 
 ---
 
@@ -144,7 +147,7 @@ Run the `Test.py` script to benchmark the CUDA Execution Provider against the CP
 
 **Expected Output:**
 
-```text
+```python
 Inference Float32 Simple Model on ['CPUExecutionProvider']:
 0.001917 seconds per batch
 

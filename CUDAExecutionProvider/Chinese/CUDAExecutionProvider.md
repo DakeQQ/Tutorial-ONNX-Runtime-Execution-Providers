@@ -69,9 +69,8 @@ sudo apt-get -y install cudnn8-cuda-11
 ---
 
 ## 第 4 步：设置环境变量
-
-Linux OS:
 ---
+### Linux OS: ###
 
 将必要的环境路径添加到 `.bashrc` 文件中。
 
@@ -108,8 +107,8 @@ source ~/.bashrc
 ```
 ---
 
-Windows OS:
----
+### Windows OS: ###
+
 1. **打开环境变量：**
    - 在桌面或文件资源管理器中右键点击“此电脑”或“我的电脑”。
    - 选择“属性”。

@@ -85,12 +85,12 @@ def benchmark_onnx(model_path, input_data, provider, num_runs=100):
         input_data = input_data.astype(np.float16)
         dtype_info = "(float16)"
         provider_options = [
-            {
+            {   # TensorrtExecutionProvider
                 'device_id': 0,
                 'trt_max_workspace_size': 2 * 1024 * 1024 * 1024,  # 2 GB
                 'trt_fp16_enable': True,
             },
-            {
+            {   # CUDAExecutionProvider
                 'device_id': 0,
                 'gpu_mem_limit': 2 * 1024 * 1024 * 1024,  # 2 GB
                 'arena_extend_strategy': 'kNextPowerOfTwo',

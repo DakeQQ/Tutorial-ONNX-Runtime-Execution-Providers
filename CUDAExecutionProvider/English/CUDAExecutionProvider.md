@@ -1,4 +1,4 @@
-# CUDA and ONNX Runtime Installation Guide
+# CUDA Execution Provider ONNX Runtime Installation Guide
 
 This guide provides step-by-step instructions for installing the NVIDIA CUDA Toolkit and ONNX Runtime with GPU support. Follow the steps carefully to ensure a successful setup.
 

@@ -68,9 +68,8 @@ sudo apt-get -y install cudnn8-cuda-11
 ---
 
 ## Step 4: Set Environment Variables
-
-Linux OS:
 ---
+### Linux OS: ###
 Add the necessary environment paths to your `.bashrc` file.
 
 ```bash
@@ -105,8 +104,7 @@ Save and exit the editor by typing `:wq`, then activate the environment:
 source ~/.bashrc
 ```
 ---
-Windows OS:
----
+### Windows OS: ###
 To achieve the same effect on Windows, where environment variables for CUDA need to be set, you can follow these steps:
 
 1. **Open Environment Variables:**

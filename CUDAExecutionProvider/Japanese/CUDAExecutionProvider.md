@@ -138,7 +138,7 @@ pip uninstall onnxruntime-openvino
 
 ---
 
-## ステップ 7: GPU サポート付き ONNX Runtime のインストール
+## ステップ 7: NVIDIA-GPU サポート付き ONNX Runtime のインストール
 
 [ONNX Runtime CUDA Execution Provider のドキュメント](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)を参照して、互換性のあるバージョンを確認してください。以下は最新バージョンをインストールする例です。
 

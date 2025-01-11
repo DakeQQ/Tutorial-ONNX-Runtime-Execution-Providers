@@ -85,12 +85,56 @@ def benchmark_onnx(model_path, input_data, provider, num_runs=100):
         input_data = input_data.astype(np.float16)
         dtype_info = "(float16)"
         provider_options = [
-            {   # TensorrtExecutionProvider
+            # TensorrtExecutionProvider
+            {   
+                # Device and Compute Configuration
                 'device_id': 0,
-                'trt_max_workspace_size': 2 * 1024 * 1024 * 1024,  # 2 GB
+                'user_compute_stream': '',
+
+                # Engine Caching and Compatibility
+                'trt_engine_cache_enable': True,
+                'trt_engine_cache_path': './Cache',
+                'customize engine cache prefix': '',
+                'trt_engine_hw_compatible': True,
+
+                # Precision and Performance
+                'trt_max_workspace_size': 25769803776,
                 'trt_fp16_enable': True,
+                'trt_int8_enable': False,             # For fine-tune
+                'trt_int8_calibration_table_name': '',
+                'trt_int8_use_native_calibration_table': False,
+                'trt_build_heuristics_enable': True,
+                'trt_sparsity_enable': True,
+                'trt_dla_enable': True,
+                'trt_dla_core': 0,
+
+                # Subgraph and Graph Optimization
+                'trt_max_partition_iterations': 1000,
+                'trt_min_subgraph_size': 1,
+                'trt_dump_subgraphs': False,
+                'trt_force_sequential_engine_build': True,
+
+                # Advanced Configuration and Profiling
+                'trt_context_memory_sharing_enable': True,
+                'trt_layer_norm_fp32_fallback': False,
+                'trt_cuda_graph_enable': False,       # Set to '0' to avoid potential errors when enabled.
+                'trt_builder_optimization_level': 5,  # 0 ~ 5
+                'trt_auxiliary_streams': -1,          # Set 0 for optimal memory usage
+                'trt_detailed_build_log': False,
+
+                # Timing cache
+                'trt_timing_cache_enable': True,
+                'trt_timing_cache_path': './Cache',
+                'trt_force_timing_cache': True,
+
+                # Dynamic Shape Profiling
+                'trt_profile_min_shapes': '',
+                'trt_profile_max_shapes': '',
+                'trt_profile_opt_shapes': '',         # The format of the profile shapes is input_tensor_1:dim_1xdim_2x...,input_tensor_2:dim_3xdim_4x...,...
             },
-            {   # CUDAExecutionProvider
+            
+            # CUDAExecutionProvider
+            {   
                 'device_id': 0,
                 'gpu_mem_limit': 2 * 1024 * 1024 * 1024,  # 2 GB
                 'arena_extend_strategy': 'kNextPowerOfTwo',
@@ -98,7 +142,7 @@ def benchmark_onnx(model_path, input_data, provider, num_runs=100):
                 'cudnn_conv_use_max_workspace': '1',
                 'do_copy_in_default_stream': '1',
                 'cudnn_conv1d_pad_to_nc1d': '1',
-                'enable_cuda_graph': '0'  # Set to '0' to avoid potential errors when enabled.
+                'enable_cuda_graph': '0'              # Set to '0' to avoid potential errors when enabled.
             }
         ]
 

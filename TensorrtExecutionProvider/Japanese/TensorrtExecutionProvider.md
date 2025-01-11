@@ -1,5 +1,3 @@
-Here is the translated document in Japanese:
-
 # ONNX Runtime のための TensorRT Execution Provider セットアップガイド
 
 このガイドでは、ONNX Runtime に TensorRT Execution Provider をセットアップする手順を説明します。成功するインストールのために、これらの指示に注意深く従ってください。

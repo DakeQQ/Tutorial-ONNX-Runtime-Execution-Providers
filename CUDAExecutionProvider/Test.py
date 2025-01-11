@@ -75,16 +75,29 @@ def benchmark_onnx(model_path, input_data, provider, num_runs=100):
     session_opts.add_session_config_entry("session.intra_op.allow_spinning", "1")
     session_opts.add_session_config_entry("session.inter_op.allow_spinning", "1")
     session_opts.add_session_config_entry("session.set_denormal_as_zero", "1")
-    session = ort.InferenceSession(model_path, providers=provider, sess_options=session_opts)
 
     # Prepare input data based on the execution provider
     if "CPUExecutionProvider" in provider:
         input_data = input_data.astype(np.float32)
         dtype_info = "(float32)"
+        provider_options = None
     else:
         input_data = input_data.astype(np.float16)
         dtype_info = "(float16)"
+        provider_options = [
+            {
+                'device_id': 0,
+                'gpu_mem_limit': 2 * 1024 * 1024 * 1024,  # 2 GB
+                'arena_extend_strategy': 'kNextPowerOfTwo',
+                'cudnn_conv_algo_search': 'EXHAUSTIVE',
+                'cudnn_conv_use_max_workspace': '1',
+                'do_copy_in_default_stream': '1',
+                'cudnn_conv1d_pad_to_nc1d': '1',
+                'enable_cuda_graph': '0'  # Set to '0' to avoid potential errors when enabled.
+            }
+        ]
 
+    session = ort.InferenceSession(model_path, providers=provider, sess_options=session_opts, provider_options=provider_options)
     ort_inputs = {session.get_inputs()[0].name: input_data}
 
     # Warm-up

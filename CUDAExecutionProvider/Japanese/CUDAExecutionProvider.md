@@ -1,6 +1,6 @@
 # CUDA Execution Provider と ONNX Runtime インストールガイド
 
-このガイドは、NVIDIA CUDA Toolkit と GPU サポート付きの ONNX Runtime をインストールするための手順を説明します。以下の手順に従って、正確にセットアップしてください。
+本ガイドでは、NVIDIA CUDA Toolkit、GPU ドライバー、および ONNX Runtime の CUDA アクセラレーションのインストール手順を段階的に説明します。設定を確実に完了するために、以下の手順に従ってください。
 
 ---
 

@@ -70,6 +70,9 @@ sudo apt-get -y install cudnn8-cuda-11
 
 ## 第 4 步：设置环境变量
 
+Linux OS:
+---
+
 将必要的环境路径添加到 `.bashrc` 文件中。
 
 ```bash
@@ -103,6 +106,36 @@ fi
 ```bash
 source ~/.bashrc
 ```
+---
+
+Windows OS:
+---
+1. **打开环境变量：**
+   - 在桌面或文件资源管理器中右键点击“此电脑”或“我的电脑”。
+   - 选择“属性”。
+   - 点击左侧栏中的“高级系统设置”。
+   - 在“系统属性”窗口中，进入“高级”选项卡并点击“环境变量”。
+
+2. **设置环境变量：**
+   - 在“环境变量”窗口中，有两个部分：“用户变量”和“系统变量”。您可以选择仅为您的用户帐户设置这些变量，或者为整个系统设置。
+   
+   - **添加/编辑 CUDA 路径：**
+     - **LD_LIBRARY_PATH**：这个变量通常不在 Windows 上使用，所以可以忽略。Windows 使用 PATH 变量实现类似功能。
+     
+     - **PATH**：在“系统变量”部分找到“Path”变量，选择它并点击“编辑”。如果路径尚未存在，添加以下路径：
+       - `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\vX.X\bin`（将 `vX.X` 替换为您的 CUDA 版本）
+       - `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\vX.X\libnvvp`
+     
+     - **CUDA_HOME**：在“系统变量”下点击“新建”并添加一个新变量：
+       - 变量名：`CUDA_HOME`
+       - 变量值：`C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\vX.X`
+
+3. **应用更改：**
+   - 点击“确定”关闭每个对话框。
+
+4. **验证更改：**
+   - 打开一个新的命令提示符并输入 `echo %PATH%` 检查 CUDA 路径是否已成功添加。
+   - 您也可以输入 `echo %CUDA_HOME%` 检查 CUDA_HOME 变量。
 
 ---
 

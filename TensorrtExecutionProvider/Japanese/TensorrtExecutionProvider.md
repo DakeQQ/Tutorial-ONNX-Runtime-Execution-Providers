@@ -1,39 +1,39 @@
-Translate this doc.md into Japanese with fluently:
+Here is the translated document in Japanese:
 
-# TensorRT Execution Provider Setup Guide for ONNX Runtime
+# ONNX Runtime のための TensorRT Execution Provider セットアップガイド
 
-This guide will walk you through the steps to set up TensorRT Execution Provider on your ONNX Runtime. Follow these instructions carefully to ensure a successful installation.
+このガイドでは、ONNX Runtime に TensorRT Execution Provider をセットアップする手順を説明します。成功するインストールのために、これらの指示に注意深く従ってください。
 
-## **Step 1: Prepare for CUDA Execution Provider**
-Make sure your environment is ready to run on the CUDA Execution Provider by following the instructions in the `CUDAExecutionProvider.md` guide.
-
----
-
-## **Step 2: Download TensorRT Packages**
-1. Visit the [NVIDIA TensorRT Developer page](https://developer.nvidia.com/tensorrt). You need to create an account and log in first. 
-2. Click **Download Now**.
-
-![Screenshot](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2013-34-39.png)
+## **ステップ 1: CUDA Execution Provider の準備**
+`CUDAExecutionProvider.md` ガイドの指示に従って、環境が CUDA Execution Provider で実行できるように準備されていることを確認してください。
 
 ---
 
-## **Step 3: Select and Download the TensorRT Package**
-1. Choose the version of TensorRT you want to install.
-2. Agree to the license terms by selecting the check-box.
-3. Click the package you want to download. The download will start automatically.
+## **ステップ 2: TensorRT パッケージのダウンロード**
+1. [NVIDIA TensorRT 開発者ページ](https://developer.nvidia.com/tensorrt)を訪問します。まず、アカウントを作成してログインする必要があります。
+2. **Download Now** をクリックします。
 
-For example, let's use:
+![スクリーンショット](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2013-34-39.png)
+
+---
+
+## **ステップ 3: TensorRT パッケージの選択とダウンロード**
+1. インストールしたい TensorRT のバージョンを選択します。
+2. チェックボックスを選択してライセンス条項に同意します。
+3. ダウンロードしたいパッケージをクリックします。ダウンロードが自動的に開始されます。
+
+例えば、以下を使用します：
 - **Ubuntu 24.04**
 - **TensorRT 10.7**
 - **CUDA 12.6**
 
-![Screenshot](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2013-35-08.png)
-![Screenshot](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2013-36-40.png)
-![Screenshot](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2013-37-07.png)
+![スクリーンショット](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2013-35-08.png)
+![スクリーンショット](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2013-36-40.png)
+![スクリーンショット](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2013-37-07.png)
 ---
 
-## **Step 4: Install the TensorRT Package**
-Open the Terminal (CMD or PowerShell) and enter the following commands:
+## **ステップ 4: TensorRT パッケージのインストール**
+ターミナル（CMD または PowerShell）を開き、以下のコマンドを入力します：
 
 ```bash
 os="ubuntu2404"
@@ -45,8 +45,8 @@ sudo apt-get update
 
 ---
 
-## **Step 5: Execute the Installation Commands**
-Run the following commands to install TensorRT and upgrade the Python package:
+## **ステップ 5: インストールコマンドの実行**
+以下のコマンドを実行して TensorRT をインストールし、Python パッケージをアップグレードします：
 
 ```bash
 sudo apt-get install tensorrt
@@ -55,21 +55,21 @@ pip install tensorrt --upgrade
 
 ---
 
-## **Step 6: Verify the TensorRT Installation**
-To check if TensorRT is installed correctly, run:
+## **ステップ 6: TensorRT インストールの確認**
+TensorRT が正しくインストールされているか確認するには、以下を実行します：
 
 ```bash
 dpkg-query -W tensorrt
 ```
-If successful, you will see the following in the Terminal window:
+成功すると、ターミナルウィンドウに次のように表示されます：
 ```bash
 tensorrt	10.7.0.23-1+cuda12.6
 ```
 
 ---
 
-## **Step 7: Run the Test Script**
-Execute the `Test.py` script to ensure everything is working correctly. The output should look like this:
+## **ステップ 7: テストスクリプトの実行**
+`Test.py` スクリプトを実行して、すべてが正常に動作していることを確認します。出力は次のようになります：
 
 ```python
 Running benchmark on ['CPUExecutionProvider']...
@@ -79,4 +79,4 @@ Running benchmark on ['TensorrtExecutionProvider', 'CUDAExecutionProvider']...
 Average inference time on ['TensorrtExecutionProvider', 'CUDAExecutionProvider'] (float16): 0.000888 seconds per batch
 ```
 
-If you see similar output, your setup is complete!
+同様の出力が表示される場合は、セットアップが完了です！

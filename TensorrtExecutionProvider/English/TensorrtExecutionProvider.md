@@ -8,8 +8,8 @@ Make sure your environment is ready to run on the CUDA Execution Provider by fol
 ---
 
 ## **Step 2: Download TensorRT Packages**
-1. Visit the [NVIDIA TensorRT Developer page](https://developer.nvidia.com/tensorrt).
-2. Click **GET STARTED** and then **Download Now**.
+1. Visit the [NVIDIA TensorRT Developer page](https://developer.nvidia.com/tensorrt). You need to create an account and log in first. 
+2. Click **Download Now**.
 
 ![Screenshot](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2013-34-39.png)
 
@@ -58,6 +58,10 @@ To check if TensorRT is installed correctly, run:
 
 ```bash
 dpkg-query -W tensorrt
+```
+If successful, you will see the following in the Terminal window:
+```bash
+tensorrt	10.7.0.23-1+cuda12.6
 ```
 
 ---

@@ -144,4 +144,4 @@ benchmark_onnx(onnx_file_path_cpu, input_tensor_numpy, ["CPUExecutionProvider"])
 if ort.get_device() == "GPU":
     benchmark_onnx(onnx_file_path_gpu, input_tensor_numpy, ["CUDAExecutionProvider"])
 else:
-    print("CUDA is not available for ONNX Runtime.")
+    print("GPU is not available for ONNX Runtime.")

@@ -69,6 +69,8 @@ sudo apt-get -y install cudnn8-cuda-11
 
 ## Step 4: Set Environment Variables
 
+Linux OS:
+---
 Add the necessary environment paths to your `.bashrc` file.
 
 ```bash
@@ -102,6 +104,37 @@ Save and exit the editor by typing `:wq`, then activate the environment:
 ```bash
 source ~/.bashrc
 ```
+---
+Windows OS:
+---
+To achieve the same effect on Windows, where environment variables for CUDA need to be set, you can follow these steps:
+
+1. **Open Environment Variables:**
+   - Right-click on 'This PC' or 'My Computer' on your desktop or in File Explorer.
+   - Select 'Properties'.
+   - Click on 'Advanced system settings' on the left sidebar.
+   - In the 'System Properties' window, go to the 'Advanced' tab and click on 'Environment Variables'.
+
+2. **Set Environment Variables:**
+   - In the 'Environment Variables' window, you have two sections: 'User variables' and 'System variables'. You can choose to set these for your user account only or for the entire system.
+   
+   - **Add/Edit CUDA Paths:**
+     - **LD_LIBRARY_PATH**: This variable is not typically used on Windows, so you can skip it. Windows uses the PATH variable for similar purposes.
+     
+     - **PATH**: Find the 'Path' variable in the 'System variables' section, select it, and click 'Edit'. Add the following paths if they are not already present:
+       - `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\vX.X\bin` (replace `vX.X` with your CUDA version)
+       - `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\vX.X\libnvvp`
+     
+     - **CUDA_HOME**: Click 'New' under 'System variables' and add a new variable:
+       - Variable name: `CUDA_HOME`
+       - Variable value: `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\vX.X`
+
+3. **Apply Changes:**
+   - Click 'OK' to close each dialog box.
+
+4. **Verify Changes:**
+   - Open a new Command Prompt and type `echo %PATH%` to check if the CUDA paths have been added successfully.
+   - You can also type `echo %CUDA_HOME%` to check the CUDA_HOME variable.
 
 ---
 

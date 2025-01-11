@@ -89,19 +89,19 @@ def benchmark_onnx(model_path, input_data, provider, num_runs=100):
             {
                 # Device and Compute Configuration
                 'device_id': 0,
-                # 'user_compute_stream': '',
+                # 'user_compute_stream': "",
 
                 # Engine Caching and Compatibility
                 'trt_engine_cache_enable': True,
                 'trt_engine_cache_path': './Cache',
-                # 'customize engine cache prefix': '',
+                # 'customize engine cache prefix': "",
                 'trt_engine_hw_compatible': True,
 
                 # Precision and Performance
                 'trt_max_workspace_size': 25769803776,
                 'trt_fp16_enable': True,
                 'trt_int8_enable': False,               # For fine-tune
-                # 'trt_int8_calibration_table_name': '',
+                # 'trt_int8_calibration_table_name': "",
                 'trt_int8_use_native_calibration_table': False,
                 'trt_build_heuristics_enable': True,
                 'trt_sparsity_enable': True,
@@ -128,9 +128,9 @@ def benchmark_onnx(model_path, input_data, provider, num_runs=100):
                 'trt_force_timing_cache': True,
 
                 # Dynamic Shape Profiling, The format of the profile shapes is input_tensor_1:dim_1xdim_2x...,input_tensor_2:dim_3xdim_4x...,...
-                # 'trt_profile_min_shapes': '',
-                # 'trt_profile_max_shapes': '',
-                # 'trt_profile_opt_shapes': '',
+                # 'trt_profile_min_shapes': "",
+                # 'trt_profile_max_shapes': "",
+                # 'trt_profile_opt_shapes': "",
             },
 
             # CUDAExecutionProvider

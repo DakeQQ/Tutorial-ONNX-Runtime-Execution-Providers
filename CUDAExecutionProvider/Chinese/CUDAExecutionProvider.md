@@ -137,7 +137,7 @@ pip uninstall onnxruntime-openvino
 
 ---
 
-## 第 7 步：安装带 GPU 支持的 ONNX Runtime
+## 第 7 步：安装带 NVIDIA-GPU 支持的 ONNX Runtime
 
 参考 [ONNX Runtime CUDA Execution Provider 文档](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html) 了解兼容版本。以下是安装最新版本的示例：
 

@@ -174,7 +174,7 @@ def benchmark_onnx(model_path, input_data, provider, num_runs=100):
         start_time = time.time()
         for _ in range(num_runs):
             session.run_with_iobinding(io_binding)
-            _ = ort.OrtValue.numpy(io_binding.get_outputs()[0])
+        _ = ort.OrtValue.numpy(io_binding.get_outputs()[0])
         end_time = time.time()
 
     avg_time = (end_time - start_time) / num_runs

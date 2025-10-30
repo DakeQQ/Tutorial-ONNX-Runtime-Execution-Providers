@@ -28,7 +28,7 @@ class SimpleNet(nn.Module):
 # ================================
 model = SimpleNet()
 model.eval()
-input_tensor = torch.randn(32, 4096, dtype=torch.float32)
+input_tensor = torch.randn(4096, 4096, dtype=torch.float32)
 onnx_file_path_cpu = "simplenet_cpu.onnx"
 onnx_file_path_gpu = "simplenet_gpu.onnx"
 
@@ -93,14 +93,14 @@ def benchmark_onnx(model_path, input_data, provider, num_runs=100):
 
                 # Engine Caching and Compatibility
                 'trt_engine_cache_enable': True,
-                'trt_engine_cache_path': './Cache',
+                'trt_engine_cache_path': './TensorRT_Cache',
                 # 'customize engine cache prefix': "",
                 'trt_engine_hw_compatible': True,
 
                 # Precision and Performance
-                'trt_max_workspace_size': 25769803776,
+                'trt_max_workspace_size': 64 * 1073741824,    # 64 GB
                 'trt_fp16_enable': True,
-                'trt_int8_enable': False,               # For fine-tune
+                'trt_int8_enable': False,                     # For fine-tune
                 # 'trt_int8_calibration_table_name': "",
                 'trt_int8_use_native_calibration_table': False,
                 'trt_build_heuristics_enable': True,
@@ -124,25 +124,38 @@ def benchmark_onnx(model_path, input_data, provider, num_runs=100):
 
                 # Timing cache
                 'trt_timing_cache_enable': True,
-                'trt_timing_cache_path': './Cache',
+                'trt_timing_cache_path': './TensorRT_Cache',
                 'trt_force_timing_cache': True,
 
+                # Embed cache
+                'trt_dump_ep_context_model': True,
+                'trt_ep_context_file_path': "./TensorRT_Cache",
+
                 # Dynamic Shape Profiling, The format of the profile shapes is input_tensor_1:dim_1xdim_2x...,input_tensor_2:dim_3xdim_4x...,...
-                # 'trt_profile_min_shapes': "",
-                # 'trt_profile_max_shapes': "",
-                # 'trt_profile_opt_shapes': "",
+                'trt_profile_min_shapes': 'input_tensor_1:4096x4096',
+                'trt_profile_max_shapes': 'input_tensor_1:4096x4096',
+                'trt_profile_opt_shapes': 'input_tensor_1:4096x4096',
             },
 
             # CUDAExecutionProvider
             {
                 'device_id': 0,
-                'gpu_mem_limit': 2 * 1024 * 1024 * 1024,  # 2 GB
-                'arena_extend_strategy': 'kNextPowerOfTwo',
-                'cudnn_conv_algo_search': 'EXHAUSTIVE',
+                'gpu_mem_limit': 64 * 1073741824,    # 64 GB
+                'arena_extend_strategy': 'kNextPowerOfTwo',  # ["kNextPowerOfTwo", "kSameAsRequested"]
+                'cudnn_conv_algo_search': 'EXHAUSTIVE',      # ["DEFAULT", "HEURISTIC", "EXHAUSTIVE"]
+                'sdpa_kernel': '2',                          # ["0", "1", "2"]
+                'use_tf32': '1',
+                'fuse_conv_bias': '0',
                 'cudnn_conv_use_max_workspace': '1',
-                'do_copy_in_default_stream': '1',
                 'cudnn_conv1d_pad_to_nc1d': '1',
-                'enable_cuda_graph': '0'                # Set to '0' to avoid potential errors when enabled.
+                'tunable_op_enable': '0',
+                'tunable_op_tuning_enable': '0',
+                'tunable_op_max_tuning_duration_ms': 1000,
+                'do_copy_in_default_stream': '1',
+                'enable_cuda_graph': '0',                    # Set to '0' to avoid potential errors when enabled.
+                'prefer_nhwc': '0',
+                'enable_skip_layer_norm_strict_mode': '0',
+                'use_ep_level_unified_stream': '0',
             }
         ]
 

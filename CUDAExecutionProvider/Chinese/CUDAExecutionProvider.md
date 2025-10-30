@@ -24,52 +24,69 @@ sudo rm -rf /usr/local/cuda*
 
 # 从 dpkg 中移除
 sudo dpkg -r cuda
-sudo dpkg -r $(dpkg -l | grep '^ii  cudnn' | awk '{print $2}')
 ```
-
----
 
 ## 第 2 步：下载 CUDA Toolkit
 
-访问 [NVIDIA CUDA Toolkit Archive](https://developer.nvidia.com/cuda-toolkit-archive)，选择您要安装的版本。
+访问 [NVIDIA CUDA Toolkit Archive]([https://developer.nvidia.com/cuda-toolkit-archive](https://developer.nvidia.com/cuda-toolkit-archive))，选择您要安装的版本。
 
-**示例：** CUDA Toolkit 12.6
-
-![显示 CUDA 选择过程的截图](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2012-02-42.png)
-
----
+**示例：** CUDA Toolkit 13.0
+<br>
+<br>
+<img width="1166" height="488" alt="Screenshot from 2025-10-30 09-44-34" src="https://github.com/user-attachments/assets/709ee074-3390-4ddf-9b89-ad841f91fcda" />
+<br>
+<br>
 
 ## 第 3 步：配置 CUDA Toolkit
 
-按照网站上的说明配置您的系统。以下是 CUDA Toolkit 12.6 的示例。
-
-![显示 CUDA Toolkit 安装程序的截图](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2012-03-17.png)
-![显示安装程序说明的截图](https://github.com/DakeQQ/Tutorial-ONNX-Runtime-Execution-Providers/blob/main/screenshots/Screenshot%20from%202025-01-11%2012-03-35.png)
+按照网站上的说明配置您的系统。以下是 CUDA Toolkit 13.0 的示例。
+<br>
+<br>
+<img width="1166" height="885" alt="Screenshot from 2025-10-30 09-46-23" src="https://github.com/user-attachments/assets/6d529041-ecb4-4a89-bf4c-ec3a5035dab6" />
+<br>
+<br>
 
 ```bash
 # CUDA Toolkit 安装程序
 wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-ubuntu2404.pin
 sudo mv cuda-ubuntu2404.pin /etc/apt/preferences.d/cuda-repository-pin-600
-wget https://developer.download.nvidia.com/compute/cuda/12.6.3/local_installers/cuda-repo-ubuntu2404-12-6-local_12.6.3-560.35.05-1_amd64.deb
-sudo dpkg -i cuda-repo-ubuntu2404-12-6-local_12.6.3-560.35.05-1_amd64.deb
-sudo cp /var/cuda-repo-ubuntu2404-12-6-local/cuda-*-keyring.gpg /usr/share/keyrings/
+wget https://developer.download.nvidia.com/compute/cuda/13.0.2/local_installers/cuda-repo-ubuntu2404-13-0-local_13.0.2-580.95.05-1_amd64.deb
+sudo dpkg -i cuda-repo-ubuntu2404-13-0-local_13.0.2-580.95.05-1_amd64.deb
+sudo cp /var/cuda-repo-ubuntu2404-13-0-local/cuda-*-keyring.gpg /usr/share/keyrings/
 sudo apt-get update
-sudo apt-get -y install cuda-toolkit-12-6
+sudo apt-get -y install cuda-toolkit-13-0
 
 # 驱动程序安装
 sudo apt-get install -y nvidia-open
 sudo apt-get install -y cuda-drivers
 
+```
+
+### 安装 cuDNN 库
+**URL: https://developer.nvidia.com/cudnn-downloads**
+<br>
+<br>
+<img width="925" height="751" alt="Screenshot from 2025-10-30 09-38-50" src="https://github.com/user-attachments/assets/2962b9ad-b49b-4d4f-9fce-2f20aa972a0f" />
+<br>
+<br>
+```bash
+wget https://developer.download.nvidia.com/compute/cudnn/9.14.0/local_installers/cudnn-local-repo-ubuntu2404-9.14.0_1.0-1_amd64.deb
+sudo dpkg -i cudnn-local-repo-ubuntu2404-9.14.0_1.0-1_amd64.deb
+sudo cp /var/cudnn-local-repo-ubuntu2404-9.14.0/cudnn-*-keyring.gpg /usr/share/keyrings/
+sudo apt-get update
+
 # 安装 cuDNN 库
-sudo apt-get -y install cudnn9-cuda-12
+sudo apt-get -y install cudnn
+
 # 或其他版本：
+sudo apt-get -y install cudnn9-cuda-12
 sudo apt-get -y install cudnn8-cuda-11
 ```
 
 ---
 
 ## 第 4 步：设置环境变量
----
+
 ### Linux OS: ###
 
 将必要的环境路径添加到 `.bashrc` 文件中。

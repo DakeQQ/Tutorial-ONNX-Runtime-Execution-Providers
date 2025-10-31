@@ -116,7 +116,7 @@ def benchmark_onnx(model_path, input_data, provider, num_runs=100):
                 'trt_force_sequential_engine_build': False,
 
                 # Advanced Configuration and Profiling
-                'trt_context_memory_sharing_enable': True,
+                'trt_context_memory_sharing_enable': False,
                 'trt_layer_norm_fp32_fallback': False,
                 'trt_cuda_graph_enable': False,         # Set to 'False' to avoid potential errors when enabled.
                 'trt_builder_optimization_level': 5,    # 0 ~ 5

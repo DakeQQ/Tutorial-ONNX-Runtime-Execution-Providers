@@ -100,11 +100,13 @@ def benchmark_onnx(model_path, input_data, provider, num_runs=100):
                 # Precision and Performance
                 'trt_max_workspace_size': 64 * 1073741824,    # 64 GB
                 'trt_fp16_enable': True,
+                # 'trt_bf16_enable': False,
                 'trt_int8_enable': False,                     # For fine-tune
-                # 'trt_int8_calibration_table_name': "",
                 'trt_int8_use_native_calibration_table': False,
+                # 'trt_int8_calibration_table_name': "",
                 'trt_build_heuristics_enable': True,          # True for boost building time
                 'trt_sparsity_enable': False,                 # True for performance but loss accuracy
+                # 'weight_stripped_engine_enable': False,
                 'trt_dla_enable': True,
                 'trt_dla_core': 0,
 
@@ -124,8 +126,8 @@ def benchmark_onnx(model_path, input_data, provider, num_runs=100):
 
                 # Timing cache
                 'trt_timing_cache_enable': True,
-                'trt_timing_cache_path': './TensorRT_Cache',
                 'trt_force_timing_cache': True,
+                'trt_timing_cache_path': './TensorRT_Cache',
 
                 # Embed cache
                 'trt_dump_ep_context_model': True,

@@ -100,13 +100,12 @@ def benchmark_onnx(model_path, input_data, provider, num_runs=100):
                 # Precision and Performance
                 'trt_max_workspace_size': 64 * 1073741824,    # 64 GB
                 'trt_fp16_enable': True,
-                # 'trt_bf16_enable': False,
+                'trt_bf16_enable': False,
                 'trt_int8_enable': False,                     # For fine-tune
                 'trt_int8_use_native_calibration_table': False,
                 # 'trt_int8_calibration_table_name': "",
                 'trt_build_heuristics_enable': True,          # True for boost building time
-                'trt_sparsity_enable': False,                 # True for performance but loss accuracy
-                # 'weight_stripped_engine_enable': False,
+                'trt_sparsity_enable': True,                  # True for performance but loss accuracy
                 'trt_dla_enable': True,
                 'trt_dla_core': 0,
 
@@ -114,12 +113,12 @@ def benchmark_onnx(model_path, input_data, provider, num_runs=100):
                 'trt_max_partition_iterations': 1000,
                 'trt_min_subgraph_size': 1,
                 'trt_dump_subgraphs': False,
-                'trt_force_sequential_engine_build': True,
+                'trt_force_sequential_engine_build': False,
 
                 # Advanced Configuration and Profiling
                 'trt_context_memory_sharing_enable': True,
                 'trt_layer_norm_fp32_fallback': False,
-                'trt_cuda_graph_enable': False,         # Set to '0' to avoid potential errors when enabled.
+                'trt_cuda_graph_enable': False,         # Set to 'False' to avoid potential errors when enabled.
                 'trt_builder_optimization_level': 5,    # 0 ~ 5
                 'trt_auxiliary_streams': -1,            # Set 0 for optimal memory usage
                 'trt_detailed_build_log': False,
@@ -133,7 +132,7 @@ def benchmark_onnx(model_path, input_data, provider, num_runs=100):
                 'trt_dump_ep_context_model': True,
                 'trt_ep_context_file_path': "./TensorRT_Cache",
 
-                # Dynamic Shape Profiling, The format of the profile shapes is input_tensor_1:dim_1xdim_2x...,input_tensor_2:dim_3xdim_4x...,...
+                # Dynamic Shape Profiling, The format of the profile shapes is input_1:dim_1xdim_2x...,input_2:dim_1xdim_2x...,...
                 'trt_profile_min_shapes': 'input_1:4096x4096',
                 'trt_profile_max_shapes': 'input_1:4096x4096',
                 'trt_profile_opt_shapes': 'input_1:4096x4096',

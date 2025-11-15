@@ -47,7 +47,7 @@ adb pull /system/lib64/ld-android.so ./app/src/main/assets
 
 ## 步骤 2：从官方 QNN SDK 获取所需库
 
-您需要从官方 [Qualcomm AI Engine Direct SDK](https://www.qualcomm.com/developer/software/qualcomm-ai-engine-direct-sdk) `（QNN SDK，此演示的版本：2.32.*）`获取额外的库。从官网下载 SDK，并在 `2.32.*/lib/aarch64-android/` & `2.32.*/lib/hexagon-v7*/unsigned/` 目录中找到这些库。确保SDK版本与编译 `libonnxruntime.so` 库时使用的版本一致。
+您需要从官方 [Qualcomm AI Engine Direct SDK](https://www.qualcomm.com/developer/software/qualcomm-ai-engine-direct-sdk) `（QNN SDK，此演示的版本：2.36.* + ORT_1.23.2）`获取额外的库。从官网下载 SDK，并在 `2.36.*/lib/aarch64-android/` & `2.36.*/lib/hexagon-v*/unsigned/` 目录中找到这些库。确保SDK版本与编译 `libonnxruntime.so` 库时使用的版本一致。
 
 **注意：** 要获取最新的 SDK 版本，您必须使用`Qualcomm® Package Manager（QPM3）`；否则，您将通过直接下载链接收到其他版本。<br> 
 **注意：** 可以在这查到[型号](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/QNN_general_overview.html)。
@@ -56,7 +56,7 @@ adb pull /system/lib64/ld-android.so ./app/src/main/assets
 1. `libQnnCpu.so`
 2. `libQnnHtp.so`
 3. `libQnnHtpPrepare.so`
-4. `libQnnHtpV69Skel.so`
+4. `libQnnHtpV69Skel.so`  @`lib/hexagon-v*/unsigned`
 5. `libQnnHtpV69Stub.so`
 6. `libQnnSystem.so`
 
@@ -64,7 +64,7 @@ adb pull /system/lib64/ld-android.so ./app/src/main/assets
 1. `libQnnCpu.so`
 2. `libQnnHtp.so`
 3. `libQnnHtpPrepare.so`
-4. `libQnnHtpV73Skel.so`
+4. `libQnnHtpV73Skel.so`  @`lib/hexagon-v*/unsigned`
 5. `libQnnHtpV73Stub.so`
 6. `libQnnSystem.so`
 
@@ -72,7 +72,7 @@ adb pull /system/lib64/ld-android.so ./app/src/main/assets
 1. `libQnnCpu.so`
 2. `libQnnHtp.so`
 3. `libQnnHtpPrepare.so`
-4. `libQnnHtpV75Skel.so`
+4. `libQnnHtpV75Skel.so`  @`lib/hexagon-v*/unsigned`
 5. `libQnnHtpV75Stub.so`
 6. `libQnnSystem.so`
 ---

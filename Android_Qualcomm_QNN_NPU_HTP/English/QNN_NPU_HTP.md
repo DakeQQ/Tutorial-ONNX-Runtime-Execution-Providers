@@ -47,7 +47,7 @@ adb pull /system/lib64/ld-android.so ./app/src/main/assets
 
 ## Step 2: Get Required Libraries from the Official QNN SDK
 
-You need additional libraries from the official [Qualcomm AI Engine Direct SDK](https://www.qualcomm.com/developer/software/qualcomm-ai-engine-direct-sdk) `(QNN SDK, demo version: 2.32.*)`. Download the SDK from the official website, and locate the libraries in the `2.32.*/lib/aarch64-android/` & `2.32.*/lib/hexagon-v7*/unsigned/` directory. Ensure the SDK version matches the one used for compiling the `libonnxruntime.so` library.
+You need additional libraries from the official [Qualcomm AI Engine Direct SDK](https://www.qualcomm.com/developer/software/qualcomm-ai-engine-direct-sdk) `(QNN SDK, demo version: 2.36.* + ORT_1.23.2)`. Download the SDK from the official website, and locate the libraries in the `2.36.*/lib/aarch64-android/` & `2.36.*/lib/hexagon-v*/unsigned/` directory. Ensure the SDK version matches the one used for compiling the `libonnxruntime.so` library.
 
 **Note:** To obtain the latest SDK version, you must use the `Qualcomm® Package Manager (QPM3)`; otherwise, you will receive another version via the direct download link.<br> 
 **Note:** Find your device from [here](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/QNN_general_overview.html).
@@ -56,7 +56,7 @@ You need additional libraries from the official [Qualcomm AI Engine Direct SDK](
 1. `libQnnCpu.so`
 2. `libQnnHtp.so`
 3. `libQnnHtpPrepare.so`
-4. `libQnnHtpV69Skel.so`
+4. `libQnnHtpV69Skel.so`  @`lib/hexagon-v*/unsigned`
 5. `libQnnHtpV69Stub.so`
 6. `libQnnSystem.so`
 
@@ -64,7 +64,7 @@ You need additional libraries from the official [Qualcomm AI Engine Direct SDK](
 1. `libQnnCpu.so`
 2. `libQnnHtp.so`
 3. `libQnnHtpPrepare.so`
-4. `libQnnHtpV73Skel.so`
+4. `libQnnHtpV73Skel.so`  @`lib/hexagon-v*/unsigned`
 5. `libQnnHtpV73Stub.so`
 6. `libQnnSystem.so`
 
@@ -72,7 +72,7 @@ You need additional libraries from the official [Qualcomm AI Engine Direct SDK](
 1. `libQnnCpu.so`
 2. `libQnnHtp.so`
 3. `libQnnHtpPrepare.so`
-4. `libQnnHtpV75Skel.so`
+4. `libQnnHtpV75Skel.so`  @`lib/hexagon-v*/unsigned`
 5. `libQnnHtpV75Stub.so`
 6. `libQnnSystem.so`
 

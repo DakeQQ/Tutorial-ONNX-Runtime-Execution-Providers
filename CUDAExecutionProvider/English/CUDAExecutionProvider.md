@@ -103,6 +103,9 @@ Save and exit the editor by typing `:wq`, then activate the environment:
 ```bash
 source ~/.bashrc
 ```
+
+**Restart the Computer**
+
 ---
 ### Windows OS: ###
 To achieve the same effect on Windows, where environment variables for CUDA need to be set, you can follow these steps:

@@ -104,6 +104,9 @@ fi
 ```bash
 source ~/.bashrc
 ```
+
+**コンピュータを再起動してください**
+
 ---
 ### Windows OS: ###
 

@@ -134,6 +134,8 @@ To achieve the same effect on Windows, where environment variables for CUDA need
    - Open a new Command Prompt and type `echo %PATH%` to check if the CUDA paths have been added successfully.
    - You can also type `echo %CUDA_HOME%` to check the CUDA_HOME variable.
 
+5. **Restart the Computer**
+
 ---
 
 ## Step 5: Verify CUDA Installation

@@ -122,6 +122,9 @@ fi
 ```bash
 source ~/.bashrc
 ```
+
+**重启电脑**
+
 ---
 
 ### Windows OS: ###

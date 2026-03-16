@@ -152,6 +152,8 @@ source ~/.bashrc
 4. **验证更改：**
    - 打开一个新的命令提示符并输入 `echo %PATH%` 检查 CUDA 路径是否已成功添加。
    - 您也可以输入 `echo %CUDA_HOME%` 检查 CUDA_HOME 变量。
+  
+5. **重启电脑**
 
 ---
 

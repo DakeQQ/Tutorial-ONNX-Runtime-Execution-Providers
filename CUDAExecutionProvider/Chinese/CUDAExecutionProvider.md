@@ -28,7 +28,7 @@ sudo dpkg -r cuda
 
 ## 第 2 步：下载 CUDA Toolkit
 
-访问 [NVIDIA CUDA Toolkit Archive]([https://developer.nvidia.com/cuda-toolkit-archive](https://developer.nvidia.com/cuda-toolkit-archive))，选择您要安装的版本。
+访问 [NVIDIA CUDA Toolkit Archive](https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=24.04&target_type=deb_local)，选择您要安装的版本。
 
 **示例：** CUDA Toolkit 13.0
 <br>

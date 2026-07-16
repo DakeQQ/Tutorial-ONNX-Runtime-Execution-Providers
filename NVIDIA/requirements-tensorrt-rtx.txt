@@ -1,0 +1,7 @@
+# Standalone TensorRT RTX EP ABI plugin environment.
+# Do not combine this ordinary ORT host with onnxruntime-gpu.
+onnxruntime==1.27.0
+onnxruntime-ep-nv-tensorrt-rtx==0.3.0
+
+# Used only to generate the repository smoke-test model.
+onnx==1.22.0

@@ -1,0 +1,674 @@
+# ONNX Runtime Intel OpenVINO 执行提供程序 — Windows 与 Ubuntu 零基础教程
+
+> **目标：** 从一台干净电脑开始，让 ONNX 模型通过 ONNX Runtime 在 Intel **CPU、集成/独立 GPU 或集成 NPU** 上推理。本 Python 路线不需要 CUDA、oneAPI Base Toolkit、Visual Studio，也不需要自行编译源码。
+>
+> **审计快照：** 本文已在 **2026-07-16** 根据官方发布页和 PyPI 实际文件清单重新核对。此目录锁定测试组合：`onnxruntime-openvino 1.24.1` + `OpenVINO 2025.4.1`（Intel OpenVINO EP 5.9）。硬件驱动更新速度快于教程，请始终从所选驱动的官方发布页获取安装包。
+>
+> **验证范围：** 已在真实硬件上复现 Ubuntu 干净安装以及严格的 `CPU`、`GPU`、`GPU.0`、`GPU.1` 测试。Windows 启动器经过静态审计；Windows NPU 与 Linux NPU 安装步骤已按官方源码/发布页核验，但本审计主机无法进行对应实体硬件测试。因此演示会在每台机器上执行必要的资格验证，而不会声称仅凭文档就能验证未见过的硬件。
+
+[English](README.md) · [OpenVINO EP 源码](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/providers/openvino)
+
+---
+
+## 1. 到底安装了什么？
+
+ONNX 应用不会直接操作 Intel 硬件。ONNX Runtime 先划分计算图；OpenVINO 执行提供程序（EP）再通过匹配的 OpenVINO 设备插件和驱动编译支持的子图。
+
+```mermaid
+flowchart LR
+    A[Python 应用] --> B[ONNX Runtime InferenceSession]
+    B --> C[OpenVINOExecutionProvider]
+    C --> D{device_type}
+    D -->|CPU| E[OpenVINO CPU 插件<br/>oneDNN / CPU 指令集]
+    D -->|GPU / GPU.x| F[OpenVINO GPU 插件<br/>Intel 图形计算驱动]
+    D -->|NPU| G[OpenVINO NPU 插件<br/>Intel NPU 驱动和固件]
+    D -->|AUTO / HETERO / MULTI| H[OpenVINO 元设备调度器]
+    C -. ORT 不支持的分区 .-> I[CPUExecutionProvider 回退]
+```
+
+### 新手最容易混淆的术语
+
+| 术语 | 含义 | 本教程安装什么 |
+|---|---|---|
+| **ONNX** | 可移植模型/计算图文件格式（`.onnx`） | 离线自生成演示模型会用 Python `onnx` 包 |
+| **ONNX Runtime（ORT）** | 加载模型，并把节点分发给执行提供程序 | 安装 `onnxruntime-openvino`，**不是**普通 `onnxruntime` |
+| **执行提供程序（EP）** | ORT 面向某一加速栈的后端 | 特殊 wheel 已包含 `OpenVINOExecutionProvider` |
+| **OpenVINO Runtime** | EP 使用的 Intel 编译器、运行时和 CPU/GPU/NPU 插件 | Linux wheel 自带；Windows 还需安装完全匹配的 `openvino` wheel |
+| **驱动** | 操作系统与硬件之间的软件层 | CPU 通常只需系统；GPU/NPU 必须有当前 Intel/OEM 驱动 |
+| **Intel NPU / Intel AI Boost** | 支持型号的 Intel Core Ultra 内置低功耗 AI 加速器 | 这是物理硬件，无法靠软件“安装出来” |
+| **oneAPI** | Intel 开发工具家族 | 使用本教程预编译 Python 包时不需要 |
+
+---
+
+## 2. 先选设备，再动手
+
+| 目标 | 常见硬件 | 最适合先做什么 | 驱动工作 | 模型建议 |
+|---|---|---|---|---|
+| `CPU` | 官方支持的 x86-64 Intel Atom/Core/Xeon 系列 | 最容易验证，算子与动态形状覆盖最广 | 通常只需系统更新 | FP32 是最稳妥起点；INT8/BF16/FP16 收益取决于 CPU |
+| `GPU` | Intel HD/UHD/Iris/Iris Xe/Arc/Flex/Max | 并行视觉、音频、LLM，常用 FP16 | Windows Intel 图形驱动 / Linux 计算运行时 | 优先静态或有界形状；精度允许时用 FP16/INT8 |
+| `GPU.0`、`GPU.1` | 多块 Intel GPU | 明确选择已枚举的一块 GPU | 与 GPU 相同 | `GPU` 是 `GPU.0` 别名；必须查询 ID，不能猜测核显/独显顺序 |
+| `NPU` | Intel Core Ultra 集成 NPU（Intel AI Boost） | 持续、节能的 AI PC 任务 | NPU 驱动必需 | 使用**静态形状**；FP16 或受支持 INT8/QDQ 模型 |
+| `AUTO:GPU,NPU,CPU` | 上述任意组合 | 自动选择和可移植部署 | 列出的每个设备都要有驱动 | 不能证明具体跑在哪个设备；应先逐个显式测试 |
+| `HETERO:GPU,CPU` | 至少两个设备 | 把不支持的算子拆给其他设备 | 所有目标设备的驱动 | 有利于兼容，但设备传输可能拖慢 |
+| `MULTI:GPU,CPU` | 至少两个设备 | 并行请求、提高吞吐 | 所有目标设备的驱动 | 在多设备加载模型并分配不同请求，通常不会降低单个请求延迟 |
+
+> [!IMPORTANT]
+> `onnxruntime.get_device()` **不能**可靠证明 Intel 目标设备。应查看本目录演示打印的设备列表（直接查询 ORT wheel 所加载/内置的 OpenVINO 运行时），显式设置 `device_type`，并检查计算图分配结果。Windows 或**独立的** Linux 诊断环境也可使用 `openvino.Core().available_devices`；不要把独立 `openvino` wheel 装入本 Linux EP 环境。
+
+### 硬件与操作系统基线
+
+| 项目 | 新手推荐 | 与本组合有关的官方范围 |
+|---|---|---|
+| 架构 | x86-64 / AMD64 | 本教程使用的 `onnxruntime-openvino` wheel 是 x86-64 |
+| Python | **64 位 CPython 3.12** | 1.24.1 实际只发布 CPython 3.11、3.12、3.13 wheel；没有 3.10 或 3.14 wheel |
+| Windows | 完整更新的 Windows 11 64 位 | wheel 元数据写 Windows 10+，但当前 NPU 支持以 Windows 11 为主 |
+| Ubuntu | **Ubuntu 24.04 LTS 64 位** | CPU/GPU 文档覆盖 20.04/22.04/24.04；当前 Linux NPU 发布包面向 24.04 |
+| NPU 内核 | 当前 Ubuntu 24.04 HWE/OEM 内核 | OpenVINO 2025.4 对 Ubuntu 24.04 的基线为 6.8+；NPU 驱动 v1.28.0 验证的是 6.14.0-36 |
+
+> [!NOTE]
+> `onnxruntime-openvino 1.24.1` 的 PyPI 元数据/分类器虽然写了 Python 3.14，但发布文件只有面向 `win_amd64` 和 `manylinux_2_28_x86_64` 的 `cp311`、`cp312`、`cp313` wheel。能否安装取决于实际发布文件，而不是分类器文字。
+
+### 这台电脑真的有 NPU 吗？
+
+1. 查出准确的处理器型号。
+2. 在 [Intel ARK](https://ark.intel.com/) 搜索型号，打开 **NPU Specifications（NPU 规格）**。
+3. 查找 **Intel AI Boost**。Core Ultra 通常带 NPU，但仍需核对具体 SKU。
+4. Windows 安装驱动后，任务管理器可能显示 **NPU** 性能页，设备管理器应出现 Intel AI Boost/NPU 且无警告图标。
+5. Linux 可先运行 `lspci -nn | grep -Ei 'NPU|VPU|AI Boost'`；是否出现 `/dev/accel/accel0` 才是驱动设备节点的关键检查。
+
+如果机器没有 NPU 硬件，`NPU` 永远不会出现，请使用 `CPU` 或 `GPU`。OpenVINO 2025.4 的裸 `AUTO` 默认优先列表排除 NPU，因此必须显式请求 NPU。
+
+---
+
+## 3. 最短成功路线
+
+```mermaid
+flowchart TD
+    A[识别 Intel CPU/GPU/NPU] --> B[更新系统、BIOS 和设备驱动]
+    B --> C[安装 64 位 Python 3.12]
+    C --> D[运行一键启动器]
+    D --> E{列出 OpenVINO EP?}
+    E -->|否| F[删除冲突 ORT wheel<br/>重建虚拟环境]
+    E -->|是| G{OpenVINO 列出目标设备?}
+    G -->|否| H[修复驱动或 Linux 权限<br/>重启或重新登录]
+    G -->|是| I[显式运行 CPU、GPU 或 NPU 演示]
+    I --> J{PASS?}
+    J -->|否| K[检查静态形状、算子支持、<br/>日志和版本匹配]
+    J -->|是| L[换成自己的模型<br/>再做分析和调优]
+```
+
+如果只用 CPU，可跳过 GPU/NPU 驱动章节，直接前往[第 6 节](#6-安装-python-软件栈)。
+
+---
+
+## 4. Windows 11 配置
+
+### 4.1 更新 Windows、BIOS 和固件
+
+1. 打开 **设置 → Windows 更新 → 检查更新**，也检查相关的可选驱动更新。
+2. 从整机厂商安装最新 BIOS/固件。如果 BIOS 提供集成显卡或 NPU/AI 加速开关，请确认已经启用。
+3. 重启电脑。
+
+笔记本优先使用 OEM 驱动，因为它可能包含平台专用的电源与固件集成。OEM 驱动过旧时，再尝试 Intel 通用驱动。
+
+### 4.2 CPU
+
+OpenVINO CPU 不需要单独驱动。保持 Windows、芯片组和 BIOS 为当前版本即可。
+
+### 4.3 Intel GPU 驱动
+
+任选一条路线：
+
+| 路线 | 何时使用 | 入口 |
+|---|---|---|
+| 电脑/OEM 支持页 | 笔记本或受管工作站首选 | 设备制造商支持网站 |
+| Intel Driver & Support Assistant | 希望自动识别并更新 | [Intel DSA](https://www.intel.com/content/www/us/en/support/detect.html) |
+| Intel 通用 Arc/Iris Xe 包 | OEM 包太旧，或安装了独立 Arc 显卡 | [Intel Arc 与 Iris Xe 驱动](https://www.intel.com/content/www/us/en/download/785597/intel-arc-iris-xe-graphics-windows.html) |
+
+安装后重启，再验证：
+
+1. 打开 **设备管理器 → 显示适配器**。
+2. Intel 适配器不能有黄色警告图标。
+3. 打开 **属性 → 驱动程序**，记录版本和日期。
+
+### 4.4 Intel NPU 驱动
+
+1. 先确认处理器确有 Intel AI Boost。
+2. 优先使用整机厂商支持页，并选择为准确机型测试过的 NPU 驱动。
+3. 核对驱动是否支持准确的处理器、Windows 版本和 OpenVINO 世代。不要照搬旧博客中的固定版本号。
+4. 安装并重启。
+5. 检查 **设备管理器** 与 **任务管理器 → 性能 → NPU**，不能有警告图标。
+
+> [!WARNING]
+> NPU 尤其依赖驱动与 OpenVINO 兼容性。截至本次审计，Intel 可变的[通用 Windows NPU 下载页](https://www.intel.com/content/www/us/en/download/794734/intel-npu-driver-windows.html)提供 `32.0.100.4778`，并明确宣传 **OpenVINO 2026.2**，而非本文锁定的 2025.4.1。官方未说明向后兼容，因此本文不会把该混合组合称为已验证。请使用发布说明覆盖 OpenVINO 2025.4 的 OEM 驱动，或把完整 ORT/OpenVINO 软件栈迁移到当前驱动验证过的发布族；不要只升级驱动/运行时某一层后假定 NPU 一定成功。
+
+### 4.5 安装 Python
+
+1. 从 [python.org](https://www.python.org/downloads/) 或 Microsoft Store 安装 **64 位 Python 3.12**。
+2. 使用 python.org 安装器时，勾选 **Add python.exe to PATH**，并安装 Python Launcher。
+3. 打开一个**新的**命令提示符，运行：
+
+```bat
+py -3.12 --version
+py -3.12 -c "import struct; print(struct.calcsize('P') * 8)"
+```
+
+预期输出 Python 3.12.x 和 `64`。
+
+---
+
+## 5. Ubuntu 24.04 配置
+
+### 5.1 更新基础系统
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip pciutils curl wget gnupg
+```
+
+以上只是本教程的最低环境，不会无人值守地执行完整发行版升级。请另行用 `apt list --upgradable` 审核常规系统更新。只有内核、固件或硬件驱动更新明确要求时才重启。
+
+检查当前系统：
+
+```bash
+uname -r
+lspci -nn | grep -Ei 'VGA|Display|3D|NPU|VPU|AI Boost'
+```
+
+### 5.2 CPU
+
+CPU 通常不需要额外驱动，可继续安装 Python 软件栈。
+
+### 5.3 Intel GPU 计算运行时
+
+OpenVINO GPU 插件需要 Intel OpenCL/Level Zero 计算运行时。OpenVINO 官方配置页目前给出两类有效路线：
+
+| 路线 | 优点 | 风险/维护 |
+|---|---|---|
+| 发行版/Intel 图形软件仓库 | APT 管理更新和依赖 | 仓库设置会随时间、Ubuntu 和 GPU 世代变化 |
+| 最新 compute-runtime 发布页中的包 | 精确、可审计 | 更手动；必须下载该发布列出的全部依赖 |
+
+**推荐流程（不要盲贴几年前的仓库 URL）：**
+
+1. 打开当前 [OpenVINO Intel GPU 配置](https://docs.openvino.ai/2025/get-started/install-openvino/configurations/configurations-intel-gpu.html) 和 [Intel 客户端 GPU 指南](https://dgpu-docs.intel.com/driver/client/overview.html)。
+2. 按**本机 Ubuntu 版本和 GPU 世代**配置软件源。
+3. 安装官方包组：
+
+```bash
+sudo apt update
+sudo apt install -y ocl-icd-libopencl1 intel-opencl-icd intel-level-zero-gpu level-zero clinfo
+sudo usermod -aG render "$USER"
+```
+
+这些包的职责不同：`ocl-icd-libopencl1` 是 OpenCL 加载器，`intel-opencl-icd` 是 Intel OpenCL GPU 驱动，Intel 仓库中的 `level-zero` 是通用 Level Zero 加载器，`intel-level-zero-gpu` 是 Intel Level Zero GPU 驱动。当前 compute-runtime 直接发布包和部分发行版仓库把最后一个驱动称为 `libze-intel-gpu1`；部分仓库把通用加载器称为 `libze1`。它们是不同渠道中的替代包名，不是应盲目混装的额外组件。应使用一个完整软件仓库，或同一次 compute-runtime 发布中的完整包组和校验和。
+
+4. 注销并重新登录（或重启），再验证：
+
+```bash
+groups
+ls -l /dev/dri/renderD* 2>/dev/null
+clinfo -l
+```
+
+Arc 独立 GPU 需要现代内核。OpenVINO 2025.4 页面至少建议 6.2+，实际应采用当前驱动发布指定的更新内核。除非该设备/内核的官方说明明确要求，否则不要安装陈旧 DKMS 栈。
+
+### 5.4 Intel NPU 驱动——必须整体对齐版本
+
+Linux NPU 栈包含内核模块、固件、Level Zero 加载器、NPU 用户态驱动与编译器。应把 [Intel Linux NPU 驱动发布页](https://github.com/intel/linux-npu-driver/releases)中的一次发布视为一个整体。
+
+| 本教程运行时 | 接近匹配的 NPU 发布 | Ubuntu 状态 | 原因 |
+|---|---|---|---|
+| OpenVINO 2025.4.1 | Linux NPU 驱动 **v1.28.0** 经 OpenVINO 2025.4 验证 | 仅 Ubuntu 24.04 | 是最接近的文档化世代组合 |
+| 最新 Linux NPU 驱动 | 查看该发布的版本表 | 通常 Ubuntu 24.04 | 新版本可能面向 OpenVINO 2026.x；应整体升级 ORT/OpenVINO |
+| Ubuntu 22.04 | v1.26.0 是最后仍提及 22.04 的发布线 | 对当前驱动已属旧路线 | 新装 NPU 推荐 Ubuntu 24.04 |
+
+截至 2026-07-16 审计，最新 Linux NPU 发布为 **v1.33.0**，验证组合是 OpenVINO 2026.2 与 Level Zero 1.27.0。它不能直接替代本文锁定教程中的 v1.28.0。
+
+**安全安装方式：**
+
+1. 确认内核模块与 PCI 设备：
+
+```bash
+uname -r
+lspci -nn | grep -Ei 'NPU|VPU|AI Boost'
+modinfo intel_vpu 2>/dev/null | head
+```
+
+2. 打开所选发布页（本文锁定组合对应 [v1.28.0](https://github.com/intel/linux-npu-driver/releases/tag/v1.28.0)）。把 Ubuntu 24.04 资产下载到一个**全新空目录**，并在修改已安装驱动前验证每个 Debian 包的签名：
+
+```bash
+rm -rf ~/intel-npu-driver-v1.28.0
+mkdir -m 700 ~/intel-npu-driver-v1.28.0
+cd ~/intel-npu-driver-v1.28.0
+wget https://github.com/intel/linux-npu-driver/releases/download/v1.28.0/linux-npu-driver-v1.28.0.20251218-20347000698-ubuntu2404.tar.gz
+tar -xf linux-npu-driver-v1.28.0.20251218-20347000698-ubuntu2404.tar.gz
+
+curl https://keys.openpgp.org/vks/v1/by-fingerprint/EA267657A608300C296B8F8AD52C9665A4077678 | gpg --import
+shopt -s nullglob
+DEB_PACKAGES=(./*.deb)
+((${#DEB_PACKAGES[@]} > 0)) || { echo "未找到 Debian 包" >&2; exit 1; }
+for PACKAGE in "${DEB_PACKAGES[@]}"; do
+    SIGNATURE="$PACKAGE.asc"
+    [[ -f "$SIGNATURE" ]] || { echo "缺少签名：$SIGNATURE" >&2; exit 1; }
+    gpg --verify "$SIGNATURE" "$PACKAGE" || exit 1
+done
+```
+
+密钥指纹必须是 `EA267657A608300C296B8F8AD52C9665A4077678`，与发布页一致。每个包都必须显示**签名正确**。提示“本人尚未信任此密钥”不等于签名错误；如果签名错误或缺失，必须停止。
+
+3. 严格按发布页清除旧 NPU 用户态包，再安装已经验证的 v1.28.0 包组：
+
+```bash
+sudo dpkg --purge --force-remove-reinstreq intel-driver-compiler-npu intel-fw-npu intel-level-zero-npu intel-level-zero-npu-dbgsym
+sudo apt update
+sudo apt install -y libtbb12
+sudo dpkg -i ./*.deb
+```
+
+提示某个旧包原本未安装是正常的；但包配置、依赖或签名错误绝不能忽略，必须先解决再继续。
+
+4. v1.28.0 的验证组合使用 **Level Zero v1.24.2**。发布页要求系统缺少 `level-zero` 时安装此包：
+
+```bash
+if ! dpkg-query -W -f='${db:Status-Status}\n' level-zero 2>/dev/null | grep -qx installed; then
+    wget https://github.com/oneapi-src/level-zero/releases/download/v1.24.2/level-zero_1.24.2+u24.04_amd64.deb
+    sudo dpkg -i level-zero_1.24.2+u24.04_amd64.deb
+fi
+dpkg-query -W -f='${Package} ${Version} ${db:Status-Status}\n' level-zero
+```
+
+如果 `level-zero` 已经由所选 Intel GPU/NPU 软件仓库有意管理，上述条件语句不会修改它。应对照发布说明检查输出版本，不要盲目混装或降级加载器。
+
+5. 记录已安装版本、授予普通用户权限并重启：
+
+```bash
+dpkg-query -W -f='${Package} ${Version}\n' intel-driver-compiler-npu intel-fw-npu intel-level-zero-npu level-zero
+sudo usermod -aG render "$USER"
+sudo reboot
+```
+
+6. 重启后验证：
+
+```bash
+ls -lah /dev/accel/accel0
+id -nG | tr ' ' '\n' | grep '^render$'
+lsmod | grep intel_vpu
+sudo dmesg | grep -Ei 'intel_vpu|ivpu|firmware' | tail -n 50
+```
+
+预期设备权限类似 `crw-rw---- root render`。若不符合，请使用所选 NPU 发布页给出的 udev 规则，而不要用不安全的永久 `chmod 666` 绕过权限。
+
+> [!NOTE]
+> Intel NPU 主线驱动可能已经新于本教程的软件栈。“所有东西都装最新”不等于“彼此测试过”。新手应让 EP、OpenVINO Runtime、NPU 编译器/UMD、固件和 Level Zero 保持同一世代。
+
+---
+
+## 6. 安装 Python 软件栈
+
+### 为什么锁定这些包？
+
+| 组件 | 锁定值 | 原因 |
+|---|---:|---|
+| `onnxruntime-openvino` | 1.24.1 | Intel OpenVINO EP 5.9 wheel |
+| OpenVINO | 2025.4.1 | EP 5.9 的构建运行时；Linux EP wheel 内置，Windows 单独安装 |
+| Python | CPython 3.11–3.13（推荐 3.12） | 实际发布的 Windows/Linux x86-64 wheel；没有 3.10 或 3.14 文件 |
+| `onnx` | 1.22.0 | 生成和检查离线演示图；此版本的 wheel 可供上述三个 Python 版本使用 |
+| `numpy` | 2.3.5 | 生成输入/权重并检查输出；锁定以保持演示行为稳定 |
+
+以上是顶层包的精确锁定，并非带哈希、字节级锁定的供应链 lockfile。兼容的间接依赖仍按各包元数据解析，两个启动器都会在推理前运行 `pip check`。
+
+官方兼容历史：
+
+| Intel EP 发布 | ORT 包 | OpenVINO |
+|---:|---:|---:|
+| 5.9 | 1.24.1 | 2025.4.1 |
+| 5.8 | 1.23.0 | 2025.3.0 |
+| 5.7 | 1.22.0 | 2025.1.0 |
+
+不要只升级 Windows 的 `openvino` wheel，而让 `onnxruntime-openvino` 停留在旧版本。
+
+### Windows——手动命令
+
+在本教程目录中运行：
+
+```bat
+if exist .venv rmdir /s /q .venv
+py -3.12 -m venv .venv
+.venv\Scripts\activate
+python -m pip install -r requirements.txt
+```
+
+Windows 需要额外安装锁定的 `openvino==2025.4.1`。演示代码会在创建会话/加载 provider 依赖 DLL 前调用 Intel 官方 `onnxruntime.tools.add_openvino_win_libs.add_openvino_libs_to_path()`。
+
+### Ubuntu——手动命令
+
+```bash
+rm -rf .venv
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+Linux 的 `onnxruntime-openvino 1.24.1` wheel 已包含原生 OpenVINO 2025.4.1 库，因此 `requirements.txt` 有意只在 **Windows** 安装单独的 `openvino` wheel。实测表明，Linux 同时安装两种分发会因导入顺序不同而出现未解析原生符号。启动器会重建这种污染环境，演示也会在导入 ONNX Runtime 前拒绝该组合。若需独立 `Core().available_devices` 诊断，请把 `openvino` 放在另一个 Linux 虚拟环境。
+
+> [!CAUTION]
+> 一个虚拟环境只能安装**一种 ONNX Runtime wheel**。`onnxruntime`、`onnxruntime-gpu`、`onnxruntime-directml` 与 `onnxruntime-openvino` 都提供同名的 `onnxruntime` 导入，可能互相覆盖。
+
+### 推理前验证
+
+```bash
+python -c "import onnxruntime as ort; print(ort.__version__); print(ort.get_available_providers())"
+# 可选独立检查：仅用于 Windows，或独立的 Linux OpenVINO 诊断环境。
+python -c "from openvino import Core; print(Core().available_devices)"
+```
+
+最低预期：
+
+```text
+1.24.1
+['OpenVINOExecutionProvider', 'CPUExecutionProvider', ...]
+['CPU', 'GPU.0', 'NPU']   # 仅为示例；实际列表由硬件和驱动决定
+```
+
+在本教程干净的 Linux EP-only 环境中，可选的第二条命令会提示没有独立 `openvino` 模块；这是有意设计。演示会改用 wheel 内置 OpenVINO 绑定安全枚举设备，同时设置 `session.disable_cpu_ep_fallback=1` 并记录 EP 计算图分配。如果这个完全受支持的演示图有任何节点分配给 ORT CPU EP，会话创建就会失败；对于 NPU，OpenVINO EP 也会读取同一设置并禁止内部 NPU→CPU 回退。随后脚本还会直接断言五个命名节点都属于 `OpenVINOExecutionProvider`。
+
+正确理解两张列表：
+
+| 输出 | 能证明什么 | 不能证明什么 |
+|---|---|---|
+| ORT 列出 `OpenVINOExecutionProvider` | 正确加载 ORT wheel/提供程序库 | GPU 或 NPU 驱动可用 |
+| 演示/OpenVINO 列出 `GPU.0` | Intel GPU 插件和驱动能枚举 GPU | 你的 ONNX 模型能完全在 GPU 上运行 |
+| 演示/OpenVINO 列出 `NPU` | NPU 硬件、驱动和权限可见 | 动态或不支持的模型一定能编译 |
+| 会话把 OpenVINO 放在首位 | EP 已按最高优先级注册 | 每个节点都跑在设备上；不支持的分区仍可能回退 |
+| 演示报告 `Graph assignment: OpenVINOExecutionProvider (5/5 nodes...)` | 本冒烟图的每个已解析节点都分配给 OpenVINO EP，且 ORT/NPU CPU 回退已禁用 | OpenVINO 元设备最终选择哪块物理设备，或 OpenVINO 内部是否使用主机 CPU 工作 |
+
+---
+
+## 7. “一键式” Python 演示
+
+演示刻意做到完全自包含：
+
+- 本地创建一个静态 FP32 ONNX 模型，不下载模型；
+- 只用 CPU/GPU/NPU 都常见的 `MatMul`、`Add`、`Relu`；
+- 通过 ORT wheel 实际内置/加载的准确 OpenVINO 运行时枚举设备，不增加冲突的 Linux 包；
+- 显式创建 `OpenVINOExecutionProvider` 会话，禁用 ORT 与 NPU→CPU 图回退，并直接检查五个节点的分配；
+- 与 ORT CPU 结果比较：CPU 使用严格容差，GPU/NPU 使用适合 FP16 的容差，再报告预热后的诊断延迟；
+- 为直接 CPU/GPU/NPU 与 AUTO 测试启用按设备区分的编译模型缓存（HETERO/MULTI 演示路径不设置缓存）。
+
+### Windows：从命令提示符运行
+
+```bat
+run_demo.bat
+```
+
+### Ubuntu
+
+```bash
+chmod +x run_demo.sh
+./run_demo.sh
+```
+
+如果 `python3` 指向不受支持的版本，但系统已安装受支持解释器，可显式选择，例如：`PYTHON_BIN=python3.12 ./run_demo.sh`。
+
+启动器会创建或修复 `.venv`，只安装一次锁定的顶层软件栈，验证依赖，并默认运行严格的 `CPU` 测试。以后环境匹配时不会重复安装。请逐一资格验证物理设备：
+
+| 设备 | Windows | Ubuntu |
+|---|---|---|
+| CPU | `run_demo.bat --device CPU` | `./run_demo.sh --device CPU` |
+| 第一块 Intel GPU | `run_demo.bat --device GPU` | `./run_demo.sh --device GPU` |
+| 指定已枚举 GPU | `run_demo.bat --device GPU.1` | `./run_demo.sh --device GPU.1` |
+| Intel NPU | `run_demo.bat --device NPU` | `./run_demo.sh --device NPU` |
+| 资格验证后的 AUTO | `run_demo.bat --device AUTO:GPU,NPU,CPU` | `./run_demo.sh --device AUTO:GPU,NPU,CPU` |
+
+只列出已经安装且确实需要的设备；没有 NPU 的机器应使用 `AUTO:GPU,CPU`。本审计演示有意拒绝裸 `AUTO`：实测锁定 wheel 会把整个演示图分配给 ORT `CPUExecutionProvider`；OpenVINO 自身的 AUTO 机制也会先用 CPU 启动推理，而且 2025.4 默认优先列表不含 NPU。`AUTO:...` 只能测试可移植性，**不能证明最终使用了哪块物理设备**。
+
+成功输出结尾类似：
+
+```text
+ORT providers     : ['OpenVINOExecutionProvider', 'CPUExecutionProvider']
+OpenVINO Runtime  : 2025.4.1 (...)
+Device query      : ONNX Runtime OpenVINO device API
+Intel devices     : ['CPU', 'GPU.0', 'NPU']
+Requested target  : NPU
+Resolved target   : NPU
+Session providers : ['OpenVINOExecutionProvider', 'CPUExecutionProvider']
+Graph assignment  : OpenVINOExecutionProvider (5/5 nodes: ...)
+Validation limits : rtol=0.01, atol=0.005
+Median latency    : ... ms
+PASS: all five demo nodes were assigned to OpenVINO EP and output is valid.
+```
+
+会话列表仍会显示 `CPUExecutionProvider`，因为 ORT 会注册默认 CPU EP；但严格会话选项会在本演示图有任何节点分配给它时让初始化失败，直接分配记录又提供第二重可审计检查。GPU/NPU 内部常用 FP16，因此比较容差有意比 CPU 更宽，但仍足以发现明显错误输出。首次启动可能较慢，因为 OpenVINO 要编译计算图。输出时间只是冒烟诊断，不是 CPU 与加速器的性能对比；这个小模型不足以得出性能结论。
+
+---
+
+## 8. 在自己的 Python 程序中使用 EP
+
+### 最小、面向未来的配置
+
+从 ORT 1.23/OpenVINO 2025.3 起，优先使用 `load_config` JSON，而不是已弃用的顶层 `precision`、`num_streams`、`cache_dir` 等选项。
+
+```python
+import json
+import platform
+
+if platform.system() == "Windows":
+    import onnxruntime.tools.add_openvino_win_libs as utils
+    utils.add_openvino_libs_to_path()
+
+import onnxruntime as ort
+
+config = {
+    "GPU": {
+        "PERFORMANCE_HINT": "LATENCY",
+        "CACHE_DIR": "./openvino_cache",
+        "INFERENCE_PRECISION_HINT": "f16",
+    }
+}
+provider_options = {
+    "device_type": "GPU",
+    "load_config": json.dumps(config),
+}
+
+session_options = ort.SessionOptions()
+session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+# 资格验证模式：任何图节点需要 ORT CPU 回退都直接失败。
+session_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+# 审计模式：填充 session.get_provider_graph_assignment_info()。
+session_options.add_session_config_entry("session.record_ep_graph_assignment_info", "1")
+
+session = ort.InferenceSession(
+    "model.onnx",
+    sess_options=session_options,
+    providers=[("OpenVINOExecutionProvider", provider_options)],
+)
+outputs = session.run(None, {session.get_inputs()[0].name: input_numpy})
+for assignment in session.get_provider_graph_assignment_info():
+    print(assignment.ep_name, [(node.name, node.op_type) for node in assignment.get_nodes()])
+```
+
+只有在模型预期完全受目标设备支持时，才适合使用严格会话设置。资格验证完成后，生产应用可以有意移除此设置并追加 `CPUExecutionProvider`，允许不支持分区回退；但必须分析并披露该行为，不能称为全设备执行。OpenVINO EP 官方文档建议在很多场景关闭 ORT 高层计算图优化，让 OpenVINO 获得原始图并进行硬件感知融合；生产模型仍应实测两种优化设置。
+
+### 推荐起始选项
+
+| 目标 | `device_type` | `load_config` 示例思路 | 说明 |
+|---|---|---|---|
+| CPU 低延迟 | `CPU` | `{"CPU":{"PERFORMANCE_HINT":"LATENCY","NUM_STREAMS":"1"}}` | 先让 OpenVINO 自动选择线程数 |
+| CPU 吞吐 | `CPU` | `{"CPU":{"PERFORMANCE_HINT":"THROUGHPUT"}}` | 需要提交并行请求才能受益 |
+| GPU 低延迟 | `GPU` | `{"GPU":{"PERFORMANCE_HINT":"LATENCY","INFERENCE_PRECISION_HINT":"f16"}}` | 验证精度并添加缓存 |
+| GPU 最高精度 | `GPU` | `{"GPU":{"EXECUTION_MODE_HINT":"ACCURACY"}}` | 不要同时使用执行模式与精度提示 |
+| NPU | `NPU` | `{"NPU":{"PERFORMANCE_HINT":"LATENCY","CACHE_DIR":"./cache"}}` | 当前 NPU 插件文档要求静态形状 |
+| NPU QDQ 模型 | `NPU` | 增加 `"NPU_QDQ_OPTIMIZATION":"YES"` | 仅用于合适的量化 QDQ 计算图 |
+| 可移植自动选择 | `AUTO:GPU,NPU,CPU` | `{"AUTO":{"PERFORMANCE_HINT":"LATENCY"}}` | 先通过显式测试；AUTO 启动时可能用 CPU，且不能标识唯一物理目标 |
+
+### 常用提供程序选项（非完整清单）
+
+| 选项 | ORT 1.24 状态 | 用途/取值 |
+|---|---|---|
+| `device_type` | 当前使用 | `CPU`、`GPU`、`GPU.0`、`GPU.1`、`NPU`、`AUTO:...`、`HETERO:...`、`MULTI:...` |
+| `load_config` | **首选** | 按设备组织 OpenVINO 属性的 JSON 字符串 |
+| `disable_dynamic_shapes` | 会解析，但在锁定 v5.9 中不是可自由控制的有效开关 | EP 会按设备路径覆盖它：CPU/GPU 保留动态处理；直接 NPU 路径会使用运行时静态特化，因果 LLM 路径除外 |
+| `reshape_input` | 当前使用 | 可指定具体固定形状或解析器支持的边界；NPU 资格验证应使用具体固定形状 |
+| `layout` | 当前使用 | 声明 `input[NCHW],output[NC]` 等布局 |
+| `device_id` | 已弃用 | 改用 `device_type="GPU.1"` |
+| `precision` | 已弃用 | 改用 `load_config` 中的 `INFERENCE_PRECISION_HINT` 或 `EXECUTION_MODE_HINT` |
+| `num_of_threads` | 已弃用 | 改用 `INFERENCE_NUM_THREADS` |
+| `num_streams` | 已弃用 | 改用 `NUM_STREAMS` |
+| `cache_dir` | 已弃用 | 改用 `CACHE_DIR` |
+| `enable_qdq_optimizer` | 已弃用 | 改用 NPU 的 `NPU_QDQ_OPTIMIZATION` |
+| `model_priority` | 已弃用 | 改用 `MODEL_PRIORITY` |
+
+锁定版本的解析器接受 JSON 字符串、数字、布尔值和最多八层嵌套对象；具体 OpenVINO 属性决定合法类型和值，官方示例经常使用字符串。`EXECUTION_MODE_HINT` 与 `INFERENCE_PRECISION_HINT` 二选一，不要同时设置。其他已接受的高级选项还包括 `device_luid`、`context`、`enable_causallm`、`enable_opencl_throttling`，本文有意不把它们作为新手默认项。添加前请查询[当前 EP 选项文档](https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#configuration-options)和匹配的 v5.9 源码。
+
+### NPU 上的动态模型
+
+当前 OpenVINO NPU 文档明确写着只支持静态形状。应尽量导出固定形状 ONNX。如果 ONNX 文件是动态的，但每次推理只使用一个已知形状，可给 EP 一个**具体固定**特化，例如：
+
+```python
+provider_options = {
+    "device_type": "NPU",
+    "reshape_input": "input_ids[1,128]",
+}
+```
+
+语法必须覆盖每个动态输入，并与真实输入名称和维度一致。虽然 EP 解析器文档描述了范围边界语法，但这不能证明 2025.4 NPU 插件原生支持动态形状，而且本文未在 NPU 硬件上验证范围。不要把边界范围作为新手 NPU 路线；固定形状导出才是可靠基线。
+
+---
+
+## 9. 如何证明加速器真的执行了计算
+
+正确验证不应只看“脚本没有报错”。
+
+| 层级 | 检查 | 期望结果 |
+|---:|---|---|
+| 1 | `ort.get_available_providers()` | 包含 `OpenVINOExecutionProvider` |
+| 2 | 演示的内置设备查询（或在安全环境中查看 `Core().available_devices`） | 包含显式目标（`GPU.0`/`NPU`） |
+| 3 | 用显式目标和 `session.disable_cpu_ep_fallback=1` 创建会话 | 构建成功；没有 ORT CPU 节点分配，也没有 OpenVINO NPU→CPU 回退 |
+| 4 | 启用分配记录并调用 `get_provider_graph_assignment_info()` | 每个预期的已解析节点都报告 `OpenVINOExecutionProvider` |
+| 5 | 与 CPU 输出比较 | 在 FP16/INT8 合理误差内 |
+| 6 | 启用 ORT 性能分析 | OpenVINO EP 获得预期图分区；严格验证中没有 `CPUExecutionProvider` 节点事件 |
+| 7 | 观察系统遥测 | Windows 任务管理器或 Linux GPU/NPU 工具显示活动 |
+| 8 | 对预热后的真实负载计时 | 延迟/吞吐稳定，缓存行为正确 |
+
+性能分析示例：
+
+```python
+options = ort.SessionOptions()
+options.enable_profiling = True
+options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+session = ort.InferenceSession(
+    "model.onnx",
+    sess_options=options,
+    providers=[("OpenVINOExecutionProvider", {"device_type": "GPU"})],
+)
+session.run(None, feeds)
+print(session.end_profiling())
+```
+
+检查 JSON 中的 `provider` 字段。OpenVINO 本身合理使用主机 CPU，与 ORT 把图节点分配给 `CPUExecutionProvider` 是两回事。对于有意混合执行的生产会话，可移除严格设置、列出 CPU 回退，再通过性能分析量化每个回退分区。
+
+---
+
+## 10. 故障排查决策表
+
+| 现象 | 常见原因 | 解决方式 |
+|---|---|---|
+| 没有 `OpenVINOExecutionProvider` | 普通或冲突 ORT wheel 覆盖了同名导入 | 删除 `.venv`，重建后只装 `onnxruntime-openvino` |
+| Windows `DLL load failed`、无法加载 OpenVINO provider | OpenVINO DLL 缺失/版本不匹配，或辅助函数调用太晚 | 安装准确的 `openvino==2025.4.1`；创建 OpenVINO 会话前调用 `add_openvino_libs_to_path()` |
+| Linux 无法加载 provider `.so` / `undefined symbol` | 独立 `openvino` 与 EP 内置库混装，或全局 `LD_LIBRARY_PATH` 污染 | 删除 `.venv`；只安装 Linux EP requirements；移除自定义 OpenVINO 路径；绝不要把 provider `.so` 复制到系统目录 |
+| 演示只列出 `['CPU']` | GPU/NPU 计算驱动未安装 | 完成相应驱动章节，然后重启/重新登录 |
+| 能显示桌面，但 OpenVINO 不列 GPU | 只有显示驱动，缺少 OpenCL/Level Zero 计算运行时 | 安装 `intel-opencl-icd` 和匹配的 Level Zero GPU 包；运行 `clinfo -l` |
+| Linux GPU `Permission denied` | 用户不在 `render` 组，或当前登录会话未刷新组 | `sudo usermod -aG render "$USER"` 后完整注销登录或重启 |
+| 没有 `/dev/accel/accel0` | 无 NPU、BIOS 禁用、内核模块/固件缺失 | 核对 SKU/BIOS、内核、`intel_vpu` 与所选驱动发布 |
+| NPU 节点存在但 OpenVINO 不列 NPU | UMD/编译器/Level Zero 不匹配或权限问题 | 检查 `ls -lah`、`groups`、驱动包、匹配加载器和 `dmesg` |
+| NPU 编译演示或模型失败 | 驱动/运行时不匹配，或模型动态/不支持 | 先跑本文静态演示；对齐版本；导出静态形状；核对 NPU 拓扑/算子支持 |
+| 安装 Intel 当前通用驱动后 Windows NPU 失败 | 当前通用包宣传 OpenVINO 2026.2，而本文锁定 2025.4.1 | 使用明确覆盖 2025.4 的 OEM 驱动，或把 ORT/OpenVINO 作为一个已验证发布族整体升级；不要猜测向后兼容性 |
+| 演示拒绝裸 `AUTO` | 它无法验证物理目标，且实测会使用 ORT CPU 回退 | 先显式验证 `GPU`/`NPU`，再用 `AUTO:GPU,CPU` 等明确列表 |
+| 非严格应用成功但只有 CPU 忙 | AUTO 选了 CPU，或发生 ORT 图回退 | 显式请求 `GPU`/`NPU`，启用严格验证并检查性能分析 |
+| `GPU.1` 失败 | 实际枚举顺序不同 | 查看演示的 `Intel devices` 行（或在安全环境中查询 `Core`），不要猜独显编号 |
+| 首次运行特别慢 | 模型或内核编译 | 启用 `CACHE_DIR`，保留缓存，计时前预热 |
+| 加速器比 CPU 慢 | 模型太小、传输/编译开销、回退、精度错误 | 用真实负载、预热、静态形状；检查分区；正确区分延迟与吞吐 |
+| 精度变化 | FP16/BF16/INT8 或规约顺序不同 | 用任务级容差与 FP32 比较；必要时设 `EXECUTION_MODE_HINT=ACCURACY` 或 FP32 |
+| `pip` 找不到可用版本 | 32 位 Python、不支持的 Python、架构或平台 | 使用 x86-64 CPython 3.11、3.12 或 3.13；此发布没有 3.10/3.14/ARM wheel |
+| 模型失败后 NPU 无响应 | 驱动恢复问题 | 重启/更新匹配驱动；确认支持后再反复编译失败模型 |
+
+### 收集有用的诊断信息
+
+**Windows PowerShell：**
+
+```powershell
+$PY = ".\.venv\Scripts\python.exe"
+& $PY -c "import platform,sys; print(platform.platform()); print(sys.version)"
+& $PY -m pip list | Select-String "onnx|openvino|numpy"
+& $PY -m pip check
+& $PY -c "import onnxruntime as o; print(o.get_available_providers()); print(o.get_build_info())"
+& $PY -c "from openvino import Core; print(Core().available_devices)"
+& $PY Test.py --device CPU --runs 1 --warmup 0
+Get-PnpDevice | Where-Object {$_.FriendlyName -match 'Intel|NPU|AI Boost'}
+```
+
+**Ubuntu：**
+
+```bash
+uname -a
+cat /etc/os-release
+lspci -nn | grep -Ei 'VGA|Display|3D|NPU|VPU|AI Boost'
+groups
+ls -lah /dev/dri/renderD* /dev/accel/accel0 2>/dev/null
+clinfo -l 2>/dev/null || true
+dpkg -l | grep -E 'intel-(opencl|level-zero|driver-compiler|fw)|level-zero|libze'
+.venv/bin/python -m pip list | grep -E 'onnx|openvino|numpy'
+.venv/bin/python -m pip check
+.venv/bin/python -c "import onnxruntime as o; print(o.get_available_providers()); print(o.get_build_info())"
+.venv/bin/python Test.py --device CPU --runs 1 --warmup 0
+# 只能在独立 OpenVINO 诊断 venv 查询 Core；绝不要装进本 EP venv。
+sudo dmesg | grep -Ei 'intel_vpu|ivpu|drm|firmware' | tail -n 100
+```
+
+公开日志前请删除用户名和私人路径。
+
+---
+
+## 11. 生产部署清单
+
+- [ ] 锁定经过测试的 ORT ↔ OpenVINO 版本对。
+- [ ] 环境中只打包一种 ONNX Runtime 分发。
+- [ ] 把 GPU/NPU 驱动纳入部署测试矩阵；生产环境不要只静默升级某一层。
+- [ ] 全设备资格验证使用显式 `device_type` 和 `session.disable_cpu_ep_fallback=1`。
+- [ ] 所有物理设备通过后才加入明确的 `AUTO:<devices>` 列表；不能把 AUTO 当成物理设备证明。
+- [ ] NPU 导出具体静态形状；只有所选 CPU/GPU 路径明确记录并经过测试时才使用有界动态形状。
+- [ ] 用真实验证数据对照 CPU/参考实现检查精度，而不是只测一个随机张量。
+- [ ] 分析计算图分区，调查较大的 CPU 回退区域。
+- [ ] 分别测试首次运行、命中缓存后的首次运行、预热延迟与持续吞吐。
+- [ ] 启用并持久化 `CACHE_DIR`；模型、运行时、驱动、设备或关键属性改变后使缓存失效。
+- [ ] 端到端测试应包含真实输入传输与前后处理。
+- [ ] 不要为了绕过 Linux 权限而用 root 运行生产推理。
+- [ ] 记录 OS、BIOS、内核、GPU/NPU 驱动、Python、ORT、OpenVINO、模型哈希、精度和 provider 选项。
+
+---
+
+## 12. 资料追踪与更新原则
+
+本文使用与发布版本对应的官方来源。安装前仍必须按准确硬件和操作系统核对会变化的驱动仓库。
+
+| 主题 | 权威来源 |
+|---|---|
+| ORT OpenVINO EP 安装、选项与设备 | [ONNX Runtime OpenVINO EP 文档](https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html) |
+| 已审计 EP 实现源码 | [Intel ONNX Runtime v5.9 OpenVINO provider 源码](https://github.com/intel/onnxruntime/tree/v5.9/onnxruntime/core/providers/openvino) |
+| 二进制版本匹配与 Windows DLL 配置 | [Intel ONNX Runtime OpenVINO EP 发布](https://github.com/intel/onnxruntime/releases) |
+| 1.24.1 实际 wheel 文件 | [PyPI JSON 文件清单](https://pypi.org/pypi/onnxruntime-openvino/1.24.1/json) |
+| OpenVINO 系统要求 | [OpenVINO 2025 系统要求](https://docs.openvino.ai/2025/about-openvino/release-notes-openvino/system-requirements.html) |
+| Intel GPU 系统配置 | [OpenVINO Intel GPU 配置](https://docs.openvino.ai/2025/get-started/install-openvino/configurations/configurations-intel-gpu.html) |
+| Intel GPU 计算包 | [Intel compute-runtime 发布](https://github.com/intel/compute-runtime/releases) |
+| AUTO 候选和启动行为 | [OpenVINO 2025.4 自动设备选择](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/auto-device-selection.html) |
+| NPU 功能与限制 | [OpenVINO NPU 设备文档](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/npu-device.html) |
+| 本文使用的 Linux NPU 栈 | [Intel Linux NPU 驱动 v1.28.0](https://github.com/intel/linux-npu-driver/releases/tag/v1.28.0) |
+| Windows NPU 驱动 | [Intel Windows NPU 驱动](https://www.intel.com/content/www/us/en/download/794734/intel-npu-driver-windows.html) |
+| 识别 NPU 硬件 | [Intel：如何检查处理器是否有 NPU](https://www.intel.com/content/www/us/en/support/articles/000097597/processors.html) |
+| ORT Python provider 语义 | [ONNX Runtime Python API](https://onnxruntime.ai/docs/api/python/api_summary.html) |
+| 内置 OpenVINO 设备查询 | [v5.9 Python 绑定](https://github.com/intel/onnxruntime/blob/v5.9/onnxruntime/python/onnxruntime_pybind_state.cc#L1567-L1574) |
+| 直接 EP 计算图分配记录 | [v5.9 Python 绑定](https://github.com/intel/onnxruntime/blob/v5.9/onnxruntime/python/onnxruntime_pybind_state.cc#L2724-L2745) |
+| 严格 CPU EP 回退开关 | [v5.9 会话选项定义](https://github.com/intel/onnxruntime/blob/v5.9/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L267-L280) |
+
+**更新规则：** 新版 `onnxruntime-openvino` 发布后，先读对应 Intel 发布说明，同时更新 ORT 与 OpenVINO 锁定值，检查 PyPI 实际文件名（不能只看分类器），再重新验证 CPU/GPU/NPU 驱动并运行严格显式设备测试。不要只改一个版本号。

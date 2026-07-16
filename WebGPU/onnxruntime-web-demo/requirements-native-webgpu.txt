@@ -1,0 +1,6 @@
+# Direct native WebGPU plugin versions tested together on 2026-07-16.
+# The pinned ORT core publishes CPython 3.11-3.14 wheels. Transitive
+# dependencies are resolved by pip.
+onnxruntime==1.27.0
+onnxruntime-ep-webgpu==0.1.0
+numpy>=1.23.5,<3

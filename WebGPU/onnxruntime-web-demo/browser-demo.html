@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <link rel="icon" href="data:,">
+  <title>ONNX Runtime Web — WASM / WebGPU / WebNN</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07111f;
+      --panel: rgba(14, 28, 49, .82);
+      --line: rgba(148, 163, 184, .22);
+      --text: #e5eefb;
+      --muted: #9fb0c8;
+      --accent: #52d3ff;
+      --accent2: #8b5cf6;
+      --ok: #4ade80;
+      --bad: #fb7185;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 12% 12%, rgba(82, 211, 255, .16), transparent 30rem),
+        radial-gradient(circle at 88% 8%, rgba(139, 92, 246, .18), transparent 32rem),
+        var(--bg);
+    }
+    main { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 44px 0 64px; }
+    .eyebrow { color: var(--accent); font-weight: 750; letter-spacing: .14em; text-transform: uppercase; font-size: .74rem; }
+    h1 { margin: 10px 0 8px; font-size: clamp(2rem, 5vw, 4rem); line-height: 1.02; letter-spacing: -.045em; }
+    .subtitle { color: var(--muted); max-width: 830px; font-size: 1.05rem; line-height: 1.65; }
+    .grid { display: grid; grid-template-columns: minmax(270px, .8fr) minmax(0, 1.6fr); gap: 18px; margin-top: 28px; }
+    .panel { border: 1px solid var(--line); background: var(--panel); border-radius: 18px; padding: 20px; backdrop-filter: blur(18px); box-shadow: 0 18px 50px rgba(0,0,0,.22); }
+    .panel h2 { margin: 0 0 16px; font-size: 1.1rem; }
+    label { display: block; color: var(--muted); font-size: .82rem; margin: 14px 0 6px; }
+    select, input[type="number"] {
+      width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+      background: #0b1728; color: var(--text); font: inherit;
+    }
+    .check { display: flex; align-items: center; gap: 9px; margin: 16px 0; color: var(--muted); font-size: .88rem; }
+    button {
+      width: 100%; border: 0; border-radius: 11px; padding: 12px 16px; cursor: pointer;
+      color: #04111c; font-weight: 800; font-size: .95rem;
+      background: linear-gradient(100deg, var(--accent), #a7f3d0);
+      box-shadow: 0 10px 25px rgba(82, 211, 255, .2);
+    }
+    button:disabled { opacity: .55; cursor: wait; }
+    .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+    .fact { border: 1px solid var(--line); border-radius: 12px; padding: 12px; min-height: 74px; background: rgba(4, 12, 23, .48); }
+    .fact span { display: block; color: var(--muted); font-size: .72rem; margin-bottom: 7px; }
+    .fact strong { font-size: .91rem; word-break: break-word; }
+    .status { display: flex; align-items: center; gap: 10px; margin: 5px 0 14px; font-weight: 700; }
+    .dot { width: 10px; height: 10px; border-radius: 99px; background: #fbbf24; box-shadow: 0 0 14px currentColor; }
+    .dot.ok { background: var(--ok); }
+    .dot.bad { background: var(--bad); }
+    pre {
+      margin: 0; min-height: 330px; max-height: 560px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+      border: 1px solid var(--line); border-radius: 12px; padding: 15px;
+      background: #030a13; color: #c9e2ff; font: 12.5px/1.62 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .note { margin-top: 16px; color: var(--muted); font-size: .82rem; line-height: 1.55; }
+    code { color: #b9ecff; }
+    a { color: var(--accent); }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } .facts { grid-template-columns: repeat(2, 1fr); } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">Local device inference · 本地设备推理</div>
+    <h1>ONNX Runtime Web</h1>
+    <p class="subtitle">A local-device smoke test for WASM, WebGPU, and WebNN with model-contract checks, an independent math reference, and WASM accelerator parity. 本测试在当前电脑执行 ONNX 模型，并进行模型元数据、独立数学参考与 WASM 加速器对比；优先加载本地 npm 依赖，不存在时才使用固定版本的 jsDelivr 文件。</p>
+
+    <section class="grid">
+      <aside class="panel">
+        <h2>Run configuration · 运行配置</h2>
+        <label for="provider">Execution provider · 执行提供程序</label>
+        <select id="provider">
+          <option value="wasm">WASM (CPU)</option>
+          <option value="webgpu">WebGPU (GPU)</option>
+          <option value="webnn">WebNN (CPU/GPU/NPU)</option>
+        </select>
+
+        <label for="device">WebNN requested device · WebNN 目标设备</label>
+        <select id="device">
+          <option value="cpu">CPU</option>
+          <option value="gpu" selected>GPU</option>
+          <option value="npu">NPU</option>
+        </select>
+
+        <label for="iterations">Measured iterations · 测量次数</label>
+        <input id="iterations" type="number" min="1" max="1000" value="10">
+
+        <label class="check"><input id="fallback" type="checkbox"> Allow WASM fallback · 允许不支持的算子回退到 WASM</label>
+        <label class="check"><input id="profile" type="checkbox" checked> Profile WebGPU kernels (diagnostic overhead) · 分析 WebGPU 内核（会增加开销）</label>
+        <button id="run" type="button">Run local inference · 运行本地推理</button>
+        <p class="note"><strong>Proof levels · 证据等级</strong>: API/context → strict EP session → independent math reference → WASM numerical parity → WebGPU kernel profile when timestamp queries are available. WebNN currently cannot reveal its final native backend through a standard API. WebNN 暂无标准 API 可查询最终原生后端。</p>
+      </aside>
+
+      <section class="panel">
+        <div class="facts">
+          <div class="fact"><span>Secure context · 安全上下文</span><strong id="secure">checking…</strong></div>
+          <div class="fact"><span>Cross-origin isolation · 跨源隔离</span><strong id="isolated">checking…</strong></div>
+          <div class="fact"><span>WebGPU API</span><strong id="webgpu-api">checking…</strong></div>
+          <div class="fact"><span>WebNN API</span><strong id="webnn-api">checking…</strong></div>
+        </div>
+        <div class="status"><span class="dot" id="dot"></span><span id="status">Ready</span></div>
+        <pre id="log" aria-live="polite">Loading ONNX Runtime Web… · 正在加载运行时…</pre>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+    (async () => {
+      const localCandidate = {
+        label: "local npm package",
+        script: "./node_modules/onnxruntime-web/dist/ort.all.min.js",
+        assets: new URL("./node_modules/onnxruntime-web/dist/", location.href).href,
+      };
+      const cdnCandidate = {
+        label: "jsDelivr CDN (pinned 1.27.0)",
+        script: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/ort.all.min.js",
+        assets: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/",
+      };
+      const assetPolicy = new URLSearchParams(location.search).get("assets");
+      const candidates = assetPolicy === "cdn"
+        ? [cdnCandidate]
+        : [localCandidate, cdnCandidate];
+
+      const loadScript = source => new Promise((resolve, reject) => {
+        const element = document.createElement("script");
+        element.src = source;
+        element.crossOrigin = "anonymous";
+        element.onload = resolve;
+        element.onerror = reject;
+        document.head.appendChild(element);
+      });
+
+      for (const candidate of candidates) {
+        try {
+          await loadScript(candidate.script);
+          globalThis.ORT_RUNTIME_SOURCE = candidate.label;
+          globalThis.ORT_ASSET_BASE = candidate.assets;
+          await loadScript("./browser-demo.js");
+          return;
+        } catch (error) {
+          console.warn(`[Loader] Could not load ${candidate.label}.`, error);
+        }
+      }
+
+      document.querySelector("#status").textContent = "Runtime load failed · 运行时加载失败";
+      document.querySelector("#dot").className = "dot bad";
+      document.querySelector("#log").textContent =
+        "ONNX Runtime Web could not be loaded locally or from jsDelivr.\n" +
+        "Run npm ci for offline/local assets, or check Internet access.\n" +
+        "无法从本地或 CDN 加载运行时。请运行 npm ci，或检查网络连接。";
+    })();
+  </script>
+</body>
+</html>

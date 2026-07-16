@@ -1,0 +1,4 @@
+# Classic TensorRT EP: start with the exact CUDA baseline, then add the
+# TensorRT major/minor used by the ONNX Runtime 1.27 CUDA 13 release build.
+-r requirements-cuda.txt
+tensorrt-cu13==10.14.1.48.post1

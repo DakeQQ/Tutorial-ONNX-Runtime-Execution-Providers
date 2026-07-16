@@ -1,0 +1,10 @@
+{
+  "name": "onnxruntime-web-execution-provider-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bilingual ONNX Runtime WASM, WebGPU, WebNN, and native WebGPU plugin tutorial demos",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "onnxruntime-web": "1.27.0"
+  }
+}

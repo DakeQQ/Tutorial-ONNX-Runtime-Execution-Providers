@@ -1,0 +1,4 @@
+numpy>=1.26.4,<3
+onnx==1.21.0
+onnxruntime==1.26.0
+sympy==1.14.0

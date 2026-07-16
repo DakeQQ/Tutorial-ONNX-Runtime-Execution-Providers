@@ -1,0 +1,8 @@
+{
+  "batch_size": 32,
+  "input_size": 64,
+  "hidden_size": 128,
+  "output_size": 32,
+  "fp32_model": "qnn_smoke_fp32.onnx",
+  "qdq_model": "qnn_smoke_qdq.onnx"
+}

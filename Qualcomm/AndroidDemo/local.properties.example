@@ -1,0 +1,5 @@
+# Copy to local.properties only if Android Studio cannot discover your SDK.
+# Linux/macOS example:
+sdk.dir=/home/your-name/Android/Sdk
+# Windows uses escaped backslashes, for example:
+# sdk.dir=C\:\\Users\\your-name\\AppData\\Local\\Android\\Sdk

@@ -1,6 +1,6 @@
 # ONNX Runtime 执行提供程序教程
 
-本仓库提供可复现的配置指南和**严格**的冒烟测试，帮助你确认 ONNX 模型确实运行在 **Apple、AMD、Intel、NVIDIA、Qualcomm、Web、跨厂商 Windows 或 XNNPACK CPU** 后端上，而不只是某个执行提供程序（EP）能够加载。
+本仓库提供可复现的配置指南和**严格**的冒烟测试，帮助你确认 ONNX 模型确实运行在 **Apple、AMD、Intel、NVIDIA、Qualcomm、Web、Windows 或 XNNPACK CPU** 后端上，而不只是某个执行提供程序（EP）能够加载。
 
 [English](README.md)  ·  **最近验证：2026-07-17。** 每份平台指南都单独列出锁定的软件版本、硬件要求、已测试环境和验证范围。
 

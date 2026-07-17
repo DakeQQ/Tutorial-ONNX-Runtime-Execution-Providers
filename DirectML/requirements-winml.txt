@@ -1,0 +1,9 @@
+# Windows ML 2.1.3 projection, runtime, and exact ORT build form one release tuple.
+# NumPy 2.4.6 is the newest line available when this ORT build shipped with
+# CPython 3.12 wheels for both Windows x64 and ARM64.
+# Do not replace individual versions with "latest" or install another ORT distribution.
+numpy==2.4.6
+onnx==1.22.0
+wasdk-Microsoft.Windows.AI.MachineLearning[all]==2.1.3
+wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.1.3
+onnxruntime-windowsml==1.24.6.202605042033

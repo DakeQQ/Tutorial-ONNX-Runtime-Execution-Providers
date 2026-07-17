@@ -29,7 +29,7 @@ DEFAULT_VENV = SCRIPT_DIR / ".venv-qnn"
 DEFAULT_ARTIFACTS = SCRIPT_DIR / ".qnn-smoke"
 REQUIREMENTS = SCRIPT_DIR / "requirements.txt"
 EXPECTED_VERSIONS = {
-    "onnx": "1.21.0",
+    "onnx": "1.22.0",
     "onnxruntime": "1.26.0",
     "onnxruntime-qnn": "2.4.0",
     "sympy": "1.14.0",

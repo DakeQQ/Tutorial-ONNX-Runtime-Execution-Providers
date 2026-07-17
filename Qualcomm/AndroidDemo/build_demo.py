@@ -40,6 +40,15 @@ GRADLE_SHA256 = "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15ceca
 GRADLE_URL = f"https://downloads.gradle.org/distributions/gradle-{GRADLE_VERSION}-bin.zip"
 
 
+def _validate_python_host() -> None:
+    if platform.python_implementation() != "CPython":
+        raise RuntimeError("Use 64-bit CPython to build the Android demo.")
+    if not (3, 11) <= sys.version_info[:2] < (3, 15):
+        raise RuntimeError("Use 64-bit CPython 3.11, 3.12, 3.13, or 3.14.")
+    if sys.maxsize <= 2**32:
+        raise RuntimeError("Use a 64-bit Python installation.")
+
+
 def _cache_root() -> Path:
     if os.name == "nt":
         return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
@@ -55,7 +64,7 @@ def _model_environment_ready(python: Path) -> bool:
         return False
     command = (
         "import importlib.metadata as m; "
-        "raise SystemExit(m.version('onnx') != '1.21.0' or "
+        "raise SystemExit(m.version('onnx') != '1.22.0' or "
         "m.version('onnxruntime') != '1.26.0' or "
         "m.version('sympy') != '1.14.0')"
     )
@@ -154,7 +163,7 @@ def _prepare_qnn_cpu_backend(explicit: Path | None) -> None:
     else:
         print(
             "      QNN CPU backend: not packaged (optional reference backend). "
-            "Pass --qnn-sdk <QAIRT-2.48.x-root> to enable the CPU button."
+            "Pass --qnn-sdk <QAIRT-2.48.40-root> to enable the CPU button."
         )
 
 
@@ -376,7 +385,9 @@ def _adb_path(android_sdk: Path) -> Path:
 
 def _choose_device(adb: Path, serial: str | None) -> list[str]:
     if serial:
-        return [str(adb), "-s", serial]
+        adb_command = [str(adb), "-s", serial]
+        subprocess.run([*adb_command, "get-state"], check=True, capture_output=True)
+        return adb_command
     result = subprocess.run(
         [str(adb), "devices"],
         check=True,
@@ -395,7 +406,55 @@ def _choose_device(adb: Path, serial: str | None) -> list[str]:
     return [str(adb), "-s", devices[0]]
 
 
+def _device_property(adb_command: list[str], name: str) -> str:
+    result = subprocess.run(
+        [*adb_command, "shell", "getprop", name],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def _validate_device(adb_command: list[str], backend: str | None) -> None:
+    if _device_property(adb_command, "ro.kernel.qemu") == "1":
+        raise RuntimeError("An Android emulator cannot prove QNN GPU/HTP execution.")
+
+    abi = _device_property(adb_command, "ro.product.cpu.abi")
+    api_text = _device_property(adb_command, "ro.build.version.sdk")
+    if abi != "arm64-v8a":
+        raise RuntimeError(
+            f"The APK requires an arm64-v8a device; ADB reported {abi or 'unknown'}."
+        )
+    try:
+        api_level = int(api_text)
+    except ValueError as exc:
+        raise RuntimeError(f"ADB returned an invalid Android API level: {api_text!r}") from exc
+    if api_level < 27:
+        raise RuntimeError(
+            f"QNN HTP requires Android API 27 or newer; device reports API {api_level}."
+        )
+
+    soc = _device_property(adb_command, "ro.soc.model")
+    hardware = _device_property(adb_command, "ro.hardware")
+    manufacturer = _device_property(adb_command, "ro.soc.manufacturer")
+    identity = " ".join((manufacturer, soc, hardware)).lower()
+    print(
+        "Device preflight: "
+        f"ABI={abi}, API={api_level}, SoC={soc or hardware or 'unknown'}"
+    )
+    if backend in {"gpu", "htp"} and not any(
+        marker in identity
+        for marker in ("qualcomm", "qcom", "qti", "snapdragon")
+    ):
+        print(
+            "WARNING: Android properties did not identify a Qualcomm SoC. "
+            "The strict QNN session remains the final hardware gate."
+        )
+
+
 def _build_and_maybe_install(args: argparse.Namespace) -> int:
+    _validate_python_host()
     _prepare_models(args.offline)
     _prepare_qnn_cpu_backend(args.qnn_sdk)
     android_sdk = _find_android_sdk(args.android_sdk)
@@ -432,6 +491,7 @@ def _build_and_maybe_install(args: argparse.Namespace) -> int:
             )
         adb = _adb_path(android_sdk)
         adb_command = _choose_device(adb, args.device)
+        _validate_device(adb_command, args.backend)
         subprocess.run([*adb_command, "install", "-r", str(APK_PATH)], check=True)
         launch = [*adb_command, "shell", "am", "start", "-n", ACTIVITY]
         if args.backend:
@@ -455,7 +515,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--qnn-sdk",
         type=Path,
-        help="QAIRT 2.48.x root; packages optional libQnnCpu.so for QNN CPU testing",
+        help="QAIRT 2.48.40 root; packages optional libQnnCpu.so for QNN CPU testing",
     )
     parser.add_argument("--java-home", type=Path, help="JDK/JBR 17-22 root")
     parser.add_argument("--gradle", type=Path, help="existing Gradle 8.9 executable/root")

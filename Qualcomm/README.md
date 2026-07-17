@@ -1,17 +1,64 @@
-# Qualcomm QNN CPU / GPU / HTP-NPU with ONNX Runtime
+# ONNX Runtime + Qualcomm QNN: CPU, GPU, and HTP
 
-[简体中文版](README.zh-CN.md) | [Repository index](../README.md) | [Android demo](AndroidDemo/README.md)
+[简体中文](README.zh-CN.md) · [Repository index](../README.md) · [Android demo](AndroidDemo/README.md)
 
-> **Last verified: 2026-07-16.** Default baseline: ONNX Runtime core **1.26.0**, Qualcomm plugin QNN EP **2.4.0** (released 2026-07-14), and QAIRT/QNN SDK **2.48.40**. The Android project uses the public `qnn-runtime` **2.48.0** AAR from the same 2.48 line. QNN EP 2.4.0 supports ORT >= 1.24.1, but this tutorial pins the version it was built and tested with.
->
-> The Python model generator, package metadata, plugin APIs, and a real 83.4 MiB Android debug APK build were verified on Ubuntu 24.04, JDK 21, Gradle 8.9, and Android API 35. Hardware execution must be verified on the reader's Snapdragon Windows/Android device; this repository cannot claim a hardware run performed on a machine it does not have.
+| Item | Baseline |
+|---|---|
+| Last audited | `2026-07-17` |
+| Execution targets | Native Windows ARM64 on Snapdragon and physical Snapdragon Android ARM64 devices |
+| Desktop stack | ONNX Runtime 1.26.0, QNN plugin EP 2.4.0, QAIRT/QNN SDK 2.48.40 |
+| Android project stack | ORT Android 1.26.0, QNN plugin AAR 2.4.0, QNN runtime AAR 2.48.0, API 27+, `arm64-v8a` |
+| Entry points | [`one_click.py`](one_click.py) and [`AndroidDemo/build_demo.py`](AndroidDemo/build_demo.py) |
+| Evidence boundary | The exact stack passed the Linux x64 HTP simulator, built an inspected 83.4 MiB APK, and passed HTP on Android SM8550; Windows hardware and Android GPU remain target-dependent |
 
-## Quick start
+## Contents
+
+> [!TIP]
+> **New here?** This map shows the whole guide at a glance. Skim it, then jump to your platform: Part A (Windows), Part B (Android), or Part C (your own model).
+
+- [1. Choose a route](#1-choose-a-route)
+- [2. Understand the stack](#2-understand-the-stack)
+- [3. Choose a backend](#3-choose-a-backend)
+- [4. Choose a platform](#4-choose-a-platform)
+- [5. Check compatibility](#5-check-compatibility)
+- [6. Understand plugin generations](#6-understand-plugin-generations)
+- [7. Follow the decision flow](#7-follow-the-decision-flow)
+- **[Part A — Windows zero-to-QNN](#part-a--windows-zero-to-qnn)**
+  - [8. Windows prerequisites](#8-windows-prerequisites)
+  - [9. Windows one-click proof](#9-windows-one-click-proof)
+  - [10. What a desktop PASS proves](#10-what-a-desktop-pass-proves)
+  - [11. Manual Python anatomy](#11-manual-python-anatomy)
+- **[Part B — Android zero-to-QNN](#part-b--android-zero-to-qnn)**
+  - [12. What not to do from the old tutorial](#12-what-not-to-do-from-the-old-tutorial)
+  - [13. Android prerequisites](#13-android-prerequisites)
+  - [14. Check the connected Android device](#14-check-the-connected-android-device)
+  - [15. Android dependency layout](#15-android-dependency-layout)
+  - [16. One-click Android build and install](#16-one-click-android-build-and-install)
+  - [17. Android Studio route](#17-android-studio-route)
+  - [18. What the Android project does correctly](#18-what-the-android-project-does-correctly)
+  - [19. Android PASS interpretation](#19-android-pass-interpretation)
+  - [20. HTP architecture notes](#20-htp-architecture-notes)
+- **[Part C — Bring your own model](#part-c--bring-your-own-model)**
+  - [21. Model readiness checklist](#21-model-readiness-checklist)
+  - [22. Make dynamic dimensions fixed](#22-make-dynamic-dimensions-fixed)
+  - [23. Quantize for HTP](#23-quantize-for-htp)
+  - [24. Use Qualcomm AI Hub before buying every device](#24-use-qualcomm-ai-hub-before-buying-every-device)
+  - [25. Useful QNN provider/session options](#25-useful-qnn-providersession-options)
+  - [26. Context binary workflow](#26-context-binary-workflow)
+  - [27. Performance methodology](#27-performance-methodology)
+- **[Part D — Troubleshooting](#part-d--troubleshooting)**
+  - [28. Troubleshooting](#28-troubleshooting)
+  - [29. Diagnostics commands](#29-diagnostics-commands)
+  - [30. Security, licensing, and deployment rules](#30-security-licensing-and-deployment-rules)
+  - [31. What current blogs and field guides add](#31-what-current-blogs-and-field-guides-add)
+  - [32. References](#32-references)
+
+## 1. Choose a route
 
 | Start here | Purpose |
 |---|---|
 | [One-click Python demo](one_click.py) | Creates an isolated pinned environment and strictly proves local QNN graph execution |
-| [Android project](AndroidDemo/README.md) | Complete Kotlin application with CPU/GPU/HTP buttons and a one-click build/install launcher |
+| [Android project](AndroidDemo/README.md) | Kotlin application with a verified HTP route, optional CPU/GPU probes, and a one-click build/install launcher |
 | [Pinned Python stack](requirements.txt) | ORT core 1.26.0 + QNN plugin 2.4.0 |
 
 On a native Windows ARM64 Snapdragon PC:
@@ -30,7 +77,17 @@ python Qualcomm/AndroidDemo/build_demo.py --install --backend htp
 
 QNN CPU is a reference backend and is intentionally omitted from the QNN 2.4 release package. Install matching QAIRT and pass `--qnn-sdk PATH` when CPU-backend verification is required.
 
-## 1. What this guide achieves
+### Read the result correctly
+
+| Result | What it proves |
+|---|---|
+| APK path / Gradle `BUILD SUCCESSFUL` | The Android project and pinned artifacts assembled; no accelerator ran |
+| Android app `READY` | The plugin registered and exposed at least one QNN device; no model ran yet |
+| `PASS: QNN ...` / `PASS · QNN ...` | The selected backend created a strict no-ORT-CPU-fallback session, ran the smoke graph, and matched the CPU reference |
+
+Only the final `PASS` on the intended physical machine is hardware-execution evidence. The tiny smoke graph is a configuration test, not a performance result.
+
+### Outcomes
 
 Starting from no QNN knowledge, this guide lets you:
 
@@ -38,12 +95,12 @@ Starting from no QNN knowledge, this guide lets you:
 2. Run a strict one-click Python proof on a local Snapdragon Windows PC.
 3. Build, install, and run a complete Android application on a local Snapdragon phone/tablet.
 4. Generate both static FP32 and QNN-compatible QDQ models locally.
-5. detect CPU fallback instead of mistaking “provider available” for acceleration.
+5. Detect CPU fallback instead of mistaking “provider available” for acceleration.
 6. Prepare a real model for production, then add context caching and profiling.
 
 The demos use only a deterministic synthetic network. They do not download a model or upload data.
 
-## 2. The architecture in one picture
+## 2. Understand the stack
 
 ```mermaid
 flowchart LR
@@ -59,7 +116,7 @@ flowchart LR
 
 ONNX Runtime partitions or compiles the ONNX graph. QNN EP converts the accepted graph into a QNN graph. One QNN backend executes that graph. **QNN is one EP with multiple backends; it is not three ONNX Runtime EP names.**
 
-## 3. CPU, GPU, and NPU are not interchangeable
+## 3. Choose a backend
 
 | Tutorial name | QNN option | Hardware | Preferred model | Purpose | Important limitation |
 |---|---|---|---|---|---|
@@ -70,13 +127,13 @@ ONNX Runtime partitions or compiles the ONNX graph. QNN EP converts the accepted
 
 For real CPU production inference, benchmark ORT CPU EP/XNNPACK as well. QNN CPU exists mainly to verify QNN graph conversion without an accelerator.
 
-## 4. Choose the correct platform route
+## 4. Choose a platform
 
 | Host/device | QNN CPU | QNN GPU | QNN HTP/NPU | Correct use |
 |---|---:|---:|---:|---|
 | Windows 11 ARM64 on Snapdragon | SDK library required | Local inference | Local inference | Run the Python demo natively with ARM64 Python |
 | Windows x64, including x64 Python emulated on WoA | SDK reference backend | No local Adreno route in the release matrix | No local NPU execution; AOT preparation only | Quantize/prepare/context-compile, then deploy to ARM64 |
-| Android ARM64 on Snapdragon, API 27+ | Optional SDK library | Local inference | Local inference | Build and install the supplied Android project |
+| Android ARM64 on Snapdragon, API 27+ | Optional SDK library | Device/driver-dependent probe; not the beginner baseline | Local inference; physically verified on SM8550 | Start with HTP; try GPU only when the device's QNN GPU stack is documented/supported |
 | Android emulator or non-Snapdragon device | Not a valid qualification target | Not available | Not available | Use ORT CPU/NNAPI for unrelated testing |
 | Qualcomm Linux ARM64 | Supported by plugin releases | Platform-dependent | Local inference | Supported upstream, but outside this Windows/Android tutorial |
 
@@ -84,22 +141,28 @@ For real CPU production inference, benchmark ORT CPU EP/XNNPACK as well. QNN CPU
 
 A Snapdragon chip in the computer is not enough if the **process** is x64. Local Windows NPU/GPU inference requires the native Windows ARM64 package and native ARM64 Python/application.
 
-## 5. Version and package baseline
+## 5. Check compatibility
 
 | Layer | Pinned version | Where it comes from | Why it is pinned |
 |---|---:|---|---|
-| ONNX Runtime core | 1.26.0 | PyPI/Maven Central | QNN EP 2.4.0 was compiled and tested with it |
+| ONNX model tooling | 1.22.0 | PyPI | Windows ARM64 wheels are available; tested here with the ORT 1.26 QNN quantizer; fixes malformed-model converter crashes reported for 1.21 |
+| ONNX Runtime desktop core | 1.26.0 | PyPI | QNN EP 2.4.0 was compiled and tested with it |
 | QNN plugin EP | 2.4.0 | `onnxruntime-qnn` / `com.qualcomm.qti:onnxruntime-android-qnn` | Current ABI-compatible plugin release |
 | QAIRT SDK | 2.48.40 | Qualcomm Package Manager | Official QNN EP 2.4.0 build/test SDK |
-| Android QNN runtime | 2.48.0 | `com.qualcomm.qti:qnn-runtime` | Public Maven artifact in the 2.48 runtime line |
-| Python | CPython 3.11–3.14, 64-bit | python.org | Available 2.4.0 wheel tags |
+| Android ORT core | 1.26.0 | Maven Central | Matches the tag's source-build core and passed physical SM8550 HTP execution |
+| Android QNN runtime | 2.48.0 | Maven Central | Public artifact in the source build's QAIRT 2.48 line; passed physical SM8550 HTP execution |
+| Python | CPython 3.11–3.14, 64-bit | python.org | PyPI publishes QNN 2.4.0 wheels for these versions |
 | Android ABI | `arm64-v8a` | Android device | Only Android architecture in the QNN plugin release matrix |
 | Android minimum | API 27 | App setting | Upstream minimum for HTP |
 | Build toolchain | AGP 8.7.3 / Gradle 8.9 / JDK 17–22 | Android/Gradle | Reproducible demo build |
 
+The Android version evidence is internally inconsistent upstream. The QNN 2.4.0 tag builds against ORT 1.26.0 and QAIRT 2.48.40, and its source Android test requests that line (falling back to the public QNN runtime 2.48.0 artifact). Its published-package table still names ORT Android 1.24.3 plus QNN runtime 2.45.0. On the same SM8550 test device, that older tuple built but both HTP and GPU failed QNN interface negotiation with the 2.4.0 plugin. Do not use that old table as a drop-in runtime recipe. This project keeps the source-build-aligned 1.26.0/2.48.0 tuple, which passed strict HTP execution; still qualify every production device family.
+
+The tagged provider page still says Python 3.11.x, while the actual 2.4.0 PyPI release publishes CPython 3.11, 3.12, 3.13, and 3.14 wheels. The launchers follow the package metadata; CPython 3.12 is the least-surprising choice for a new setup.
+
 Do not independently “upgrade just one DLL/AAR.” The backend API, stub/skel, firmware, plugin, and context binary are compatibility-sensitive.
 
-## 6. Plugin QNN 2.x versus the older provider
+## 6. Understand plugin generations
 
 There are two packaging generations on the internet:
 
@@ -118,7 +181,7 @@ Never install/combine both generations in one process. In particular, do not mix
 
 This tutorial uses the second line consistently.
 
-## 7. End-to-end decision flow
+## 7. Follow the decision flow
 
 ```mermaid
 flowchart TD
@@ -149,7 +212,7 @@ flowchart TD
 
 ---
 
-# Part A — Windows zero-to-QNN
+## Part A — Windows zero-to-QNN
 
 ## 8. Windows prerequisites
 
@@ -207,6 +270,8 @@ python one_click.py htp
 ```
 
 The first run creates `Qualcomm/.venv-qnn`, installs the pinned stack, generates a static QDQ model, registers the QNN plugin, and runs a strict target session.
+
+ONNX 1.22 now provides native Windows ARM64 wheels, so this synthetic model can be generated in the ARM64 environment. For a real model, Qualcomm's documented workflow still recommends doing quantization on x64 when the larger model toolchain is easier or an ARM64 dependency is unavailable, then deploying the resulting static QDQ model to ARM64.
 
 Run every backend:
 
@@ -301,7 +366,7 @@ The demo additionally selects the exact hardware type and validates assignment/p
 
 ---
 
-# Part B — Android zero-to-QNN
+## Part B — Android zero-to-QNN
 
 ## 12. What not to do from the old tutorial
 
@@ -312,7 +377,7 @@ The old page copied many `/system/lib64` and `/vendor/lib64` files into both APK
 | Pull Android framework libraries such as `libc++.so`, `libbase.so`, `libutils.so`, and the linker | Device/OS-specific ABI, linker namespace, security, update, and licensing risks | Use platform libraries from the device; never package them |
 | Put `.so` files in both assets and `jniLibs` | Duplicate APK size and ambiguous loading | Maven AARs package ABI libraries once |
 | Pull `libcdsprpc.so` into the APK | It is an OEM/vendor interface tied to the device | Declare `<uses-native-library android:name="libcdsprpc.so">` |
-| Guess one v69/v73/v75 skel manually | Easy to mismatch SoC and firmware | The QNN runtime AAR packages supported v68/v69/v73/v75/v79/v81 files |
+| Guess and copy one HTP skel manually | Easy to mismatch SoC, firmware, and runtime | Let the pinned QNN runtime AAR provide its backend/stub/skel set and let QNN detect the device |
 | Mix SDK 2.36 libraries with arbitrary ORT | Backend API mismatch | Pin one tested stack |
 | Treat successful session creation with CPU fallback as NPU proof | Unsupported nodes may run on ORT CPU | Disable CPU fallback in the target session |
 
@@ -323,8 +388,9 @@ The old page copied many `/system/lib64` and `/vendor/lib64` files into both APK
 - Windows, Linux, or macOS with Android Studio.
 - Android SDK Platform 35 and Platform-Tools.
 - JDK/JBR 17–22 (Android Studio includes one).
-- Python 3.11+ for generating the demo ONNX assets.
+- 64-bit CPython 3.11–3.14 for generating the demo ONNX assets.
 - Roughly 3 GB free for Gradle/Maven caches.
+- Internet access on the first run; `--offline` works only after all Python, Gradle, and Maven artifacts are cached.
 
 ### Target device
 
@@ -343,8 +409,10 @@ Connect USB, accept the authorization dialog, then run:
 adb devices
 adb shell getprop ro.product.cpu.abi
 adb shell getprop ro.build.version.sdk
+adb shell getprop ro.soc.manufacturer
 adb shell getprop ro.soc.model
-adb shell ls -l /vendor/lib64/libcdsprpc.so
+adb shell getprop ro.kernel.qemu
+adb shell ls -l /vendor/lib64/libcdsprpc.so  # diagnostic; OEM paths can differ
 ```
 
 Expected essentials:
@@ -352,10 +420,11 @@ Expected essentials:
 - state is `device`, not `unauthorized`;
 - ABI is `arm64-v8a`;
 - API is >= 27;
+- `ro.kernel.qemu` is not `1`;
 - a Qualcomm/Snapdragon SoC is reported;
 - FastRPC exists for HTP-capable firmware.
 
-Do not pull `libcdsprpc.so`; its presence on the device is what matters.
+The launcher checks authorization, ABI, API level, and emulator status before installation. It prints a warning rather than rejecting a device when OEM properties do not clearly name Qualcomm; the strict QNN session is the final hardware gate. Do not pull `libcdsprpc.so`; it remains an OEM-owned device library.
 
 ## 15. Android dependency layout
 
@@ -369,7 +438,9 @@ The supplied project uses the current plugin composition:
 | Device `libcdsprpc.so` | FastRPC transport into HTP | OEM `/vendor`, exposed by manifest |
 | SDK `libQnnCpu.so` (optional) | QNN CPU reference backend | Copied by the build launcher into `jniLibs/arm64-v8a` |
 
-The QNN runtime AAR is large because it supports several HTP generations. A debug APK near 80–90 MiB is expected.
+The QNN runtime AAR is large because it supports several HTP generations. A debug APK near 80–90 MiB is expected. The `2026-07-17` audit produced an 83.4 MiB APK containing only `arm64-v8a`: ORT core/JNI, the QNN plugin, QNN GPU/HTP/System/Prepare, and HTP v68/v69/v73/v75/v79/v81 stub/skel libraries. It contained no QNN CPU backend, `libcdsprpc.so`, Android `libc++`, or linker.
+
+These three dependencies are explicit: the QNN plugin AAR's published POM does not pull ORT core or QNN runtime transitively. Do not omit one or add the classic Microsoft all-in-one QNN AAR.
 
 ## 16. One-click Android build and install
 
@@ -389,6 +460,8 @@ The launcher:
 6. resolves the three Maven artifacts;
 7. builds an `arm64-v8a` debug APK.
 
+The first run downloads Python wheels, Gradle, and large native AARs and can take several minutes. A repeated run reuses valid environments and caches. With `--install`, the launcher now rejects an emulator, a non-`arm64-v8a` target, or API below 27 before installing the APK.
+
 Build, install, and immediately run HTP:
 
 ```bash
@@ -398,10 +471,13 @@ python Qualcomm/AndroidDemo/build_demo.py --install --backend htp
 Other backends:
 
 ```bash
+# Optional probe: QNN GPU is not available on every Android device/driver.
 python Qualcomm/AndroidDemo/build_demo.py --install --backend gpu
 python Qualcomm/AndroidDemo/build_demo.py --qnn-sdk /path/to/QAIRT/2.48.40 \
   --install --backend cpu
 ```
+
+HTP is the Android baseline. During this audit, HTP repeatedly passed on a Nubia NX711J with Snapdragon 8 Gen 2 (`SM8550`, HTP v73), Android API 35: strict fallback disabled, 20 measured runs, observed medians of 0.18–0.27 ms, and maximum error 0.0163526 versus ORT CPU. The timing spread is another reason not to benchmark this tiny graph. On that same device, `libQnnGpu.so` returned `QNN_COMMON_ERROR_PLATFORM_NOT_SUPPORTED`; the older 2.45 runtime also failed interface negotiation. This is a supported failure of the strict probe, not a reason to enable CPU fallback. Qualcomm's public GPU blog is a Snapdragon X Windows preview, and upstream QNN GPU unit tests skip ARM64, so do not assume that packaging `libQnnGpu.so` means a phone can execute it.
 
 Windows PowerShell uses the same Python script; replace Unix paths with Windows paths.
 
@@ -432,7 +508,7 @@ Qualcomm/AndroidDemo/app/build/outputs/apk/debug/app-debug.apk
 3. Let Gradle sync.
 4. Select the physical Snapdragon device.
 5. Press **Run**.
-6. Tap **Run QNN GPU** or **Run QNN NPU / HTP**.
+6. Tap **Run QNN NPU / HTP** first; use **Try QNN GPU** only as a device/driver capability probe.
 7. For the CPU button, rebuild once with `--qnn-sdk`.
 
 ## 18. What the Android project does correctly
@@ -450,6 +526,8 @@ Qualcomm/AndroidDemo/app/build/outputs/apk/debug/app-debug.apk
 | Numerical validation | Runs a separate ORT CPU reference and checks maximum absolute error |
 | Resource cleanup | Uses Kotlin `use` for tensors, results, options, and sessions; unloads only after worker termination |
 
+On some Android OEM builds, including the audited SM8550 device, `READY` reports a QNN EP registration device with `type=CPU`. The app intentionally enables this ARM64 registration handle because the plugin exposed no device without it on that target. It does **not** mean the graph ran on CPU: `backend_type=htp|gpu|cpu` selects the backend, and only the strict run result is execution evidence.
+
 ## 19. Android PASS interpretation
 
 The app reports:
@@ -461,7 +539,7 @@ session.disable_cpu_ep_fallback=1
 max |QNN−CPU|=...
 ```
 
-Because the complete test graph is supported and fallback is disabled, session creation/run fails instead of silently assigning unsupported work to ORT CPU. This is stronger evidence than merely seeing `QNNExecutionProvider` in an API list.
+Because the complete test graph is supported and ORT CPU fallback is disabled, session creation/run fails instead of silently assigning unsupported nodes to ORT CPU. Together with the explicit `backend_type`, successful execution and numerical comparison provide a strict proof for this smoke graph. They do not certify operator coverage or performance for another model.
 
 For native logs:
 
@@ -484,13 +562,14 @@ The app does not hard-code `htp_arch`; the runtime detects the device. That is s
 | Snapdragon 8 Gen 1 | v69 | `libQnnHtpV69*` |
 | Snapdragon 8 Gen 2 | v73 | `libQnnHtpV73*` |
 | Snapdragon 8 Gen 3 | v75 | `libQnnHtpV75*` |
-| Newer platforms | v79/v81 may apply | Check the current QAIRT supported-device table |
+| Snapdragon 8 Elite (SM8750) | v79 | `libQnnHtpV79*` |
+| Snapdragon 8 Elite Gen 5 (SM8850) | v81 | `libQnnHtpV81*` |
 
 Treat this as orientation, not a substitute for Qualcomm's exact SoC table. Firmware and SDK compatibility matter as much as the architecture number.
 
 ---
 
-# Part C — Bring your own model
+## Part C — Bring your own model
 
 ## 21. Model readiness checklist
 
@@ -588,7 +667,7 @@ Rules:
 5. Test on every supported device family.
 6. Keep the external `.bin` beside its wrapper ONNX if embed mode is disabled.
 
-A context binary is not a universally portable ONNX model.
+Qualcomm AI Hub documents an NPU context binary as SoC-specific and NPU-only, but operating-system agnostic. A compatible wrapper can therefore move across Android, Linux, and Windows for the same target SoC; it is not a universally portable ONNX model and still needs runtime/firmware qualification.
 
 ## 27. Performance methodology
 
@@ -603,9 +682,9 @@ A context binary is not a universally portable ONNX model.
 
 ---
 
-# Part D — Troubleshooting
+## Part D — Troubleshooting
 
-## 28. Failure table
+## 28. Troubleshooting
 
 | Symptom | Likely cause | Correct action |
 |---|---|---|
@@ -624,7 +703,10 @@ A context binary is not a universally portable ONNX model.
 | HTP skel/stub/FastRPC error | Runtime libraries do not match firmware/SoC | Use a compatible QNN runtime or update firmware; do not select a random skel |
 | `ADSP_LIBRARY_PATH` warning/failure | Set too late or to the wrong directory | Set it to `applicationInfo.nativeLibraryDir` before ORT/plugin initialization |
 | Android duplicate native library/class error | Mixed all-in-one Microsoft QNN AAR and Qualcomm plugin route | Keep only the plugin composition in this project |
-| APK is ~83 MiB | QNN runtime packages many HTP generations | Expected for this proof app; optimize packaging only after defining target devices/licensing |
+| Android `READY` shows QNN registration `type=CPU` | OEM/ORT hardware discovery exposes the plugin through a CPU-class registration handle | This is not graph assignment; check explicit `backend_type` and require the strict backend `PASS` |
+| Android GPU reports `QNN_COMMON_ERROR_PLATFORM_NOT_SUPPORTED` | The device/vendor GPU stack does not expose a compatible QNN GPU platform | Use HTP on that device; do not enable CPU fallback just to make the GPU probe pass |
+| QNN reports `Unable to find a valid interface` | Plugin and QNN runtime libraries are from incompatible API lines | Restore the pinned runtime tuple; do not substitute the stale 2.45 Maven table for plugin 2.4.0 |
+| APK is roughly 80–90 MiB | QNN runtime packages several HTP generations | Expected for this proof app; inspect the actual APK and optimize only after defining target devices and licensing |
 | Gradle checksum mismatch | Interrupted/corrupted Gradle transfer | Retry; the launcher resumes and never bypasses SHA-256 verification |
 | Context model stops loading after update | Context/QNN/SoC incompatibility | Regenerate the context from the original ONNX model |
 | First HTP run later returns engine/SSR error | HTP subsystem restart | Destroy and recreate the ORT session as upstream recommends |
@@ -655,7 +737,7 @@ adb logcat | grep -iE "onnxruntime|qnn|fastrpc|cdsp"
 
 ## 30. Security, licensing, and deployment rules
 
-- Accept the QAIRT/QNN runtime license before redistribution.
+- Review and accept every applicable Qualcomm term before redistribution. The public `qnn-runtime` 2.48.0 POM declares the Qualcomm AI Hub Model License; Maven availability alone is not a redistribution grant.
 - Do not extract framework/vendor libraries from one phone and ship them to another.
 - Do not commit Qualcomm SDK binaries into this repository.
 - Keep models and external context binaries integrity-checked.
@@ -665,19 +747,19 @@ adb logcat | grep -iE "onnxruntime|qnn|fastrpc|cdsp"
 
 ## 31. What current blogs and field guides add
 
-Official API documentation defines correctness; field reports help explain operational choices. The following current sources were cross-checked rather than copied blindly:
+The audit order is: versioned release/source documentation, package metadata, Android platform documentation, Qualcomm engineering posts, then third-party field guides. Field reports help explain operational choices but do not override a tagged compatibility statement.
 
 | Field source | Practical lesson incorporated here | Scope warning |
 |---|---|---|
 | [Qualcomm: first ONNX Runtime Plugin EP](https://www.qualcomm.com/developer/blog/2026/05/qualcomm-launches-the-first-onnx-runtime-plugin-execution-provider) (2026-05-21) | QNN 2.x is a separately versioned shared-library plugin; register it explicitly and update it independently of ORT core | Describes architecture, not a complete app recipe |
-| [Qualcomm: QNN EP GPU backend](https://www.qualcomm.com/developer/blog/2025/05/unlocking-power-of-qualcomm-qnn-execution-provider-gpu-backend-onnx-runtime) (2025-05-19) | Backend choice is exclusive within one QNN session; disable CPU fallback to prove complete Adreno assignment; GPU depends on the platform graphics/OpenCL driver | Written during GPU preview; use current operator/version tables |
+| [Qualcomm: QNN EP GPU backend](https://www.qualcomm.com/developer/blog/2025/05/unlocking-power-of-qualcomm-qnn-execution-provider-gpu-backend-onnx-runtime) (2025-05-19) | Backend choice is exclusive within one QNN session; disable CPU fallback to prove complete Adreno assignment; GPU depends on the platform graphics/OpenCL driver | Snapdragon X Windows preview, not proof that an Android device supports QNN GPU |
 | [Ultralytics QNN deployment guide](https://docs.ultralytics.com/integrations/qnn/) | Representative calibration, precompiled context ONNX, warm-up, end-to-end timing, and thermal-state caveats matter; HTP mappings now include v79/v81 | YOLO-specific convenience tooling and benchmark numbers are not universal |
 | [Qualcomm AI Hub compilation examples](https://workbench.aihub.qualcomm.com/docs/hub/compile_examples.html) | A QNN context binary is device-specific but OS-agnostic; precompiled QNN ONNX simplifies deployment across Android/Linux/Windows; preserve relative `.bin` paths | Hosted compilation has its own account, artifact, and licensing workflow |
 | [Edge Impulse Android QNN acceleration](https://docs.edgeimpulse.com/tutorials/topics/android/qnn-acceleration) | Real devices, INT8, `ADSP_LIBRARY_PATH`, the Android vendor-library declaration, Logcat, sustained timing, and operator coverage are practical necessities | This is a **TFLite delegate**, not ORT QNN EP; its manual SDK-copy recipe must not replace this project's Maven/plugin composition |
 
 This is why the supplied demos use strict no-fallback sessions, representative-production warnings, warm-up, app-owned native paths, a real device requirement, and a versioned plugin stack.
 
-## 32. Authoritative sources and further reading
+## 32. References
 
 | Topic | Source |
 |---|---|
@@ -687,6 +769,7 @@ This is why the supplied demos use strict no-fallback sessions, representative-p
 | Qualcomm plugin architecture blog | [First ONNX Runtime Plugin EP](https://www.qualcomm.com/developer/blog/2026/05/qualcomm-launches-the-first-onnx-runtime-plugin-execution-provider) |
 | Qualcomm GPU backend field guide | [QNN EP GPU backend](https://www.qualcomm.com/developer/blog/2025/05/unlocking-power-of-qualcomm-qnn-execution-provider-gpu-backend-onnx-runtime) |
 | Exact 2.4.0 release compatibility | [QNN EP v2.4.0 release](https://github.com/onnxruntime/onnxruntime-qnn/releases/tag/v2.4.0) |
+| Exact 2.4.0 provider options and Android validation pair | [QNN EP v2.4.0 documentation](https://github.com/onnxruntime/onnxruntime-qnn/blob/v2.4.0/docs/execution_providers/QNN-ExecutionProvider.md) |
 | Plugin usage lifecycle | [ONNX Runtime plugin EP usage](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/usage.html) |
 | QNN EP build instructions | [Plugin build guide](https://github.com/onnxruntime/onnxruntime-qnn/blob/v2.4.0/docs/execution_providers/build.md) |
 | QAIRT download | [Qualcomm Package Manager](https://qpm.qualcomm.com/) |
@@ -695,6 +778,8 @@ This is why the supplied demos use strict no-fallback sessions, representative-p
 | AI Hub compilation and precompiled QNN ONNX | [Compiling models](https://workbench.aihub.qualcomm.com/docs/hub/compile_examples.html) |
 | Fix dynamic ONNX dimensions | [ORT fixed-shape helper](https://onnxruntime.ai/docs/tutorials/mobile/helpers/make-dynamic-shape-fixed.html) |
 | Quantization concepts | [ONNX Runtime quantization](https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html) |
+| QNN 2.4.0 Python wheel metadata | [PyPI `onnxruntime-qnn` 2.4.0](https://pypi.org/project/onnxruntime-qnn/2.4.0/) |
+| ONNX 1.22.0 model-tool wheels | [PyPI `onnx` 1.22.0](https://pypi.org/project/onnx/1.22.0/) |
 | Android vendor-library visibility | [Android `<uses-native-library>`](https://developer.android.com/guide/topics/manifest/uses-native-library-element) |
 | Android 12 behavior rationale | [Vendor-supplied native libraries](https://developer.android.com/about/versions/12/behavior-changes-12#uses-native-library) |
 | Published Android plugin | [Qualcomm QNN plugin AAR](https://central.sonatype.com/artifact/com.qualcomm.qti/onnxruntime-android-qnn/2.4.0) |

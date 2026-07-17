@@ -51,6 +51,8 @@ class MainActivity : Activity() {
         // initialized. The Maven QNN runtime extracts backend/stub/skel files to
         // nativeLibraryDir; HTP's loader searches that directory through ADSP_LIBRARY_PATH.
         Os.setenv("ADSP_LIBRARY_PATH", applicationInfo.nativeLibraryDir, true)
+        // Some Android builds expose QNN only through this CPU-class registration
+        // device; backend_type still selects the actual CPU, GPU, or HTP backend.
         Os.setenv("ORT_QNN_ENABLE_CPU_BACKEND", "1", true)
         super.onCreate(savedInstanceState)
 
@@ -76,7 +78,7 @@ class MainActivity : Activity() {
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
         root.addView(TextView(this).apply {
-            text = "Strict local CPU / Adreno GPU / HTP NPU execution proof"
+            text = "Strict backend proof · GPU availability depends on device and driver"
             textSize = 15f
             setTextColor(Color.rgb(70, 84, 105))
             setPadding(0, dp(5), 0, dp(18))
@@ -84,7 +86,7 @@ class MainActivity : Activity() {
 
         val buttonSpecs = listOf(
             Triple(Backend.CPU, "Run QNN CPU", Color.rgb(64, 92, 170)),
-            Triple(Backend.GPU, "Run QNN GPU", Color.rgb(25, 135, 120)),
+            Triple(Backend.GPU, "Try QNN GPU", Color.rgb(25, 135, 120)),
             Triple(Backend.HTP, "Run QNN NPU / HTP", Color.rgb(177, 82, 48)),
         )
         buttonSpecs.forEach { (backend, label, color) ->
@@ -173,7 +175,7 @@ class MainActivity : Activity() {
                 appendLine("Native library dir: ${applicationInfo.nativeLibraryDir}")
                 appendLine("Plugin: ${getQnnPluginEpLibraryPath()}")
                 appendLine("QNN CPU backend packaged: $cpuBackendAvailable")
-                appendLine("QNN devices:")
+                appendLine("QNN EP registration devices:")
                 qnnDevices.forEach { appendLine("  • ep=${it.epName}, type=${it.device.type}") }
                 append("Choose one backend above.")
             }
@@ -263,7 +265,7 @@ class MainActivity : Activity() {
                         appendLine("shape=[$BATCH_SIZE,$INPUT_SIZE] (fully static)")
                         appendLine("session.disable_cpu_ep_fallback=1")
                         appendLine("offload_graph_io_quantization=0")
-                        appendLine("QNN devices passed=${qnnDevices.size}")
+                        appendLine("QNN registration devices=${qnnDevices.size}")
                         appendLine("warmup=$WARMUP_RUNS, measured=$TIMED_RUNS")
                         appendLine("median=${"%.3f".format(Locale.US, median)} ms")
                         appendLine("mean=${"%.3f".format(Locale.US, mean)} ms")
@@ -305,6 +307,9 @@ class MainActivity : Activity() {
         appendLine("${error::class.java.simpleName}: ${error.message}")
         appendLine()
         appendLine("Check Logcat and the guide's troubleshooting table.")
+        if (stage.contains("GPU")) {
+            appendLine("QNN GPU is device/driver-dependent. If Logcat reports PLATFORM_NOT_SUPPORTED, use HTP on this device.")
+        }
         appendLine("Common causes: non-Snapdragon device, stale OEM driver, unsupported model node, missing libcdsprpc access, or mixed QNN package versions.")
     }
 

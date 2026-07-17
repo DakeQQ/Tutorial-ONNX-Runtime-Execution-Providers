@@ -1,9 +1,11 @@
-# ONNX Runtime 1.27 CUDA 13.0 runtime baseline for Windows/Linux x86-64.
+# Latest PyPI ONNX Runtime CUDA core for Windows/Linux x86-64 (1.27.1 is not on PyPI).
+# ORT 1.27.0 was built with CUDA 13.0/cuDNN 9.14; CUDA 13 minor-version binary
+# compatibility and cuDNN 9 backward compatibility allow these newer runtime pins.
 # The ORT 1.27 cuda extra still references retired *-cu13 package names;
 # use NVIDIA's current un-suffixed CUDA component packages through this meta-package.
 onnxruntime-gpu==1.27.0
-cuda-toolkit[cublas,cudart,cufft,curand,nvjitlink,nvrtc]==13.0.2
-nvidia-cudnn-cu13==9.14.0.64
+cuda-toolkit[cublas,cudart,cufft,curand,nvjitlink,nvrtc]==13.3.1
+nvidia-cudnn-cu13==9.24.0.43
 
 # Used only to generate the repository smoke-test model.
 onnx==1.22.0

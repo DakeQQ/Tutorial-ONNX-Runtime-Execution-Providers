@@ -50,11 +50,11 @@ if errorlevel 1 (
 )
 
 echo [4/4] Running the strict demo...
-"%PY%" Test.py %*
+"%PY%" provider_test.py %*
 set "RC=%ERRORLEVEL%"
 if not "%RC%"=="0" (
     echo.
-    echo Demo failed. Read English\README.md or Chinese\README.md, then check the driver and device list.
+    echo Demo failed. Read README.md or README.zh-CN.md, then check the driver and device list.
 )
 exit /b %RC%
 
@@ -74,5 +74,5 @@ echo ERROR: install 64-bit CPython 3.11, 3.12, or 3.13. Python 3.10 and 3.14 hav
 exit /b 1
 
 :stack_matches
-"%PY%" -c "import importlib.metadata as m,re; norm=lambda name:re.sub(r'[-_.]+','-',name).lower(); wanted={'onnxruntime-openvino':'1.24.1','openvino':'2025.4.1','onnx':'1.22.0','numpy':'2.3.5'}; names={norm(d.metadata['Name']) for d in m.distributions() if d.metadata['Name']}; owners={norm(name) for name in m.packages_distributions().get('onnxruntime',[])}; forbidden={'onnxruntime','onnxruntime-gpu','onnxruntime-directml'}; ok=owners=={'onnxruntime-openvino'} and names.isdisjoint(forbidden) and all(m.version(name)==version for name,version in wanted.items()); raise SystemExit(0 if ok else 1)" >nul 2>nul
+"%PY%" -c "import importlib.metadata as m,re,sys; norm=lambda name:re.sub(r'[-_.]+','-',name).lower(); numpy_version='2.4.6' if sys.version_info[:2]==(3,11) else '2.5.1'; wanted={'onnxruntime-openvino':'1.24.1','openvino':'2025.4.1','onnx':'1.22.0','numpy':numpy_version}; names={norm(d.metadata['Name']) for d in m.distributions() if d.metadata['Name']}; owners={norm(name) for name in m.packages_distributions().get('onnxruntime',[])}; forbidden={'onnxruntime','onnxruntime-gpu','onnxruntime-directml'}; ok=owners=={'onnxruntime-openvino'} and names.isdisjoint(forbidden) and all(m.version(name)==version for name,version in wanted.items()); raise SystemExit(0 if ok else 1)" >nul 2>nul
 exit /b %ERRORLEVEL%

@@ -1,15 +1,20 @@
-# ONNX Runtime local provider demo
+# ONNX Runtime + WebGPU Demo
 
-This folder contains the supported one-click smoke test for browser WASM/WebGPU/WebNN and the native Python WebGPU plugin.
+[简体中文](README.zh-CN.md) · [Repository index](../../README.md) · [Full guide](../README.md)
 
-Read the complete guides before testing production models:
+| Item | Baseline |
+|---|---|
+| Last verified | `2026-07-17` |
+| Routes | Browser WASM, browser WebGPU, browser WebNN, native Python WebGPU |
+| Runtime | ORT Web 1.27.0; ONNX Runtime 1.27.0 + WebGPU plugin 0.1.0 |
+| Model | `execution_provider_demo.onnx`: static float32 `MatMul → Add → Relu` |
+| Entry points | `run_demo.bat` and `run_demo.sh` |
 
-- [English guide](../README.md)
-- [简体中文教程](../README.zh-CN.md)
+These remain the latest installable stable packages as of the verification date. The upstream plugin source already carries a higher development version, but PyPI still publishes 0.1.0; the wrappers intentionally install the published, tested pair.
 
-## Quick start
+## 1. Choose a route
 
-Run these commands **from this folder**:
+Run from this folder:
 
 | Route | Windows | Linux/macOS |
 |---|---|---|
@@ -18,41 +23,64 @@ Run these commands **from this folder**:
 | Browser WebNN GPU request | `run_demo.bat webnn --device gpu` | `bash run_demo.sh webnn --device gpu` |
 | Native Python WebGPU | `run_demo.bat native-webgpu` | `bash run_demo.sh native-webgpu` |
 
-The browser launcher requires Python 3.10+ only for its local HTTP server. Node.js is optional: install current Node.js LTS and run `npm ci` to use local ORT Web assets; otherwise the page downloads the pinned 1.27.0 assets from jsDelivr.
+| Route | Requirement |
+|---|---|
+| Browser | Python 3.10+ for the local HTTP server; current Chrome/Edge |
+| Local browser assets | Optional Node.js LTS + `npm ci`; otherwise pinned assets load from jsDelivr |
+| Native Windows | 64-bit CPython 3.11–3.14, x64 |
+| Native Linux | 64-bit CPython 3.11–3.14, x86-64, glibc 2.27+ |
+| Native macOS | 64-bit CPython 3.11–3.14, macOS 14+, Apple Silicon |
 
-The pinned native stack requires 64-bit CPython 3.11–3.14 and supports Windows x64, Linux x86-64 with glibc 2.27+, and macOS 14+ on Apple Silicon. Intel macOS is not supported by the pinned native route because `onnxruntime 1.27.0` has no macOS x86-64 core wheel.
+The pinned native route excludes Intel macOS because ONNX Runtime 1.27.0 has no macOS x86-64 core wheel.
 
-## What a pass proves
+## 2. Run the demo
 
-The checked-in `execution_provider_demo.onnx` model is a static float32 `MatMul → Add → Relu` graph.
+| Step | Action | Result |
+|---:|---|---|
+| 1 | Open a terminal in this folder | Scripts resolve local files correctly |
+| 2 | Optional: run `npm ci` | Browser assets are available offline |
+| 3 | Run one command from the route table | Browser opens or native validation starts |
+| 4 | Read the final `PASS` or `FAIL` | The requested route reports explicit evidence |
 
-- Every browser route verifies the exact ORT Web version, model contract, and an independent JavaScript math reference.
-- WebGPU/WebNN browser routes additionally compare against a separate WASM session.
-- Strict browser mode disables implicit CPU EP fallback.
-- Native WebGPU compares with CPU ORT, disables CPU fallback by default, and checks the ORT profile for WebGPU compute events and zero CPU node events.
+```mermaid
+flowchart LR
+	START[run_demo.bat / run_demo.sh] --> LAUNCH[launch_demo.py]
+	LAUNCH -->|wasm / webgpu / webnn| SERVER[Local HTTP server]
+	SERVER --> BROWSER[browser-demo.html + browser-demo.js]
+	LAUNCH -->|native-webgpu| NATIVE[native_webgpu_validator.py]
+	BROWSER --> RESULT[Reference + provider checks]
+	NATIVE --> RESULT
+	RESULT --> PASS{PASS?}
+```
 
-`--allow-wasm-fallback` only permits unsupported **model nodes** to use WASM after the requested browser API/context initializes. It does not hide a missing WebGPU adapter or unavailable WebNN API.
+## 3. Read the result
 
-For WebNN, the launcher enables the API in an isolated temporary Chromium profile. `--webnn-backend auto` chooses LiteRT on Windows versions before build 26100 and the Chromium platform default elsewhere. `--webnn-backend litert` explicitly enables `WebNNLiteRT` and disables higher-priority platform backends; it also disables the legacy `WebNNDirectML` feature for compatibility with Chromium 148 and older builds.
+| Route | A pass proves |
+|---|---|
+| Every browser route | Exact ORT Web version, model contract, and independent JavaScript math reference passed |
+| Browser WebGPU/WebNN | A separate WASM comparison passed and strict mode did not use implicit CPU EP fallback |
+| Native WebGPU | CPU ORT parity passed; the profile contains WebGPU compute events and zero CPU node events |
 
-## Supported entry points
+| Option | Meaning |
+|---|---|
+| `--allow-wasm-fallback` | Allows unsupported model nodes to use WASM only after the requested browser API/context initializes |
+| `--webnn-backend auto` | Uses LiteRT before Windows build 26100; otherwise uses Chromium's platform default |
+| `--webnn-backend litert` | Enables `WebNNLiteRT`, disables higher-priority platform backends, and disables legacy `WebNNDirectML` for older Chromium compatibility |
 
-The maintained rookie path consists of:
+Fallback cannot hide a missing WebGPU adapter or unavailable WebNN API.
 
-- `run_demo.bat` / `run_demo.sh`
-- `launch_demo.py`
-- `browser-demo.html` / `browser-demo.js`
-- `native_webgpu_validator.py`
-- `execution_provider_demo.onnx`
-- `package.json` / `package-lock.json`
-- `requirements-native-webgpu.txt`
+## 4. File map
 
----
+| File | Purpose |
+|---|---|
+| `run_demo.bat` / `run_demo.sh` | Cross-platform entry points |
+| `launch_demo.py` | HTTP server, browser launcher, and native dispatcher |
+| `browser-demo.html` / `browser-demo.js` | Browser preflight, inference, parity, and timing UI |
+| `native_webgpu_validator.py` | Native plugin registration, strict profile proof, and CPU parity |
+| `execution_provider_demo.onnx` | Checked-in cross-provider smoke model |
+| `package.json` / `package-lock.json` | Pinned local ORT Web assets |
+| `requirements-native-webgpu.txt` | Pinned native Python stack |
 
-## 中文快速说明
+## 5. Next step
 
-请在本目录运行上表命令。浏览器路径只用 Python 3.10+ 启动本地服务器；执行 `npm ci` 可准备离线文件，否则页面从固定版本 jsDelivr 下载 ORT Web 1.27.0。
-
-固定原生组合要求 64 位 CPython 3.11–3.14，支持 Windows x64、glibc 2.27+ 的 Linux x86-64，以及 Apple Silicon 上的 macOS 14+。由于 ORT 1.27.0 核心没有 macOS x86-64 wheel，Intel Mac 不支持该原生路径。
-
-浏览器通过必须完成独立数学参考检查；WebGPU/WebNN 还会与 WASM 对比。原生 WebGPU 默认禁止 CPU 回退，并检查 ORT 性能文件中的 WebGPU 计算节点。完整细节和故障排查请阅读上方中英文教程。
+Use the [full guide](../README.md) for platform setup, model compatibility, performance, offline deployment, and troubleshooting. Repeat the strict checks with the production model before deployment.

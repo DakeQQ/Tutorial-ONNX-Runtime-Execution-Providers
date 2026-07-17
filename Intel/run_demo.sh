@@ -29,7 +29,7 @@ else
 fi
 
 PY=.venv/bin/python
-if ! "$PY" -c 'import importlib.metadata as m, re; norm=lambda name: re.sub(r"[-_.]+", "-", name).lower(); wanted={"onnxruntime-openvino":"1.24.1","onnx":"1.22.0","numpy":"2.3.5"}; names={norm(d.metadata["Name"]) for d in m.distributions() if d.metadata["Name"]}; owners={norm(name) for name in m.packages_distributions().get("onnxruntime", [])}; forbidden={"onnxruntime","onnxruntime-gpu","onnxruntime-directml","openvino"}; ok=owners=={"onnxruntime-openvino"} and names.isdisjoint(forbidden) and all(m.version(name)==version for name,version in wanted.items()); raise SystemExit(0 if ok else 1)' 2>/dev/null; then
+if ! "$PY" -c 'import importlib.metadata as m, re, sys; norm=lambda name: re.sub(r"[-_.]+", "-", name).lower(); numpy_version="2.4.6" if sys.version_info[:2] == (3, 11) else "2.5.1"; wanted={"onnxruntime-openvino":"1.24.1","onnx":"1.22.0","numpy":numpy_version}; names={norm(d.metadata["Name"]) for d in m.distributions() if d.metadata["Name"]}; owners={norm(name) for name in m.packages_distributions().get("onnxruntime", [])}; forbidden={"onnxruntime","onnxruntime-gpu","onnxruntime-directml","openvino"}; ok=owners=={"onnxruntime-openvino"} and names.isdisjoint(forbidden) and all(m.version(name)==version for name,version in wanted.items()); raise SystemExit(0 if ok else 1)' 2>/dev/null; then
     echo "[2/4] Preparing a clean, matched environment..."
     if ((NEW_VENV == 0)); then
         rm -rf .venv
@@ -49,4 +49,4 @@ if ! "$PY" -m pip check >/dev/null; then
 fi
 
 echo "[4/4] Running the strict demo..."
-"$PY" Test.py "$@"
+"$PY" provider_test.py "$@"

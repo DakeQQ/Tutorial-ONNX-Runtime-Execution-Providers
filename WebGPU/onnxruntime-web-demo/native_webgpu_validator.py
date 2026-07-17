@@ -162,7 +162,9 @@ def _parser() -> argparse.ArgumentParser:
         help="ONNX model to run (default: included execution_provider_demo.onnx).",
     )
     parser.add_argument("--device-index", type=int, default=0)
-    parser.add_argument("--warmup", type=int, default=2)
+    parser.add_argument(
+        "--warmups", "--warmup", dest="warmups", type=int, default=2
+    )
     parser.add_argument("--iterations", type=int, default=10)
     parser.add_argument("--layout", choices=("NCHW", "NHWC"), default="NCHW")
     parser.add_argument(
@@ -201,8 +203,8 @@ def main(argv: list[str] | None = None) -> int:
     if not model_path.is_file():
         print(f"ERROR: model not found: {model_path}", file=sys.stderr)
         return 2
-    if args.warmup < 0 or args.iterations < 1:
-        print("ERROR: --warmup must be >= 0 and --iterations must be >= 1.", file=sys.stderr)
+    if args.warmups < 0 or args.iterations < 1:
+        print("ERROR: --warmups must be >= 0 and --iterations must be >= 1.", file=sys.stderr)
         return 2
 
     print("=" * 72)
@@ -308,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"expected {expected_inputs}, got {actual_inputs}"
             )
 
-        for _ in range(args.warmup):
+        for _ in range(args.warmups):
             session.run(None, feeds)
 
         latencies: list[float] = []

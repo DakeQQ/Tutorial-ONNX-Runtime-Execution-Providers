@@ -1,16 +1,21 @@
-# ONNX Runtime on NVIDIA GPUs: complete Windows and Ubuntu guide
+# ONNX Runtime + NVIDIA: CUDA and TensorRT
 
-> **Last verified: 2026-07-16.** Reproducible baseline: ONNX Runtime 1.27.0, CUDA 13.0 Update 2 runtime components, cuDNN 9.14.0.64, classic TensorRT 10.14.1.48, and standalone TensorRT RTX EP ABI plugin 0.3.0.
->
-> [简体中文](README.zh-CN.md) · [Project home](../README.md)
+[简体中文](README.zh-CN.md) · [Repository index](../README.md)
 
-This is the single English guide for every NVIDIA route in this repository. It starts with an unconfigured NVIDIA computer, explains the compatibility rules, and covers installation, strict execution proof, application configuration, tuning, caching, troubleshooting, and upgrades for:
+| Item | Baseline |
+|---|---|
+| Metadata reviewed | `2026-07-17` |
+| Validation scope | Upstream release/package metadata and compatibility contracts; GPU execution was not rerun on this host |
+| Hosts | Windows 10/11 x64 and Ubuntu 22.04/24.04 x86-64 |
+| Routes | `CUDAExecutionProvider`, classic `TensorrtExecutionProvider`, and the standalone `nv_tensorrt_rtx` plugin |
+| Runtime | PyPI ONNX Runtime 1.27.0, CUDA 13.3 Update 1, cuDNN 9.24.0.43, TensorRT 10.14.1.48, plugin 0.3.0 |
+| Upstream watch | ONNX Runtime 1.27.1 is tagged, but its Python core packages are not published on PyPI as of the review date |
+| Entry point | [`provider_test.py`](provider_test.py) |
+| Proof | CPU parity, fail-closed fallback policy, and current-run provider profile events |
 
-- `CUDAExecutionProvider`;
-- classic `TensorrtExecutionProvider`; and
-- the standalone `nv_tensorrt_rtx` EP ABI plugin.
+**Hardware-validation status:** the refreshed CUDA 13.3/cuDNN 9.24 combination was not executed locally because the available GPU predates this guide's Turing floor. Package resolution and documented ABI compatibility are checked below, but they are not substitutes for running the strict proof on the target GPU.
 
-The NVIDIA folder is intentionally flat:
+### Files
 
 | File | Purpose |
 |---|---|
@@ -42,18 +47,18 @@ flowchart TD
 
 Start with CUDA even when TensorRT is the final goal. Do not assume TensorRT is faster: benchmark the production model, real shapes, transfers, warm-up, startup policy, and accuracy mode.
 
-## 2. Verified compatibility and hard rules
+## 2. Check compatibility
 
-### 2.1 Tested combinations
+### 2.1 Pinned combinations
 
 | Goal | ONNX Runtime | NVIDIA user-space components | Python | GPU floor | Driver |
 |---|---|---|---:|---|---:|
-| CUDA EP | `onnxruntime-gpu==1.27.0` | Selected `cuda-toolkit==13.0.2` components + `nvidia-cudnn-cu13==9.14.0.64` | 3.11–3.14 x64 | Turing, compute capability 7.5+ | 580+ |
-| Classic TensorRT EP | Same CUDA core | Above + TensorRT **10.14.1.48** | 3.11–3.13 x64 | TensorRT-supported Turing+ | 580+ |
-| TensorRT RTX plugin, default | `onnxruntime==1.27.0` + plugin `0.3.0` | CUDA 13 variant; TensorRT RTX 1.5 runtime bundled | 3.11–3.14 x64 | Ampere-or-newer **RTX**, normally GeForce RTX 30+ | 580+ |
+| CUDA EP | `onnxruntime-gpu==1.27.0` | Selected `cuda-toolkit==13.3.1` components + `nvidia-cudnn-cu13==9.24.0.43` | 3.11–3.14 x64 | Turing, compute capability 7.5+ | R580+ compatibility; R610+ preferred |
+| Classic TensorRT EP | Same CUDA core | Above + TensorRT **10.14.1.48** | 3.11–3.13 x64 | TensorRT-supported Turing+ | R580+ compatibility; R610+ preferred |
+| TensorRT RTX plugin, default | `onnxruntime==1.27.0` + plugin `0.3.0` | CUDA 13 variant; TensorRT RTX 1.5 runtime bundled | 3.11–3.14 x64 | Ampere-or-newer **RTX**, normally GeForce RTX 30+ | R580+ |
 | TensorRT RTX plugin, CUDA 12 variant | `onnxruntime==1.27.0` + `onnxruntime-ep-nv-tensorrt-rtx-cu12==0.3.0` | CUDA 12 variant; TensorRT RTX 1.5 bundled | 3.11–3.14 x64 | Ampere-or-newer RTX | Ampere/Ada 555.85+; Blackwell 570.00+ |
 
-This guide covers native Windows 10/11 x64 and Ubuntu 22.04/24.04 x86-64. Jetson requires JetPack-specific packages and is outside this desktop guide.
+This guide covers native Windows 10/11 x64 and Ubuntu 22.04/24.04 x86-64. Jetson requires JetPack-specific packages and is outside this desktop guide. The CUDA and classic TensorRT rows were compatibility-reviewed but not GPU-executed during this refresh.
 
 ### 2.2 GPU architecture gate
 
@@ -84,20 +89,23 @@ Do **not** substitute this command for the pinned files:
 onnxruntime-gpu[cuda,cudnn]==1.27.0
 ```
 
-ORT 1.27 metadata still references most CUDA 13 components through retired `nvidia-*-cu13` distribution names. NVIDIA moved those components to un-suffixed distributions and left the old names as `0.0.1` migration placeholders, so the extra no longer resolves as of the verification date. The repository instead uses NVIDIA's current `cuda-toolkit==13.0.2` component meta-package.
+ORT 1.27 metadata still references most CUDA 13 components through retired `nvidia-*-cu13` distribution names. NVIDIA moved those components to un-suffixed distributions and left the old names as `0.0.1` migration placeholders, so the extra no longer resolves as of the metadata review date. The repository instead uses NVIDIA's current `cuda-toolkit==13.3.1` component meta-package.
 
 `ort.preload_dlls(directory="")` discovers the current wheels from their `site-packages/nvidia/...` layout. During the package-name transition, `ort.print_debug_info()` may still report old distribution names as absent. Failed native-library loads and the strict profile test are decisive.
 
 ### 2.5 Why these pins
 
-- ORT 1.27's ordinary PyPI GPU wheel is built for CUDA 13.0 and cuDNN 9.14.0.64; CUDA 12 is deprecated in its release notes.
-- `cuda-toolkit==13.0.2` supplies a coherent CUDA 13.0 Update 2 component set under NVIDIA's current package names.
-- ORT 1.27's classic provider build uses TensorRT 10.14.1.48. Current unpinned `tensorrt-cu13` is TensorRT 11, which is not a drop-in replacement for `nvinfer` major 10.
+- ONNX Runtime 1.27.1 is the latest upstream tag, but neither `onnxruntime` nor `onnxruntime-gpu` 1.27.1 is published on PyPI as of the review date. Version 1.27.0 remains the latest installable Python core.
+- The ORT 1.27.0 GPU wheel was built with CUDA 13.0 and cuDNN 9.14.0.64; CUDA 12 is deprecated in its release notes. Build versions describe the minimum ABI, not a requirement to freeze every compatible minor runtime.
+- `cuda-toolkit==13.3.1` supplies the current CUDA 13.3 Update 1 components under NVIDIA's un-suffixed package names. CUDA 13 maintains binary compatibility across minor releases.
+- cuDNN 9.24.0 is binary backward-compatible with applications built against earlier cuDNN 9 minors. Its support matrix covers CUDA 13.0 through 13.3 and recommends CUDA 13.3 for tuned performance.
+- R580 is the CUDA 13 minor-compatibility floor. New CUDA 13.3 features or PTX generated by CUDA 13.3 NVRTC can require a newer driver, so R610+ is the conservative choice for the refreshed runtime; the strict proof remains decisive.
+- ORT 1.27's classic provider build uses TensorRT 10.14.1.48. The current unpinned `tensorrt-cu13` is 11.1.0.106, which is not a drop-in replacement for `nvinfer` major 10. TensorRT 10.14's package accepts CUDA runtime 13.x (`>=13,<14`).
 - TensorRT 10.14 bindings publish x86-64 wheels through CPython 3.13, not 3.14.
 - The plugin meta-package defaults to CUDA 13, bundles TensorRT RTX 1.5 runtime libraries, and recommends the registration name `nv_tensorrt_rtx`.
 - ORT 1.27 targets the ONNX 1.21 specification. This repository uses `onnx==1.22.0` only to author a smoke model explicitly saved as IR 10 and opset 17.
 
-## 3. Prepare the machine
+## 3. Prepare the host
 
 ### 3.1 Inspect the hardware and operating system
 
@@ -202,9 +210,9 @@ The environment contains:
 
 | Package | Pin | Purpose |
 |---|---:|---|
-| `onnxruntime-gpu` | `1.27.0` | ORT CUDA 13 binary and built-in CUDA/classic-TensorRT providers |
-| selected `cuda-toolkit` extras | `13.0.2` | cuBLAS, CUDA runtime, cuFFT, cuRAND, nvJitLink, and NVRTC |
-| `nvidia-cudnn-cu13` | `9.14.0.64` | Matching cuDNN runtime |
+| `onnxruntime-gpu` | `1.27.0` | Latest PyPI ORT CUDA 13 core and built-in CUDA/classic-TensorRT providers |
+| selected `cuda-toolkit` extras | `13.3.1` | Binary-compatible CUDA 13.3 cuBLAS, runtime, cuFFT, cuRAND, nvJitLink, and NVRTC |
+| `nvidia-cudnn-cu13` | `9.24.0.43` | Backward-compatible cuDNN 9 runtime supported with CUDA 13.3 |
 | `onnx` | `1.22.0` | Smoke-model authoring only |
 
 ### 4.2 Verify exposure, loading, and real execution
@@ -284,7 +292,7 @@ arch="x86_64"
 wget "https://developer.download.nvidia.com/compute/cuda/repos/${distro}/${arch}/cuda-keyring_1.1-1_all.deb"
 sudo dpkg -i cuda-keyring_1.1-1_all.deb
 sudo apt update
-sudo apt install -y cuda-toolkit-13 zlib1g
+sudo apt install -y cuda-toolkit-13-3 zlib1g
 sudo apt install -y cudnn9-cuda-13
 ```
 
@@ -301,14 +309,15 @@ nvcc --version
 
 APT libraries are registered with the system loader; `LD_LIBRARY_PATH` is normally unnecessary. For a nonstandard runfile/tar installation, prepend exactly one matching library directory instead of accumulating incompatible versions.
 
-On Windows, download CUDA 13.x from the [CUDA Toolkit Archive](https://developer.nvidia.com/cuda-toolkit-archive), keep the newer working driver when the installer offers another one, install matching cuDNN 9 only when needed, and verify both `nvcc --version` and `nvidia-smi` in a new terminal. Modern CUDA does not need the obsolete `libnvvp` path.
+On Windows, download CUDA 13.3 Update 1 from the [CUDA Toolkit Archive](https://developer.nvidia.com/cuda-toolkit-archive), install a current standalone NVIDIA driver, install matching cuDNN 9 only when needed, and verify both `nvcc --version` and `nvidia-smi` in a new terminal. CUDA 13.1 and newer no longer bundle a Windows display driver. Modern CUDA does not need the obsolete `libnvvp` path.
 
 ### 4.6 CUDA troubleshooting
 
 | Symptom | Likely cause | Correct action |
 |---|---|---|
 | `nvidia-smi` missing or failing | Driver absent, kernel module not loaded, or Secure Boot rejection | Fix the driver before Python |
-| Driver below branch 580 | CUDA 13 runtime is newer than the driver family | Upgrade the driver or deliberately select a supported CUDA 12 stack |
+| Driver below branch R580 | CUDA 13 runtime is newer than the driver family | Upgrade the driver or deliberately select a supported CUDA 12 stack |
+| R580 driver fails in an NVRTC/PTX path | CUDA 13.3-generated PTX or a newer feature exceeds minor-compatibility mode | Upgrade to R610+ or restore a CUDA 13.0 runtime set, then rerun the strict proof |
 | Only CPU provider appears | Wrong ORT core, native libraries failed, or GPU is pre-Turing | Recreate the venv, install the pinned set, verify `sm_75+`, run debug info |
 | `libcudnn.so.9` / `cudnn64_9.dll` missing | cuDNN wheel absent or undiscoverable | Reinstall CUDA requirements and call `preload_dlls(directory="")` |
 | `libcublas.so.13` / CUDA DLL missing | Runtime wheel missing or stale paths win | Reinstall the pinned set and remove mismatched paths from this process |
@@ -737,7 +746,7 @@ Keep the original model and rebuild context/cache artifacts after incompatible p
 | Cache stops helping after upgrade | Context/runtime compatibility changed | Remove only that application's old cache and rebuild |
 | Unregister fails or crashes | A live session still references the plugin | Destroy sessions/bindings, clear retained references, then unregister |
 
-## 7. What the shared proof test guarantees
+## 7. Understand the proof
 
 Run from the repository root:
 
@@ -758,7 +767,7 @@ The proof layers answer different questions:
 
 The repository test enforces layer 3, uses independent NumPy math as the oracle, disables ORT automatic fallback, disables CPU graph fallback, and rejects unexpected providers. For classic TensorRT, CUDA is the only allowed secondary EP. A provider name in a list is not execution proof.
 
-## 8. Upgrade without breaking a working setup
+## 8. Upgrade safely
 
 ```mermaid
 flowchart LR
@@ -775,9 +784,11 @@ flowchart LR
 
 Record `python --version`, `pip freeze`, `nvidia-smi`, provider lists, profile evidence, and production model/options. Never upgrade CUDA, cuDNN, TensorRT, ORT, and the application in-place at the same time. Delete relevant engine, timing, runtime, and EP-context caches after incompatible changes.
 
-## 9. Official references
+## 9. References
 
-- [ONNX Runtime 1.27 release](https://github.com/microsoft/onnxruntime/releases/tag/v1.27.0)
+- [ONNX Runtime 1.27.0 Python release](https://github.com/microsoft/onnxruntime/releases/tag/v1.27.0)
+- [ONNX Runtime 1.27.1 upstream patch release](https://github.com/microsoft/onnxruntime/releases/tag/v1.27.1)
+- [ONNX Runtime 1.27.0 PyPI metadata](https://pypi.org/pypi/onnxruntime-gpu/1.27.0/json)
 - [ORT 1.27 GPU build variables](https://github.com/microsoft/onnxruntime/blob/v1.27.0/tools/ci_build/github/azure-pipelines/templates/common-variables.yml)
 - [ONNX Runtime installation](https://onnxruntime.ai/docs/install/)
 - [ORT model compatibility](https://onnxruntime.ai/docs/reference/compatibility.html)
@@ -787,8 +798,12 @@ Record `python --version`, `pip freeze`, `nvidia-smi`, provider lists, profile e
 - [ONNX Runtime plugin EP libraries](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/)
 - [Standalone TensorRT RTX EP ABI repository](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI)
 - [Plugin 0.3.0 release](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/releases/tag/v0.3.0)
-- [CUDA Toolkit 13.0.2 Python metadata](https://pypi.org/pypi/cuda-toolkit/13.0.2/json)
-- [cuDNN CUDA 13 9.14.0.64 metadata](https://pypi.org/pypi/nvidia-cudnn-cu13/9.14.0.64/json)
+- [Plugin 0.3.0 CUDA 13 wheel metadata](https://pypi.org/pypi/onnxruntime-ep-nv-tensorrt-rtx-cu13/0.3.0/json)
+- [CUDA Toolkit 13.3.1 Python metadata](https://pypi.org/pypi/cuda-toolkit/13.3.1/json)
+- [CUDA Toolkit 13.3 release notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/)
+- [cuDNN CUDA 13 9.24.0.43 metadata](https://pypi.org/pypi/nvidia-cudnn-cu13/9.24.0.43/json)
+- [cuDNN support matrix](https://docs.nvidia.com/deeplearning/cudnn/backend/latest/reference/support-matrix.html)
+- [cuDNN API compatibility](https://docs.nvidia.com/deeplearning/cudnn/backend/latest/developer/forward-compatibility.html)
 - [TensorRT CUDA 13 10.14.1.48.post1 metadata](https://pypi.org/pypi/tensorrt-cu13/10.14.1.48.post1/json)
 - [NVIDIA CUDA GPU list](https://developer.nvidia.com/cuda-gpus)
 - [NVIDIA CUDA compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html)

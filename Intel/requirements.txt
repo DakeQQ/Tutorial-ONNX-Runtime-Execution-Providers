@@ -1,4 +1,4 @@
-# Tested release family documented by this tutorial (2026-07-16).
+# Tested release family documented by this tutorial (2026-07-17).
 # Upgrade both pins together only after checking the Intel OpenVINO EP release matrix.
 onnxruntime-openvino==1.24.1
 # The Linux EP wheel bundles native OpenVINO libraries. Windows needs the
@@ -8,4 +8,7 @@ openvino==2025.4.1; platform_system == "Windows"
 # Exact top-level pins keep demo behavior stable. Transitive dependencies remain
 # constrained by these packages rather than byte-for-byte locked.
 onnx==1.22.0
-numpy==2.3.5
+# NumPy 2.5 dropped Python 3.11; use the newest compatible stable line for each
+# Python version that has an onnxruntime-openvino 1.24.1 wheel.
+numpy==2.4.6; python_version == "3.11"
+numpy==2.5.1; python_version >= "3.12"

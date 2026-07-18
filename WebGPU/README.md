@@ -5,26 +5,32 @@
 | Item | Baseline |
 |---|---|
 | Last verified | `2026-07-17` |
-| Hosts | Browser-dependent Windows, Linux, and macOS; native plugin support is narrower |
-| Routes | Browser WASM, browser WebGPU, browser WebNN, and native Python WebGPU |
+| Hosts | Browser routes follow Windows/Linux/macOS browser support; native plugin support is narrower |
+| Routes | Browser WASM, browser WebGPU, browser WebNN, native Python WebGPU |
 | Runtime | `onnxruntime-web==1.27.0`, `onnxruntime==1.27.0`, `onnxruntime-ep-webgpu==0.1.0` |
 | Entry points | `onnxruntime-web-demo/run_demo.bat` and `run_demo.sh` |
-| Proof | Independent math reference, cross-provider parity, strict fallback policy, and native profile events where available |
+| Proof | Independent math reference, cross-provider parity, strict fallback policy, native profile events |
 
 > [!NOTE]
-> ORT APIs/packages are verified against ONNX Runtime and npm/PyPI primary sources; platform availability follows browser/OS vendors. WebGPU and especially WebNN evolve quickly, so recheck the linked live status pages before shipping.
+> APIs and packages are checked directly against ONNX Runtime, npm, and PyPI. Platform availability follows the browser/OS vendors. WebGPU — and especially WebNN — changes fast, so recheck the linked live status pages before shipping.
+
+| You are… | Start here |
+|---|---|
+| New here, want it running fast | [§4 Run the quick start](#4-run-the-quick-start) |
+| Building a browser (JavaScript) app | [§6 Configure the browser route](#6-configure-the-browser-route) |
+| Building a native Python app | [§7 Configure the native route](#7-configure-the-native-route) |
+| Not sure the GPU is really being used | [§11 Troubleshoot](#11-troubleshoot) |
+| Getting ready to ship | [§14 Production checklist](#14-production-checklist) |
 
 ### Release-channel snapshot
 
-| Component | Latest installable stable | This guide | Upstream development signal |
+| Component | Latest installable stable | This guide | Upstream signal |
 |---|---:|---:|---|
-| ONNX Runtime Web (npm) | `1.27.0` | `1.27.0` | npm also publishes date-stamped `dev` builds; they are not used here |
-| ONNX Runtime core (PyPI) | `1.27.0` | `1.27.0` | Follow the next tagged ORT release rather than an unpaired nightly |
-| Native WebGPU plugin (PyPI) | `0.1.0` | `0.1.0` | The source-tree `VERSION_NUMBER` is already `0.3.0`, but that is not a public PyPI release |
+| ONNX Runtime Web (npm) | `1.27.0` | `1.27.0` | Date-stamped `dev` builds also exist on npm; not used here |
+| ONNX Runtime core (PyPI) | `1.27.0` | `1.27.0` | Follow the next tagged release, not an unpaired nightly |
+| Native WebGPU plugin (PyPI) | `0.1.0` | `0.1.0` | Source-tree `VERSION_NUMBER` already reads `0.3.0`, but it is not a published PyPI release |
 
-The runnable path deliberately follows the newest **published stable** artifacts, not the highest version string visible in the source tree. Upgrade the native pair only after both compatible packages are published and can pass the strict profile/parity checks in this repository.
-
-Recheck the stable release channels before a future upgrade:
+This guide follows the newest **published stable** artifacts, not the highest version string visible in the source tree.
 
 ```bash
 npm view onnxruntime-web version
@@ -32,47 +38,88 @@ python -m pip index versions onnxruntime
 python -m pip index versions onnxruntime-ep-webgpu
 ```
 
-Do not replace the pins from those version numbers alone. Recheck the npm export map, Python wheel filenames, plugin minimum-core requirement, and the strict demo before committing a new pair.
+A higher version number alone is not enough to upgrade the pins above — recheck the npm export map, wheel filenames, the plugin's minimum-core requirement, and rerun the strict demo first.
 
-## 1. Understand the routes
+## Contents
 
-| Route | Language/API | Runs where | Hardware path | Package | Maturity in this guide |
-|---|---|---|---|---|---|
-| Browser WASM | JavaScript, hosted by Python | Browser | ORT compiled to WebAssembly → CPU | `onnxruntime-web` | Baseline; broadest compatibility |
-| Browser WebGPU | JavaScript, hosted by Python | Browser | ORT Web/JSEP → browser WebGPU → D3D12/Vulkan/Metal | `onnxruntime-web` | Recommended browser GPU route |
-| Browser WebNN | JavaScript, hosted by Python | Chromium preview | ORT Web → `navigator.ml` → Windows ML/LiteRT/Core ML → CPU/GPU/NPU | `onnxruntime-web` | Experimental; browser flag often required |
-| Native WebGPU | **Python** | Native process | ONNX Runtime plugin API → WebGPU EP → Dawn → D3D12/Vulkan/Metal | `onnxruntime` + `onnxruntime-ep-webgpu` | New beta plugin route |
-
-### Important truth about “Python + WebNN”
-
-There is no published `onnxruntime-ep-webnn` Python package in this setup. WebNN is a **Web browser standard** exposed as `navigator.ml`. Therefore:
-
-- `python launch_demo.py webnn` starts a correct local HTTP server and a WebNN-enabled browser; inference runs in JavaScript inside that browser.
-- `python launch_demo.py native-webgpu` runs true native Python inference with the WebGPU plugin.
-- Do not install a similarly named unofficial package expecting native WebNN.
+- [1. Understand the four routes](#1-understand-the-four-routes)
+- [2. Choose your route](#2-choose-your-route)
+- [3. Check compatibility](#3-check-compatibility)
+- [4. Run the quick start](#4-run-the-quick-start)
+- [5. Prepare the host](#5-prepare-the-host)
+- [6. Configure the browser route](#6-configure-the-browser-route)
+- [7. Configure the native route](#7-configure-the-native-route)
+- [8. Understand model fallback](#8-understand-model-fallback)
+- [9. Tune I/O and performance](#9-tune-io-and-performance)
+- [10. Deploy locally or offline](#10-deploy-locally-or-offline)
+- [11. Troubleshoot](#11-troubleshoot)
+- [12. Build from source (advanced)](#12-build-from-source-advanced)
+- [13. References](#13-references)
+- [14. Production checklist](#14-production-checklist)
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","primaryColor":"#dbeafe","primaryTextColor":"#1e293b","primaryBorderColor":"#3b82f6","lineColor":"#94a3b8"},"themeCSS":".mindmap-node text{fill:#1e293b !important;} .mindmap-node span{color:#1e293b !important;}"}}%%
+mindmap
+  root((ORT + WebGPU))
+    1 Choose
+      Browser WASM
+      Browser WebGPU
+      Browser WebNN
+      Native Python WebGPU
+    2 Prove
+      Independent JS reference
+      CPU parity check
+      No CPU fallback
+      Compute events in profile
+    3 Diagnose
+      Missing navigator API
+      Null adapter
+      Unsupported operator
+      Software only rendering
+    4 Deploy
+      Pin exact versions
+      Serve HTTPS with COOP COEP
+      Keep a visible CPU fallback
+```
+
+## 1. Understand the four routes
+
+| Route | Language | Runs where | Hardware path | Package |
+|---|---|---|---|---|
+| Browser WASM | JavaScript, hosted by Python | Browser | ORT compiled to WebAssembly → CPU | `onnxruntime-web` |
+| Browser WebGPU | JavaScript, hosted by Python | Browser | ORT Web/JSEP → browser WebGPU → D3D12/Vulkan/Metal | `onnxruntime-web` |
+| Browser WebNN | JavaScript, hosted by Python | Chromium preview | ORT Web → `navigator.ml` → Windows ML/LiteRT/Core ML → CPU/GPU/NPU | `onnxruntime-web` |
+| Native WebGPU | **Python** | Native process | ONNX Runtime plugin API → WebGPU EP → Dawn → D3D12/Vulkan/Metal | `onnxruntime` + `onnxruntime-ep-webgpu` |
+
+> [!IMPORTANT]
+> **"Python + WebNN" is not native.** There is no published `onnxruntime-ep-webnn` Python package — WebNN is a **browser** standard (`navigator.ml`), not a Python one.
+> - `python launch_demo.py webnn` opens a WebNN-enabled **browser**; JavaScript runs the model there.
+> - `python launch_demo.py native-webgpu` is the only route that runs inference **inside Python**.
+> - Do not install a similarly named unofficial package expecting native WebNN.
+
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart LR
-    M[ONNX model]
-    subgraph Browser
-      JS[JavaScript / TypeScript]
-      ORTW[onnxruntime-web]
-      WASM[WASM EP]
-      WGPU[WebGPU EP / JSEP]
-      WNN[WebNN EP]
-      NAVGPU[navigator.gpu]
-      NAVML[navigator.ml]
+    M["ONNX model"]
+    subgraph BR["Browser"]
+      JS["JavaScript / TypeScript"]
+      ORTW["onnxruntime-web"]
+      WASM["WASM EP"]
+      WGPU["WebGPU EP (JSEP)"]
+      WNN["WebNN EP"]
+      NAVGPU["navigator.gpu"]
+      NAVML["navigator.ml"]
     end
-    subgraph NativePython[Native Python]
-      PY[Python API]
-      ORT[onnxruntime core]
-      PLUGIN[onnxruntime-ep-webgpu plugin]
-      DAWN[Dawn]
+    subgraph NP["Native Python"]
+      PY["Python API"]
+      ORT["onnxruntime core"]
+      PLUGIN["onnxruntime-ep-webgpu"]
+      DAWN["Dawn"]
     end
-    CPU[Local CPU]
-    GPU[Local GPU]
-    NPU[Local NPU]
-    OSML[Windows ML / LiteRT / Core ML]
+    CPU["Local CPU"]
+    GPU["Local GPU"]
+    NPU["Local NPU"]
+    OSML["Windows ML / LiteRT / Core ML"]
 
     M --> ORTW
     JS --> ORTW
@@ -82,76 +129,101 @@ flowchart LR
     OSML --> CPU
     OSML --> GPU
     OSML --> NPU
-
     M --> ORT
     PY --> ORT --> PLUGIN --> DAWN --> GPU
+
+    classDef leaf fill:#eceff1,stroke:#90a4ae,color:#20242b;
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
+    classDef dev fill:#ede9fe,stroke:#8b5cf6,color:#4c1d95;
+    class M,JS,ORTW,PY,ORT leaf;
+    class WASM,WGPU,WNN,PLUGIN,DAWN step;
+    class NAVGPU,NAVML dec;
+    class CPU,GPU,NPU,OSML dev;
 ```
 
-No model input is sent to a cloud inference service. The first browser run may download the pinned ORT Web assets from jsDelivr if `npm ci` has not populated the local assets.
+No model input ever leaves the machine for a cloud service. The first browser run may fetch the pinned ORT Web assets from jsDelivr unless `npm ci` already populated them locally.
 
-## 2. Choose a route
+## 2. Choose your route
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart TD
-    A[What do you need?] --> B{Python process must perform inference?}
-    B -->|Yes| C{GPU has D3D12, Vulkan, or Metal?}
-    C -->|Yes| D[Native Python WebGPU plugin]
-    C -->|No or wheel unavailable| E[Use native CPU/vendor EP or browser WASM]
-    B -->|No, browser app is acceptable| F{Need NPU or OS-native ML graph?}
-    F -->|Yes| G[Try WebNN; keep WASM fallback]
-    F -->|No| H{WebGPU available?}
-    H -->|Yes| I[Browser WebGPU]
-    H -->|No| J[Browser WASM]
+    A["What do you need?"] --> B{"Python must run inference?"}
+    B -->|Yes| C{"GPU has D3D12, Vulkan, or Metal?"}
+    C -->|Yes| D["Native Python WebGPU plugin"]
+    C -->|No, or no wheel| E["Native CPU / vendor EP, or browser WASM"]
+    B -->|No, a browser app is fine| F{"Need NPU or an OS-native ML graph?"}
+    F -->|Yes| G["Try WebNN, keep a WASM fallback"]
+    F -->|No| H{"WebGPU available?"}
+    H -->|Yes| I["Browser WebGPU"]
+    H -->|No| J["Browser WASM"]
+
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
+    classDef good fill:#dcfce7,stroke:#22c55e,color:#14532d;
+    class A step;
+    class B,C,F,H dec;
+    class D,E,G,I,J good;
 ```
 
-For a first test, run **WASM**, then **WebGPU**, then **WebNN**. This separates model errors from accelerator/browser errors.
+> [!TIP]
+> For a first test, run in this order: **WASM → WebGPU → WebNN**. It separates model bugs from accelerator/browser bugs.
 
 ## 3. Check compatibility
 
 ### 3.1 Practical OS matrix
 
-Legend: ✅ expected; 🧪 preview/validate on the exact machine; ❌ no public route in this tutorial.
+Legend: ✅ expected · 🧪 preview, validate on the exact machine · ❌ no public route in this tutorial.
 
-| OS | Browser WASM | Browser WebGPU | Browser WebNN | Native Python WebGPU plugin |
+| OS | Browser WASM | Browser WebGPU | Browser WebNN | Native Python WebGPU |
 |---|---:|---:|---:|---:|
-| Windows 10/11 x64 | ✅ | ✅ Chrome/Edge | 🧪 Canary/flag; Windows ML path is best on Windows 11 24H2+ | ✅ `win_amd64` wheel |
-| Windows ARM64 | ✅ | 🧪 Chromium WebGPU is behind a flag | 🧪 | ❌ no public ARM64 wheel in plugin 0.1.0 |
-| Ubuntu/Linux x86-64 | ✅ | 🧪 supported Chromium/GPU combinations; see below | 🧪 WebNN flag/LiteRT, not in ORT's validated matrix | ✅ manylinux glibc 2.27/2.28 x86-64 wheel |
-| Linux ARM64 | ✅ | 🧪 browser/device dependent | 🧪 | ❌ no public aarch64 wheel in plugin 0.1.0 |
-| macOS 14+ Apple Silicon | ✅ | ✅ Chrome/Edge; Safari WebGPU exists on macOS 26 but is not in ORT Web's supported matrix | 🧪 Canary/flag/Core ML; not in ORT's validated matrix | ✅ plugin universal2 + ORT core arm64 wheels |
-| macOS Intel | ✅ | ✅ on a Chrome/Edge and macOS version still supported by the browser | 🧪 browser/device dependent | ❌ plugin is universal2, but the required ORT 1.27.0 core has no macOS x86-64 wheel |
+| Windows 10/11 x64 | ✅ | ✅ Chrome/Edge | 🧪 Canary/flag; best on Windows 11 24H2+ | ✅ `win_amd64` wheel |
+| Windows ARM64 | ✅ | 🧪 behind a Chromium flag | 🧪 | ❌ no ARM64 wheel in plugin 0.1.0 |
+| Ubuntu/Linux x86-64 | ✅ | 🧪 depends on Chromium/GPU combo (below) | 🧪 not in ORT's validated matrix | ✅ manylinux glibc 2.27/2.28 x86-64 wheel |
+| Linux ARM64 | ✅ | 🧪 browser/device dependent | 🧪 | ❌ no aarch64 wheel in plugin 0.1.0 |
+| macOS 14+ Apple Silicon | ✅ | ✅ Chrome/Edge; Safari 26 has WebGPU but is not in ORT Web's matrix | 🧪 Canary/flag/Core ML, not validated by ORT | ✅ plugin universal2 + ORT core arm64 |
+| macOS Intel | ✅ | ✅ on a still-supported Chrome/Edge + macOS version | 🧪 browser/device dependent | ❌ ORT 1.27.0 core has no macOS x86-64 wheel |
 
-### 3.2 Why general browser support and ORT support differ
+### 3.2 Browser support vs. ORT support
 
-A browser may expose WebGPU/WebNN while ONNX Runtime Web has not yet listed that browser/OS combination as supported. Treat both checks as necessary:
+A browser can expose WebGPU/WebNN before ONNX Runtime Web has validated that browser/OS pairing. Both layers must pass:
 
-1. **Web API layer:** `navigator.gpu` or `navigator.ml` exists and can create a device/context.
-2. **ORT layer:** the model's operators and data types are implemented by that ORT EP on that browser.
+| Layer | Check |
+|---|---|
+| Web API | `navigator.gpu` or `navigator.ml` exists and creates a device/context |
+| ORT | That EP implements the model's operators and data types on that browser |
 
-The compatibility table shipped in the published `onnxruntime-web 1.27.0` package conservatively lists:
+`onnxruntime-web 1.27.0`'s own compatibility table is conservative:
 
 | EP | ORT Web documented browser support |
 |---|---|
-| WASM | Chrome/Edge, Safari, Firefox, and single-threaded Node.js |
-| WebGPU | Chrome/Edge on Windows, Android, and macOS |
+| WASM | Chrome/Edge, Safari, Firefox, single-threaded Node.js |
+| WebGPU | Chrome/Edge on Windows, Android, macOS |
 | WebNN | Chrome/Edge on Windows with `WebMachineLearningNeuralNetwork` enabled |
 
-The broader implementation status is newer:
+Broader real-world status moves faster:
 
-- Chromium WebGPU is stable on macOS/Windows x86/x64 and ChromeOS since 113.
-- Linux Chromium became enabled for selected Intel Gen12+ systems in 144 and NVIDIA driver 535.183.01+ on Wayland in 147; other Linux combinations may still need flags.
-- Safari 26 exposes WebGPU on macOS/iOS/iPadOS/visionOS 26, but this is not the same as an ORT Web support guarantee.
-- WebNN remains pre-stable/flagged. WebNN project guidance lists Windows ML, LiteRT, and Core ML backends, while ORT's conservative matrix currently validates Windows Chromium.
+- Chromium WebGPU has been stable on macOS/Windows x86/x64 and ChromeOS since milestone 113.
+- Linux Chromium added selected Intel Gen12+ in 144, and NVIDIA driver 535.183.01+ on Wayland in 147; other Linux combos may still need flags.
+- Safari 26 exposes WebGPU on macOS/iOS/iPadOS/visionOS 26 — that is not the same as an ORT Web guarantee.
+- WebNN stays pre-stable/flagged. Its own docs list Windows ML, LiteRT, and Core ML backends; ORT's conservative matrix only validates Windows Chromium today.
 
-### 3.3 Native plugin public wheels, version 0.1.0
+### 3.3 Native plugin wheels (v0.1.0)
 
-| Wheel | Platform requirement | Architecture |
+| Wheel | Platform | Architecture |
 |---|---|---|
 | `onnxruntime_ep_webgpu-0.1.0-py3-none-win_amd64.whl` | 64-bit Windows | x86-64 |
 | `...manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl` | glibc 2.27/2.28-compatible Linux | x86-64 |
 | `...macosx_14_0_universal2.whl` | macOS 14+ | Intel + Apple Silicon |
 
-The PyPI plugin wheel requires Python 3.11+ but intentionally declares no hard `Requires-Dist` dependency on an ONNX Runtime core package. Official plugin guidance requires a separately installed compatible core, advertises 1.24.4 as the minimum, and validates compatibility when the library is registered. This guide pins the tested `onnxruntime==1.27.0` pair rather than relying on that lower bound. The core publishes CPython 3.11–3.14 wheels; its macOS wheels are arm64-only, so the complete pinned native route supports Apple Silicon, not Intel Macs, even though the plugin wheel itself is universal2.
+| Fact | Detail |
+|---|---|
+| Plugin wheel requires | Python 3.11+; no hard `Requires-Dist` on an ONNX Runtime core package |
+| Official minimum core | `onnxruntime` 1.24.4, checked at registration time |
+| This guide pins | `onnxruntime==1.27.0` — a tested pair, not just the floor |
+| Core wheel coverage | CPython 3.11–3.14; **macOS wheels are arm64-only** |
+| Net effect | The full native route supports Apple Silicon, not Intel Mac — even though the plugin wheel itself is universal2 |
 
 ## 4. Run the quick start
 
@@ -159,24 +231,23 @@ The PyPI plugin wheel requires Python 3.11+ but intentionally declares no hard `
 
 | Item | Minimum | Recommended |
 |---|---|---|
-| Python | 3.10+ for browser launcher; 64-bit CPython 3.11–3.14 for the pinned native stack | 64-bit CPython 3.12 |
-| Node.js/npm | Not needed when using the pinned CDN; required to prepare local/offline browser assets | Current Node.js LTS, then run `npm ci` |
+| Python | 3.10+ for the browser launcher; 64-bit CPython 3.11–3.14 for the native stack | 64-bit CPython 3.12 |
+| Node.js/npm | Not needed with the pinned CDN; needed to build local/offline assets | Current LTS, then `npm ci` |
 | Browser | Current Chrome or Edge | Stable for WebGPU; Canary/Dev for WebNN |
-| GPU driver | Must expose D3D12, Vulkan, or Metal | Latest stable driver from GPU/OS vendor |
-| Network | Needed when local npm assets/package wheels are absent; also for first-time Windows ML/EP provisioning | Run `npm ci` once for local browser assets |
+| GPU driver | Must expose D3D12, Vulkan, or Metal | Latest stable vendor driver |
+| Network | Needed if local assets/wheels are missing, or for first-time Windows ML setup | Run `npm ci` once |
 | Model | Valid ONNX model | Start with the included `execution_provider_demo.onnx` |
 
-Do **not** double-click the HTML file. `file://` is not a secure context and cannot use WebGPU/WebNN correctly. The launcher serves `http://127.0.0.1`, which browsers treat as trustworthy.
+> [!WARNING]
+> Do not double-click the HTML file. `file://` is not a secure context and cannot use WebGPU/WebNN correctly. The launcher serves `http://127.0.0.1`, which browsers trust.
 
 ### 4.2 Open the demo folder
-
-From the repository root:
 
 ```bash
 cd WebGPU/onnxruntime-web-demo
 ```
 
-The included model is deliberately small, static, and limited to operators listed by the current WASM, WebGPU, and WebNN tables:
+The checked-in model is deliberately tiny and uses only operators every route supports:
 
 | Value | Kind | Type | Shape |
 |---|---|---|---|
@@ -184,93 +255,88 @@ The included model is deliberately small, static, and limited to operators liste
 | `right` | Input | `float32` | `[1, 4, 128, 128]` |
 | `output` | Output | `float32` | `[1, 4, 128, 128]` |
 
-The checked-in 418-byte model uses ONNX IR 13 and `ai.onnx` opset 17. Its SHA-256 is `db8b8de41d85f7ea2df7e4ecb4dc62150fb8a6b3a30753f1659e5b3af47b5efd`.
+418 bytes · ONNX IR 13 · opset 17 · SHA-256 `db8b8de41d85f7ea2df7e4ecb4dc62150fb8a6b3a30753f1659e5b3af47b5efd`
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart LR
-  L[left] --> MM[MatMul]
-  R[right] --> MM
-  MM --> A[Add bias]
-  A --> RELU[Relu]
-  RELU --> O[output]
+  L["left"] --> MM["MatMul"]
+  R["right"] --> MM
+  MM --> A["Add bias"]
+  A --> RELU["Relu"]
+  RELU --> O["output"]
+
+  classDef leaf fill:#eceff1,stroke:#90a4ae,color:#20242b;
+  classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+  classDef good fill:#dcfce7,stroke:#22c55e,color:#14532d;
+  class L,R leaf;
+  class MM,A,RELU step;
+  class O good;
 ```
 
 | Demo file | Purpose |
 |---|---|
 | `execution_provider_demo.onnx` | Checked-in cross-provider demo model |
-| `browser-demo.html` + `browser-demo.js` | Browser WASM/WebGPU/WebNN preflight, inference, parity, and timing UI |
-| `launch_demo.py` | Local HTTP server, browser discovery/launch, and native-mode dispatcher |
-| `native_webgpu_validator.py` | Native Python plugin registration, strict assignment, CPU parity, profiling, and cleanup |
-| `run_demo.bat` / `run_demo.sh` | Rookie-friendly Windows and Ubuntu/macOS wrappers |
+| `browser-demo.html` + `browser-demo.js` | Browser preflight, inference, parity, and timing UI |
+| `launch_demo.py` | Local HTTP server, browser discovery/launch, native-mode dispatch |
+| `native_webgpu_validator.py` | Native plugin registration, strict assignment, CPU parity, profiling, cleanup |
+| `run_demo.bat` / `run_demo.sh` | Windows and Ubuntu/macOS one-click wrappers |
 
-### 4.3 Windows one-click commands
+### 4.3 One-click commands
 
-Open **PowerShell** or **Command Prompt** in the demo directory:
+| Route | Windows | Linux / macOS |
+|---|---|---|
+| WASM | `run_demo.bat wasm` | `bash run_demo.sh wasm` |
+| Browser WebGPU | `run_demo.bat webgpu` | `bash run_demo.sh webgpu` |
+| Browser WebNN | `run_demo.bat webnn --device gpu` | `bash run_demo.sh webnn --device gpu` |
+| Native WebGPU | `run_demo.bat native-webgpu --iterations 20` | `bash run_demo.sh native-webgpu --iterations 20` |
 
-```bat
-run_demo.bat wasm
-run_demo.bat webgpu
-run_demo.bat webnn --device gpu
-run_demo.bat native-webgpu --iterations 20
-```
+No arguments defaults to browser WebGPU (`bash run_demo.sh`). Other WebNN devices:
 
-Useful WebNN alternatives:
+| Device | Flag | Note |
+|---|---|---|
+| GPU | `--device gpu` | Default choice to test first |
+| CPU | `--device cpu` | Always-available reference |
+| NPU | `--device npu` | Confirm an NPU-capable backend/EP first via WebNN Report or Chromium histograms |
 
-```bat
-run_demo.bat webnn --device cpu
-run_demo.bat webnn --device npu
-```
+The native command creates `.venv-webgpu`, installs the pinned packages, discovers WebGPU devices, disables CPU fallback by default, compares results against the CPU EP, and inspects the ORT profile for real `WebGpuExecutionProvider` compute events.
 
-Use `npu` only after WebNN Report or Chromium histograms confirm that an NPU-capable backend/EP is installed; an NPU request is not portable across all WebNN machines.
+> [!NOTE]
+> Use `--allow-cpu-fallback` only with a diagnostic `--model` that keeps the included smoke model's input contract; adapting arbitrary models is outside this validator.
 
-The native command creates `.venv-webgpu`, installs the pinned packages, discovers WebGPU devices, disables CPU fallback by default, compares results with the CPU EP, and inspects the ORT profile for actual `WebGpuExecutionProvider` compute events. Use `--allow-cpu-fallback` only with a diagnostic `--model` that retains the included smoke-model input contract; adapting arbitrary model inputs is outside this validator.
-
-### 4.4 Ubuntu/Linux and macOS one-click commands
-
-```bash
-bash run_demo.sh wasm
-bash run_demo.sh webgpu
-bash run_demo.sh webnn --device gpu
-bash run_demo.sh native-webgpu --iterations 20
-```
-
-The default command is browser WebGPU:
-
-```bash
-bash run_demo.sh
-```
-
-The native command supports Linux x86-64 and macOS 14+ on Apple Silicon. On an Intel Mac, it now stops with a clear compatibility error before installing because the separately required `onnxruntime 1.27.0` core has no macOS x86-64 wheel. All browser commands remain usable on a browser-supported Intel Mac.
-
-### 4.5 Direct Python launcher
-
-The shell/batch wrappers are easiest, but the same browser routes are available directly:
+### 4.4 Direct Python launcher
 
 | Goal | Windows | Ubuntu/macOS |
 |---|---|---|
 | WASM | `py -3 launch_demo.py wasm` | `python3 launch_demo.py wasm` |
 | WebGPU browser | `py -3 launch_demo.py webgpu` | `python3 launch_demo.py webgpu` |
 | WebNN browser GPU | `py -3 launch_demo.py webnn --device gpu` | `python3 launch_demo.py webnn --device gpu` |
-| Allow unsupported model nodes to use WASM | `py -3 launch_demo.py webgpu --allow-wasm-fallback` | `python3 launch_demo.py webgpu --allow-wasm-fallback` |
+| Allow unsupported nodes on WASM | `py -3 launch_demo.py webgpu --allow-wasm-fallback` | `python3 launch_demo.py webgpu --allow-wasm-fallback` |
 | Native WebGPU (auto-creates `.venv-webgpu`) | `py -3.12 launch_demo.py native-webgpu` | `python3.12 launch_demo.py native-webgpu` |
 
-The browser server remains open until `Ctrl+C`. If automatic browser discovery fails, copy the printed URL into a suitable Chrome/Edge window or pass `--browser` with the executable path.
+The browser server stays open until `Ctrl+C`. If auto-discovery fails, paste the printed URL into Chrome/Edge, or pass `--browser` with an executable path. For native routes, swap `3.12` for any installed `3.11`/`3.13`/`3.14` — the wrappers detect a supported interpreter automatically.
 
-For direct or manual native commands, replace `3.12` with an installed supported minor (`3.11`, `3.13`, or `3.14`) when needed. The shell/batch wrappers detect a supported interpreter automatically.
+`--allow-wasm-fallback` is **node-level** fallback *after* WebGPU/WebNN already initialized. It does not turn a machine with no adapter/`navigator.ml` into a passing accelerator test.
 
-`--allow-wasm-fallback` is **node-level model fallback** after the requested WebGPU/WebNN API and context have initialized. It intentionally does not turn a machine with no WebGPU adapter or no `navigator.ml` into a passing accelerator test.
+WebNN uses an isolated temporary browser profile with `WebMachineLearningNeuralNetwork` enabled automatically:
 
-For WebNN, the launcher uses an isolated temporary browser profile and enables `WebMachineLearningNeuralNetwork` on the command line. Its default `--webnn-backend auto` policy selects LiteRT on Windows builds older than 26100 and uses Chromium's platform default elsewhere. Use `--webnn-backend litert` to explicitly enable `WebNNLiteRT` and disable higher-priority platform backends, or `--webnn-backend platform` to leave all platform backends at Chromium defaults. The compatibility disable list includes `WebNNDirectML`: Chromium removed that standalone backend in milestone 149 in favor of ORT-backed DirectML, but older builds still recognize the feature name and current builds safely ignore it. With `--no-open`, the launcher prints the feature policy, but you must apply it to the browser opened manually.
+| `--webnn-backend` | Effect |
+|---|---|
+| `auto` (default) | LiteRT below Windows build 26100; Chromium's platform default elsewhere |
+| `litert` | Force `WebNNLiteRT`, disabling higher-priority platform backends |
+| `platform` | Keep all platform backends at Chromium defaults |
 
-### 4.6 What success looks like
+Chromium removed the standalone `WebNNDirectML` backend in milestone 149 (DirectML now routes through ORT); older builds still recognize the name and current builds safely ignore it. With `--no-open`, apply the printed feature policy to your own browser manually.
 
-Browser success means the independent JavaScript `MatMul → Add → Relu` reference passed; accelerator routes also pass a separate WASM comparison. The page ends with a provider-specific message such as:
+### 4.5 What success looks like
+
+Browser success — the independent JavaScript `MatMul → Add → Relu` reference passed, plus a WASM comparison for accelerator routes:
 
 ```text
 PASS: WEBGPU local inference and output validation completed.
 ```
 
-Native Python success includes numerical parity, non-copy compute nodes in the profile, and no CPU node events in default strict mode:
+Native success — numerical parity, real compute nodes in the profile, zero CPU node events in strict mode:
 
 ```text
 PASS ... max_abs_diff=...
@@ -278,62 +344,61 @@ PASS: ... event(s), including ... unique compute node(s), ran on WebGpuExecution
 PASS: native WebGPU plugin inference is working.
 ```
 
-A fast time alone is **not proof** of accelerator use. Use strict mode, profiling, and output comparison.
+> [!NOTE]
+> Fast timing alone is **not** proof. `Active providers: ['WebGpuExecutionProvider', 'CPUExecutionProvider']` is normal — ORT may register its default CPU provider even with fallback disabled. Judge fallback by CPU **profile events** or a strict session-creation failure, not by that list.
 
-The native line `Active providers: ['WebGpuExecutionProvider', 'CPUExecutionProvider']` is normal: ORT may register its default CPU provider even when strict fallback is disabled. CPU **profile events** or a strict session-creation failure determine fallback, not presence in that list; the included strict smoke test requires zero CPU node events.
-
-### 4.7 Verification record for this repository revision
+### 4.6 Verification record
 
 | Date | Check | Result |
 |---|---|---|
-| 2026-07-17 | Stable registries, wheel metadata, installed npm package, and current/tagged plugin source | PASS; latest stable remains ORT Web/core 1.27.0 plus plugin 0.1.0. The installed export map and WebNN TypeScript contract match the runnable demo; newer plugin source version numbers are not published PyPI releases |
-| 2026-07-16 | Local browser WASM, ORT Web 1.27.0, COOP/COEP, 4 threads | PASS; exact runtime version, model contract, and independent math reference completed using local npm assets |
-| 2026-07-16 | Direct `launch_demo.py native-webgpu`, Linux x86-64, Python 3.13.14 | PASS; plugin discovered NVIDIA and Intel adapters |
-| 2026-07-16 | Native strict runs on the discovered NVIDIA and Intel adapters | PASS on both device indices; `MatMul`, `Add`, and `Relu` profiled on `WebGpuExecutionProvider`, zero CPU node events, CPU parity passed |
-| 2026-07-16 | Browser WebGPU in the VS Code integrated browser and a separate local Chrome 150 profile | Preflight correctly reported a null adapter in both; neither result is counted as browser-GPU proof |
-| 2026-07-16 | Browser WebNN in current Chrome 150 on Linux | `WebMachineLearningNeuralNetwork` exposed `navigator.ml`; context creation then reported that WebNN was unsupported on this local headless/Linux configuration. Launcher construction, failure diagnostics, Chromium feature policy, and ORT 1.27's required `{deviceType, context}` contract were validated, not a WebNN hardware run |
-| 2026-07-16 | Windows and macOS commands | Checked against official package wheel metadata and platform docs; they require execution on target hardware before any production claim |
+| 2026-07-18 | Cross-checked every WebGPU (`webgpu_provider_options.h`, `webgpu_execution_provider.h`, `webgpu_context.h`) and WebNN (`webnn_provider_factory.cc`, `webnn_execution_provider.h`/`.cc`, ORT Web `inference-session.ts`) provider option against the current `main`-branch source | PASS — all 22 native WebGPU keys and every WebNN option shape matched this guide; corrected one note (the native WebNN EP hardcodes `NCHW`, `deviceType` does not select layout) |
+| 2026-07-17 | Stable registries, wheel metadata, installed npm package, tagged plugin source | PASS — latest stable stays ORT Web/core 1.27.0 + plugin 0.1.0; newer plugin source versions are not yet on PyPI |
+| 2026-07-16 | Local browser WASM, ORT Web 1.27.0, COOP/COEP, 4 threads | PASS using local npm assets |
+| 2026-07-16 | `launch_demo.py native-webgpu`, Linux x86-64, Python 3.13.14 | PASS — plugin discovered NVIDIA and Intel adapters |
+| 2026-07-16 | Native strict runs on both discovered adapters | PASS on both — `MatMul`/`Add`/`Relu` profiled on `WebGpuExecutionProvider`, zero CPU node events, CPU parity held |
+| 2026-07-16 | Browser WebGPU, VS Code integrated browser + local Chrome 150 | Both correctly reported a null adapter — neither counts as browser-GPU proof |
+| 2026-07-16 | Browser WebNN, Chrome 150 on Linux | `navigator.ml` was exposed, but context creation reported WebNN unsupported on this headless/Linux config — diagnostics validated, not a hardware pass |
+| 2026-07-16 | Windows and macOS commands | Checked against official wheel metadata/docs; still need a run on real target hardware |
 
 ## 5. Prepare the host
 
 ### 5.1 Windows
 
-#### Browser WebGPU
+**Browser WebGPU**
 
-1. Install all Windows updates.
-2. Install the current Intel, NVIDIA, AMD, or Qualcomm graphics driver.
-3. Install/update 64-bit Chrome or Edge.
-4. Open `chrome://settings/system` or `edge://settings/system` and enable **Use graphics acceleration when available**; relaunch.
-5. Open `chrome://gpu` or `edge://gpu` and look for **WebGPU: Hardware accelerated**.
-6. Run `run_demo.bat webgpu`.
+| Step | Action |
+|---|---|
+| 1 | Install all Windows updates |
+| 2 | Install the current Intel, NVIDIA, AMD, or Qualcomm driver |
+| 3 | Install/update 64-bit Chrome or Edge |
+| 4 | Enable **Use graphics acceleration when available** in `chrome://settings/system`, then relaunch |
+| 5 | Confirm **WebGPU: Hardware accelerated** in `chrome://gpu` |
+| 6 | Run `run_demo.bat webgpu` |
 
-On dual-GPU laptops, Chromium may choose the integrated GPU. Use Windows **Settings → System → Display → Graphics**, select the browser, and choose **High performance**. Chrome also has `chrome://flags/#force-high-performance-gpu` on versions that expose it.
+> [!NOTE]
+> Dual-GPU laptops may default to the integrated GPU. Use **Settings → System → Display → Graphics** to force the browser to **High performance**, or try `chrome://flags/#force-high-performance-gpu`. Windows ARM64 Chromium WebGPU still needs `chrome://flags/#enable-unsafe-webgpu`; the native plugin has no ARM64 wheel.
 
-Windows ARM64 Chromium WebGPU remains behind `chrome://flags/#enable-unsafe-webgpu` in the live implementation table, so treat it as development-only. The native Python plugin has no Windows ARM64 wheel.
+**Browser WebNN**
 
-#### Browser WebNN
+| Step | Action |
+|---|---|
+| 1 | Prefer Windows 11 24H2 (build 26100)+ for Windows ML and vendor NPU EPs |
+| 2 | Install the latest Chrome Canary or Edge Canary |
+| 3 | Run `run_demo.bat webnn --device gpu` (or `npu`) — an isolated profile already carries the required flag |
+| 4 | On first 24H2+ launch, stay online while Chromium installs the Windows App Runtime and EPs; retry after it finishes |
+| 5 | Check <https://webnnreport.org/> and `chrome://histograms/` (search `WebNN`) — `WebNN.ORT.WinAppRuntimeInstallState` values `2` or `9` mean success |
 
-1. Prefer Windows 11 24H2 (build 26100)+ for the Windows ML/ORT path and vendor NPU EPs.
-2. Install the latest Chrome Canary or Edge Canary.
-3. Run `run_demo.bat webnn --device gpu` (or `npu`). The launcher supplies the official `--enable-features=WebMachineLearningNeuralNetwork` switch in an isolated temporary profile, so changing the flag in your normal browser profile is not required.
-4. On the first Windows 11 24H2+ launch, keep the machine online while Chromium installs the Windows App Runtime and applicable execution providers in the background. If context creation initially fails, wait for installation, relaunch, and inspect the status in the next step.
-5. Visit <https://webnnreport.org/> and inspect `chrome://histograms/`, searching for `WebNN`, to identify backend/install state. `WebNN.ORT.WinAppRuntimeInstallState` values `2` (completed) and `9` (already present) are successful states.
+Launching manually instead of via script: enable **Enables WebNN API** in `chrome://flags` or `edge://flags`, then relaunch. See [§4.4](#4-run-the-quick-start) for `--webnn-backend` values. A created `MLContext` only proves API availability, not that every node ran on an NPU.
 
-If launching the browser yourself instead of using the script, open `chrome://flags` or `edge://flags`, enable **Enables WebNN API**, and relaunch.
+**Native Python WebGPU**
 
-On Windows 10 and Windows 11 before 24H2, `--webnn-backend auto` applies WebNN's documented LiteRT recipe by disabling `WebNNOnnxRuntime`, explicitly enabling `WebNNLiteRT`, and also disabling the retired `WebNNDirectML` feature for compatibility with Chromium 148 and older. Current Chromium routes DirectML through its ONNX Runtime backend and no longer has a standalone DirectML backend. To test LiteRT intentionally on any Windows version, pass `--webnn-backend litert`. Do not force LiteRT when testing the Windows ML/ORT path on Windows 11 24H2+.
-
-WebNN may fall back to another requested device class or fail because operator coverage, driver support, and browser backend availability vary. A created `MLContext` proves API availability, not necessarily that every node ran on an NPU.
-
-#### Native Python WebGPU
-
-The public wheel is Windows x64 only. It uses Dawn over D3D12 or Vulkan and does not require the JavaScript browser API. Run the one-click native command. If device discovery returns zero, first update the GPU driver and check that the GPU is available to the current desktop/session (remote or virtual sessions can hide it).
+- The public wheel is Windows x64 only, using Dawn over D3D12/Vulkan — no browser API involved.
+- Run the one-click native command directly.
+- Zero discovered devices → update the GPU driver and confirm the GPU is visible to the current desktop/session (remote/virtual sessions can hide it).
 
 ### 5.2 Ubuntu/Linux
 
-#### Driver and Vulkan preflight
-
-For Intel/AMD using distribution Mesa packages, a typical Ubuntu setup is:
+**Driver and Vulkan preflight**
 
 ```bash
 sudo apt update
@@ -341,22 +406,18 @@ sudo apt install mesa-vulkan-drivers vulkan-tools pciutils
 vulkaninfo --summary
 ```
 
-For NVIDIA, install the supported proprietary driver from Ubuntu **Software & Updates → Additional Drivers** or NVIDIA's documented repository; do not replace it blindly with Mesa. Confirm the active adapter and driver:
+NVIDIA: install the supported proprietary driver via **Software & Updates → Additional Drivers** or NVIDIA's own repo — do not replace it with Mesa. Confirm the active adapter:
 
 ```bash
 lspci -k | grep -EA3 'VGA|3D|Display'
 vulkaninfo --summary
 ```
 
-If `vulkaninfo` fails, native WebGPU and Vulkan-backed browser WebGPU are unlikely to work. Containers require explicit GPU device/driver exposure.
+If `vulkaninfo` fails, native WebGPU and Vulkan-backed browser WebGPU are unlikely to work. Containers need explicit GPU device/driver passthrough.
 
-#### Browser WebGPU on Linux
+**Browser WebGPU on Linux**
 
-Use a current Chrome/Edge build. As of the live WebGPU implementation table:
-
-- Intel Gen12+ is enabled from Chromium 144.
-- NVIDIA with driver 535.183.01+ on Wayland is enabled from Chromium 147.
-- Other combinations may need a test-only launch with:
+Intel Gen12+ has worked since Chromium 144; NVIDIA driver 535.183.01+ on Wayland since 147. Other combinations may need a development-only launch:
 
 ```bash
 bash run_demo.sh webgpu \
@@ -366,57 +427,55 @@ bash run_demo.sh webgpu \
   --browser-arg=--enable-features=Vulkan,VulkanFromANGLE
 ```
 
-Flags bypass browser safety decisions and are for development, not production requirements. Always inspect `chrome://gpu`; **Software only** is not a valid acceleration result.
+> [!WARNING]
+> These flags bypass browser safety checks — development only. Always confirm in `chrome://gpu`; **Software only** is never a valid acceleration result.
 
-#### WebNN on Linux
+**WebNN on Linux** — not in ORT Web 1.27.0's compatibility table, even though WebNN's own docs map Linux to LiteRT. The one-click command enables the API in an isolated profile; pass `--webnn-backend litert` only to deliberately force it. Treat as experimental and keep a WASM fallback.
 
-WebNN project documentation maps Linux to LiteRT, but the compatibility table shipped with ORT Web 1.27.0 does not list Linux WebNN. The one-click command enables the API in an isolated profile and leaves Chromium's Linux backend at its default; pass `--webnn-backend litert` only when deliberately forcing a build that includes LiteRT. When launching manually, use Canary/Dev and enable **Enables WebNN API**. Treat the result as experimental. Keep explicit WASM node fallback for application prototypes and test every model/operator.
-
-#### Native plugin on Linux
-
-The public wheel is x86-64 and requires a glibc compatible with manylinux 2.27/2.28. It uses Vulkan through Dawn. WSL, minimal containers, aarch64 systems, and old distributions may need a source build or are outside the wheel's support.
+**Native plugin on Linux** — x86-64 only, needs a glibc compatible with manylinux 2.27/2.28, uses Vulkan through Dawn. WSL, minimal containers, aarch64, and old distros may need a source build.
 
 ### 5.3 macOS
 
-1. Update macOS and the browser. WebGPU maps to Metal; no separate Vulkan package is needed.
-2. Chrome/Edge WebGPU is the conservative ORT Web choice.
-3. Run `bash run_demo.sh webgpu`.
-4. For WebNN, use current Canary/Dev, enable **Enables WebNN API**, and treat Core ML routing as preview because ORT's supported matrix does not yet list macOS WebNN.
-5. Native Python requires macOS 14+ on Apple Silicon for this pinned setup. The plugin wheel itself is universal2, but the separately required ORT 1.27.0 core publishes only macOS arm64 wheels; Intel Macs can still use the browser routes.
+| Step | Action |
+|---|---|
+| 1 | Update macOS and the browser — WebGPU maps to Metal, no separate Vulkan package needed |
+| 2 | Chrome/Edge WebGPU is the conservative ORT Web choice |
+| 3 | Run `bash run_demo.sh webgpu` |
+| 4 | For WebNN, use Canary/Dev and enable **Enables WebNN API**; treat Core ML routing as preview |
+| 5 | Native Python needs macOS 14+ Apple Silicon; Intel Macs can still use every browser route |
 
-Safari 26 implements WebGPU generally, but ONNX Runtime Web's documented support matrix currently marks Safari WebGPU unsupported. It may work in a specific build; do not claim production support without your own compatibility suite.
+> [!NOTE]
+> Safari 26 implements WebGPU generally, but ONNX Runtime Web's documented matrix still marks Safari WebGPU unsupported. It may work in a specific build — do not claim production support without your own test suite.
 
 ## 6. Configure the browser route
 
-### 6.1 Install and choose the correct bundle
+### Install and pick a bundle
 
 ```bash
 npm install --save-exact onnxruntime-web@1.27.0
 ```
 
-| Need | ESM/CommonJS import | Script bundle |
+| Need | Import | Script bundle |
 |---|---|---|
 | WASM only | `onnxruntime-web/wasm` | `ort.wasm.min.js` |
 | WebGPU only | `onnxruntime-web/webgpu` | `ort.webgpu.min.js` |
-| One build that can select WASM/WebGPU/WebNN | `onnxruntime-web/all` | `ort.all.min.js` |
+| One build for WASM/WebGPU/WebNN | `onnxruntime-web/all` | `ort.all.min.js` |
 
-Some generic ORT pages still show `onnxruntime-web/experimental`. The published 1.27.0 package export map contains `./all` and does not contain `./experimental`; the provider-specific WebNN tutorial and this demo therefore use `onnxruntime-web/all` / `ort.all.min.js`.
-
-CDN form:
+The published 1.27.0 export map has `./all`, not `./experimental` (some generic ORT pages still mention the latter) — this demo uses `onnxruntime-web/all` / `ort.all.min.js`.
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/ort.all.min.js"></script>
 ```
 
-Set global environment flags **before creating the first session**:
+Set environment flags **before creating the first session**:
 
 ```js
 ort.env.logLevel = 'warning';
 ort.env.wasm.numThreads = globalThis.crossOriginIsolated ? 4 : 1;
-ort.env.wasm.proxy = false; // proxy worker cannot be combined with WebGPU
+ort.env.wasm.proxy = false; // proxy worker cannot combine with WebGPU
 ```
 
-### 6.2 WASM session
+### WASM session
 
 ```js
 const session = await ort.InferenceSession.create('./model.onnx', {
@@ -425,7 +484,7 @@ const session = await ort.InferenceSession.create('./model.onnx', {
 });
 ```
 
-WASM supports the broadest ONNX operator set. Multi-threaded WASM additionally needs cross-origin isolation:
+Multi-threaded WASM needs cross-origin isolation:
 
 ```text
 Cross-Origin-Opener-Policy: same-origin
@@ -434,7 +493,7 @@ Cross-Origin-Embedder-Policy: require-corp
 
 The included Python server sends both headers. Without them, set `ort.env.wasm.numThreads = 1`.
 
-### 6.3 WebGPU session
+### WebGPU session
 
 ```js
 const adapter = await navigator.gpu.requestAdapter({
@@ -444,38 +503,55 @@ if (!adapter) throw new Error('No WebGPU adapter');
 const device = await adapter.requestDevice();
 
 const session = await ort.InferenceSession.create('./model.onnx', {
-  executionProviders: [{name: 'webgpu', device, validationMode: 'basic'}],
+  executionProviders: [{
+    name: 'webgpu',
+    device,                                     // reuse the adapter's GPUDevice (optional — ORT creates its own if omitted)
+    preferredLayout: 'NCHW',                    // 'NCHW' | 'NHWC', browser default 'NCHW' (native Python default is 'NHWC', see §7)
+    forceCpuNodeNames: [],                      // node names that must stay on CPU even while WebGPU EP is active
+    validationMode: 'basic',                    // 'disabled' | 'wgpuOnly' | 'basic' (default) | 'full'
+    storageBufferCacheMode: 'bucket',           // 'disabled' | 'lazyRelease' | 'simple' | 'bucket' (default)
+    uniformBufferCacheMode: 'simple',           // same 4 modes, default 'simple'
+    queryResolveBufferCacheMode: 'disabled',    // same 4 modes, default 'disabled' (profiling buffers)
+    defaultBufferCacheMode: 'disabled',         // same 4 modes, default 'disabled' (anything else)
+  }],
   graphOptimizationLevel: 'all',
-  preferredOutputLocation: 'cpu',
-  extra: {session: {disable_cpu_ep_fallback: '1'}}, // strict proof mode
+  preferredOutputLocation: 'cpu',               // or 'gpu-buffer' to keep outputs device-resident, see §9
+  enableGraphCapture: false,                    // capture/replay for static-shape graphs fully on WebGPU, see §8
+  extra: {session: {disable_cpu_ep_fallback: '1'}}, // strict proof mode: fail instead of silently falling back to CPU
 });
 ```
 
-The older `ort.env.webgpu.adapter` and `ort.env.webgpu.powerPreference` route still exists in 1.27.0 but is deprecated in its TypeScript API. Passing a `GPUDevice` in the WebGPU EP options is the current explicit-device pattern used here. A custom device must request any limits/features needed by the model; the runnable demo mirrors ORT 1.27's own device descriptor rather than relying on bare defaults.
-
-For explicit unsupported-operator fallback:
+Every field above is optional; this lists every key `WebGpuExecutionProviderOption` accepts in ORT Web 1.27.0's [`inference-session.ts`](https://github.com/microsoft/onnxruntime/blob/main/js/common/lib/inference-session.ts) — omit any you don't need to keep its default. `ort.env.webgpu.adapter`/`powerPreference` still work in 1.27.0 but are deprecated; passing a `GPUDevice` in EP options is the current pattern. For explicit unsupported-op fallback:
 
 ```js
 executionProviders: [{name: 'webgpu', device, validationMode: 'basic'}, 'wasm']
 ```
 
-Fallback improves compatibility but can hide expensive GPU↔CPU transfers. Listing only `webgpu` is not, by itself, proof that every node stayed on the GPU; the demo additionally sets `session.disable_cpu_ep_fallback=1` in strict mode and profiles compute kernels. Benchmark only after checking verbose logs/profiling.
+> [!NOTE]
+> Listing only `webgpu` is not proof every node stayed on the GPU. This demo also sets `disable_cpu_ep_fallback=1` and profiles compute kernels — do that before benchmarking.
 
-### 6.4 WebNN session
+### WebNN session
 
-Simple provider options:
+WebNN options come in three mutually exclusive shapes — see the `WebNNExecutionProviderOption` union in [`inference-session.ts`](https://github.com/microsoft/onnxruntime/blob/main/js/common/lib/inference-session.ts):
+
+| Shape | Fields | When to use |
+|---|---|---|
+| No `MLContext` | `deviceType`, `numThreads`, `powerPreference` | Simplest — let ORT create the `MLContext` for you |
+| Pre-created `MLContext` | `context`, `deviceType` (required), `numThreads`, `powerPreference` | Share one `MLContext`/`MLTensor` across a preflight check and the ORT session |
+| `MLContext` from a `GPUDevice` | `context`, `gpuDevice` | Interop — the same physical GPU backs both a WebGPU session and a WebNN session |
 
 ```js
 const session = await ort.InferenceSession.create('./model.onnx', {
   executionProviders: [{
     name: 'webnn',
-    deviceType: 'gpu',       // 'cpu' | 'gpu' | 'npu'
-    powerPreference: 'high-performance',
+    deviceType: 'gpu',                    // 'cpu' | 'gpu' | 'npu' — which WebNN device class to target
+    numThreads: 4,                        // optional thread-count hint (W3C MLContextOptions)
+    powerPreference: 'high-performance',  // 'default' | 'low-power' | 'high-performance'
   }],
 });
 ```
 
-A pre-created context is required when sharing WebNN `MLTensor` objects. In ORT Web 1.27, `deviceType` remains required in the EP options even with `context`; ORT uses it to choose the preferred channel layout:
+Sharing `MLTensor` needs a pre-created context. ORT Web 1.27's TypeScript declaration still requires `deviceType` even with `context` supplied:
 
 ```js
 if (!navigator.ml) throw new Error('WebNN is unavailable');
@@ -488,11 +564,19 @@ const session = await ort.InferenceSession.create('./model.onnx', {
 });
 ```
 
-The live WebNN tutorial currently says other context options are ignored when `context` is supplied, but the installed 1.27.0 TypeScript declaration explicitly requires `deviceType` in this form. For a pinned runtime, follow its shipped declaration; recheck that contract when upgrading.
+This demo uses the second form so the preflight and the ORT session share one `MLContext`. The third shape builds the `MLContext` straight from an existing `GPUDevice` instead of a `deviceType` string — only useful when a WebGPU session already owns that device:
 
-The demo uses this second form so the preflight and ORT session share one `MLContext`.
+```js
+const context = await navigator.ml.createContext(device); // device = a GPUDevice, e.g. from adapter.requestDevice()
+const session = await ort.InferenceSession.create('./model.onnx', {
+  executionProviders: [{name: 'webnn', context, gpuDevice: device}],
+});
+```
 
-### 6.5 Run and clean up
+> [!NOTE]
+> These JS-level fields only configure the browser's `navigator.ml.createContext()` call. The compiled WebNN EP itself ([`webnn_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webnn/webnn_provider_factory.cc)) receives exactly one native option — `deviceType` — forwarded through `provider_options.at("deviceType")` and read once at provider construction to pick the supported-operator set (`WebnnDeviceType` in [`webnn_execution_provider.cc`](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webnn/webnn_execution_provider.cc)). Unlike the WebGPU EP's configurable `preferredLayout`, the native WebNN EP always hardcodes `NCHW` as its preferred layout ([`webnn_execution_provider.h`](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webnn/webnn_execution_provider.h) — `GetPreferredLayout()` unconditionally returns `DataLayout::NCHW`) — no provider option changes that. Everything else stays a browser-side concern.
+
+### Run and clean up
 
 ```js
 const feeds = {
@@ -510,13 +594,11 @@ try {
 }
 ```
 
-The snippet uses CPU feeds and ORT-owned outputs. Dispose ORT-owned device outputs and sessions explicitly; for a tensor wrapping a user-owned `GPUBuffer`/`MLTensor`, keep that resource alive through inference and destroy the underlying resource yourself as described in section 9. Long-running pages otherwise leak device memory.
+Dispose ORT-owned outputs and sessions explicitly. For a tensor wrapping a user-owned `GPUBuffer`/`MLTensor`, keep it alive through inference and destroy it yourself (§9) — otherwise long-running pages leak device memory.
 
 ## 7. Configure the native route
 
-### 7.1 What a plugin EP changes
-
-Traditional Python examples pass a provider name to `InferenceSession`. A plugin EP must first be dynamically registered, then its `OrtEpDevice` must be selected and attached to `SessionOptions`.
+A plugin EP must be dynamically registered, then its `OrtEpDevice` selected and attached to `SessionOptions` — unlike a built-in provider name string.
 
 ```mermaid
 sequenceDiagram
@@ -525,23 +607,24 @@ sequenceDiagram
     participant Lib as WebGPU plugin library
     participant GPU as Local GPU
     App->>ORT: register_execution_provider_library(name, path)
-    ORT->>Lib: load library / create EP factories
+    ORT->>Lib: load library, create EP factories
     App->>ORT: get_ep_devices()
     ORT-->>App: WebGpuExecutionProvider devices
     App->>ORT: SessionOptions.add_provider_for_devices(...)
     App->>ORT: create session and run
-    ORT->>Lib: compile/dispatch graph
-    Lib->>GPU: Dawn → D3D12/Vulkan/Metal
+    ORT->>Lib: compile / dispatch graph
+    Lib->>GPU: Dawn to D3D12, Vulkan, or Metal
     GPU-->>App: outputs
     App->>ORT: release every session
     App->>ORT: unregister_execution_provider_library(name)
 ```
 
-Never unregister the library while a session using it still exists.
+> [!WARNING]
+> Never unregister the library while a session using it still exists.
 
-### 7.2 Manual isolated installation
+### Manual isolated install
 
-Run from the demo folder opened in section 4.2. Use 64-bit CPython 3.11–3.14. The commands below support Windows x64, Linux x86-64 with glibc 2.27+, and macOS 14+ on Apple Silicon. They do not support native Python on an Intel Mac with the pinned ORT core.
+64-bit CPython 3.11–3.14. Supports Windows x64, Linux x86-64 (glibc 2.27+), and macOS 14+ Apple Silicon — not native Python on an Intel Mac.
 
 Windows PowerShell:
 
@@ -561,9 +644,9 @@ python3.12 -m venv .venv-webgpu
 .venv-webgpu/bin/python native_webgpu_validator.py
 ```
 
-The Python launcher and both one-click wrappers perform these steps automatically. They reuse the environment after verifying the pinned runtime/plugin versions, so packages are not reinstalled on every run.
+The launcher and both one-click wrappers do this automatically and reuse the environment once the pinned versions are verified.
 
-### 7.3 Minimal plugin API pattern
+### Minimal plugin API pattern
 
 ```python
 import numpy as np
@@ -603,74 +686,151 @@ finally:
     ort.unregister_execution_provider_library(registration)
 ```
 
-`ort.get_available_providers()` lists providers built into the core package; it is not the correct pre-registration test for this plugin. Register, then inspect `ort.get_ep_devices()`.
+`ort.get_available_providers()` lists providers built into the core package — it is not the pre-registration test for this plugin. Register first, then inspect `ort.get_ep_devices()`.
 
-### 7.4 Native options used by the demo
+### Native options used by the demo
 
 | Option | Values/default | Meaning |
 |---|---|---|
-| `--model` | included `execution_provider_demo.onnx` | Run another model only if it keeps `left`/`right` float32 `[1,4,128,128]` inputs; otherwise adapt the validator |
+| `--model` | `execution_provider_demo.onnx` | Swap only for a model keeping `left`/`right` float32 `[1,4,128,128]` inputs |
 | `--device-index` | `0` | Select one discovered WebGPU device |
 | `--layout` | `NCHW` / `NHWC` | Preferred layout for layout-sensitive kernels |
 | `--power-preference` | `high-performance` / `low-power` | Dawn adapter hint |
 | `--validation-mode` | `disabled`, `wgpuOnly`, `basic`, `full` | Validation/diagnostic cost |
 | `--allow-cpu-fallback` | off by default | Permit unsupported nodes on CPU |
-| `--warmups` | `2` | Runs excluded from benchmark (`--warmup` remains an alias) |
+| `--warmups` | `2` | Runs excluded from benchmark (`--warmup` is an alias) |
 | `--iterations` | `10` | Measured runs |
-| `--keep-profile` | off | Copy ORT JSON profile into demo folder |
+| `--keep-profile` | off | Copy the ORT JSON profile into the demo folder |
 
-Official native provider options also include `enableGraphCapture`, `enableInt64`, `multiRotaryCacheConcatOffset`, `forceCpuNodeNames`, `enablePIXCapture`, `deviceId`, `webgpuInstance`, `webgpuDevice`, `preserveDevice`, `maxStorageBufferBindingSize`, and four buffer-cache modes. The bring-your-own `webgpuInstance`/`webgpuDevice` values are decimal native pointers, not browser objects or hexadecimal strings. Start with defaults; change one option at a time.
+### All native WebGPU provider options (from source)
 
-The validator defaults to `validationMode=basic` and always enables the ORT profiler; it favors proof and diagnostics, not peak speed. Establish a correct strict PASS first. `--validation-mode disabled` can isolate validation overhead, but the profiler remains active, so use a separate non-profiling harness for production benchmarks. The reported latency is end-to-end `session.run()` time with NumPy CPU inputs and outputs, so it also includes upload/readback. The profile proves provider assignment; it does not turn this number into GPU-kernel-only latency.
+The demo's CLI flags above cover common cases. The plugin EP itself accepts every key defined in ONNX Runtime's [`webgpu_provider_options.h`](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webgpu/webgpu_provider_options.h), passed as its short name (no `ep.webgpuexecutionprovider.` prefix) in the dict given to `add_provider_for_devices(devices, {...})`. Defaults below are the native C++ defaults from [`webgpu_execution_provider.h`](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webgpu/webgpu_execution_provider.h) and [`webgpu_context.h`](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webgpu/webgpu_context.h) — some differ from the browser JS defaults in §6.
+
+| Key | Default (native) | Accepted values | What it controls |
+|---|---|---|---|
+| `preferredLayout` | `NHWC` | `NCHW` \| `NHWC` | Layout for layout-sensitive kernels. Browser JS default is `NCHW` — the two routes disagree, check both. |
+| `enableInt64` | `"0"` (off) | `"0"` \| `"1"` | Run `int64` ops natively instead of the default emulation/downcast path. |
+| `kvCacheQuantizationBits` | `"0"` (off) | `"0"` \| `"4"` | Quantize the KV cache to 4-bit for transformer decode loops. |
+| `multiRotaryCacheConcatOffset` | `0` | non-negative integer | Offset for concatenated multi-rotary (RoPE) caches used by some LLM kernels. |
+| `deviceId` | `0` | integer | Key used to create/reuse a `WebGpuContext` instance. Not the same as the demo's `--device-index` (which selects among `ort.get_ep_devices()`) — leave this at `0` unless you manage multiple contexts yourself. |
+| `powerPreference` | `high-performance` | `high-performance` \| `low-power` | Dawn adapter selection hint. |
+| `dawnBackendType` | platform default (Windows: `D3D12` or `Vulkan` depending on the build; other OSes: Dawn auto-selects) | `D3D12` \| `Vulkan` | Force Dawn's graphics backend. macOS always uses Metal internally and has no string value here. |
+| `webgpuInstance` | unset | decimal native `WGPUInstance` pointer | Reuse an already-created Dawn instance instead of letting ORT create one. |
+| `webgpuDevice` | unset | decimal native `WGPUDevice` pointer | Reuse an already-created Dawn device instead of letting ORT create one. |
+| `dawnProcTable` | unset | decimal native `DawnProcTable` pointer | Supply a custom Dawn proc table, e.g. from a host app that already links Dawn. |
+| `validationMode` | `full` in debug builds, `basic` in release builds | `disabled` \| `wgpuOnly` \| `basic` \| `full` | Amount of WebGPU/ORT validation performed; `full` costs the most and is for debugging only. |
+| `forceCpuNodeNames` | empty | node names separated by `\n` (one per line) | Force specific nodes onto the CPU EP even while WebGPU EP is active — a diagnostic escape hatch, not a comma-separated list. |
+| `enablePIXCapture` | `"0"` (off) | `"0"` \| `"1"` | Enable Windows PIX GPU-capture instrumentation (needs a PIX-enabled build). |
+| `preserveDevice` | `"0"` (off) | `"0"` \| `"1"` | Keep the GPU device alive across session release instead of tearing it down — useful when a process opens many short-lived sessions on the same device. |
+| `enableGraphCapture` | `"0"` (off) | `"0"` \| `"1"` | Capture/replay the compute graph for repeated static-shape runs, see §8. |
+| `sessionBufferPoolGenerations` | `1` | non-negative integer, `0` disables | Generations of intermediate buffers retained in a per-session pool for reuse across captured-graph replays. |
+| `storageBufferCacheMode` | `bucket` | `disabled` \| `lazyRelease` \| `simple` \| `bucket` | Reuse policy for storage buffers. `simple` can cut GPU memory for static-shape models, see §9. |
+| `uniformBufferCacheMode` | `simple` | same 4 modes | Reuse policy for uniform buffers. |
+| `queryResolveBufferCacheMode` | `disabled` | same 4 modes | Reuse policy for profiling query-resolve buffers. |
+| `defaultBufferCacheMode` | `disabled` | same 4 modes | Reuse policy for any buffer not covered by the three options above. |
+| `maxStorageBufferBindingSize` | `0` (use the adapter's own limit) | `0`, or an integer ≥ `134217728` (128 MB) | Override the max storage-buffer binding size requested from the device. |
+| `maxNumPendingDispatches` | `16` | integer, `1`–`4096` | GPU dispatches queued before ORT forces a flush/sync; also sizes the profiling query buffer. |
+
+```python
+# Every key the native WebGPU plugin EP understands, with its native default and meaning.
+# Pass only the keys you want to change to add_provider_for_devices(devices, provider_options) —
+# every key left out keeps the default shown here.
+provider_options = {
+    # --- Layout & precision -----------------------------------------------
+    "preferredLayout": "NCHW",                  # NCHW | NHWC (native default: NHWC)
+    "enableInt64": "0",                         # "0" | "1" (default off)
+    "kvCacheQuantizationBits": "0",             # "0" | "4" (default off)
+    "multiRotaryCacheConcatOffset": "0",        # non-negative integer (default 0 = disabled)
+
+    # --- Device & Dawn interop ---------------------------------------------
+    "deviceId": "0",                            # WebGpuContext key/index (default 0)
+    "powerPreference": "high-performance",      # high-performance | low-power
+    "dawnBackendType": "Vulkan",                # D3D12 | Vulkan (omit to let Dawn auto-select, e.g. Metal on macOS)
+    "webgpuInstance": "0",                      # decimal WGPUInstance pointer, 0/omit = ORT creates one
+    "webgpuDevice": "0",                        # decimal WGPUDevice pointer, 0/omit = ORT creates one
+    "dawnProcTable": "0",                       # decimal DawnProcTable pointer, 0/omit = default
+
+    # --- Validation & diagnostics --------------------------------------------
+    "validationMode": "basic",                  # disabled | wgpuOnly | basic (release default) | full
+    "forceCpuNodeNames": "",                    # node names separated by \n, empty = none forced
+    "enablePIXCapture": "0",                    # "0" | "1" (default off, Windows only)
+    "preserveDevice": "0",                      # "0" | "1" (default off)
+
+    # --- Graph capture & buffer pooling ---------------------------------------
+    "enableGraphCapture": "0",                  # "0" | "1" (default off)
+    "sessionBufferPoolGenerations": "1",        # non-negative integer (default 1, 0 disables)
+
+    # --- Buffer cache modes: disabled | lazyRelease | simple | bucket ---------
+    "storageBufferCacheMode": "bucket",         # default bucket
+    "uniformBufferCacheMode": "simple",         # default simple
+    "queryResolveBufferCacheMode": "disabled",  # default disabled
+    "defaultBufferCacheMode": "disabled",       # default disabled
+
+    # --- Limits --------------------------------------------------------------
+    "maxStorageBufferBindingSize": "0",         # "0" = adapter default, else >= 134217728 (128 MB)
+    "maxNumPendingDispatches": "16",            # 1-4096 (default 16)
+}
+options.add_provider_for_devices([devices[0]], provider_options)
+```
+
+> [!NOTE]
+> `deviceId` (a `WebGpuContext` cache key) is unrelated to the demo's `--device-index` CLI flag (which selects an entry from `ort.get_ep_devices()`) — do not confuse the two. Change one option at a time so a regression is easy to bisect. `webgpuInstance`/`webgpuDevice`/`dawnProcTable` take decimal native pointers, not browser objects, and only matter when embedding ORT in an app that already owns a Dawn instance/device.
+
+The validator defaults to `validationMode=basic` with profiling always on — it favors proof over peak speed. Get a strict PASS first; use `--validation-mode disabled` only to isolate validation overhead, in a separate non-profiling harness for real benchmarks. Reported latency is end-to-end `session.run()` including upload/readback, not GPU-kernel-only time.
 
 ## 8. Understand model fallback
 
-An ONNX file being valid does not mean every EP supports every operator/type/shape.
+A valid ONNX file does not mean every EP supports every operator/type/shape.
 
 | Check | WASM | WebGPU | WebNN |
 |---|---|---|---|
-| Broad ONNX operator coverage | Best | Subset; growing | Subset mapped to WebNN operations |
-| Dynamic shapes | Usually supported | Can reduce optimization/graph capture | Prefer `freeDimensionOverrides` |
-| `float16` | Often slow on CPU | Browser/device feature dependent | Backend/device dependent |
-| `int64` | Supported | Limited/native option dependent | Common source of incompatibility |
-| Quantized ops | Broad but model dependent | Check current operator table | Check WebNN and backend tables |
+| ONNX operator coverage | Best | Subset, growing | Subset mapped to WebNN ops |
+| Dynamic shapes | Usually fine | Can reduce optimization/graph capture | Prefer `freeDimensionOverrides` |
+| `float16` | Often slow on CPU | Browser/device dependent | Backend/device dependent |
+| `int64` | Supported | Limited/native-option dependent | Common incompatibility source |
+| Quantized ops | Broad, model dependent | Check the current operator table | Check WebNN/backend tables |
 | Device-resident I/O | CPU tensors | `GPUBuffer` / `gpu-buffer` | `MLTensor` / `ml-tensor` |
 
-Recommended model workflow:
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
+flowchart TD
+    S1["1 · Validate metadata,<br/>run with CPU ORT"] --> S2["2 · Run browser WASM,<br/>compare output"]
+    S2 --> S3["3 · Run WebGPU / WebNN<br/>in strict mode"]
+    S3 --> D{"Strict session created?"}
+    D -->|No| S4["4 · Inspect the unsupported node,<br/>then allow WASM / CPU fallback"]
+    S4 --> S3
+    D -->|Yes| S5["5 · Compare with task rtol / atol"]
+    S5 --> S6["6 · Profile assignment + data copies"]
+    S6 --> S7["7 · Benchmark after warm-up"]
 
-1. Validate model metadata and run it with native CPU ORT.
-2. Run browser WASM and compare outputs.
-3. Run WebGPU/WebNN in strict mode.
-4. If strict creation fails, inspect the unsupported node; only then enable WASM/CPU fallback.
-5. Compare outputs using task-appropriate `rtol`/`atol`.
-6. Profile provider assignment and data copies.
-7. Benchmark after warm-up with fixed inputs/shapes.
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
+    class S1,S2,S3,S4,S5,S6,S7 step;
+    class D dec;
+```
 
-For dynamic dimensions, for example:
+For dynamic dimensions:
 
 ```js
 freeDimensionOverrides: {batch: 1, height: 224, width: 224}
 ```
 
-Each key must exactly match a symbolic dimension name (`dim_param`) stored in that ONNX model; invented axis labels are not applied.
+Each key must exactly match a `dim_param` stored in the ONNX model — invented axis names are silently ignored.
 
-Graph capture is suitable only for stable shapes and graphs fully assigned to WebGPU. In ORT Web 1.27, captured runs also require externally supplied `gpu-buffer` inputs and `gpu-buffer` outputs; simply setting `enableGraphCapture: true` while continuing to feed CPU tensors will fail. The demo therefore leaves it disabled. It can improve CPU submission overhead, but it is not universally compatible.
+Graph capture only fits stable shapes fully assigned to WebGPU, and needs externally supplied `gpu-buffer` inputs/outputs — enabling `enableGraphCapture: true` while still feeding CPU tensors fails. This demo leaves it disabled.
 
 ## 9. Tune I/O and performance
 
-By default, browser inputs start in CPU memory and outputs return to CPU memory. End-to-end timing includes upload/readback.
+Inputs/outputs default to CPU memory; end-to-end timing includes upload/readback.
 
 | Goal | WebGPU | WebNN |
 |---|---|---|
 | Device input | `ort.Tensor.fromGpuBuffer(...)` | `ort.Tensor.fromMLTensor(...)` |
-| Keep all outputs on device | `preferredOutputLocation: 'gpu-buffer'` | `preferredOutputLocation: 'ml-tensor'` |
-| Preallocate output | GPU storage buffer + ORT tensor | readable `MLTensor` + ORT tensor |
+| Keep outputs on device | `preferredOutputLocation: 'gpu-buffer'` | `preferredOutputLocation: 'ml-tensor'` |
 | Read to CPU | `await tensor.getData()` | `await tensor.getData()` or `mlContext.readTensor()` |
-| Ownership rule | User destroys a user-owned buffer; dispose ORT-owned outputs | User destroys user-owned `MLTensor`; dispose ORT-owned outputs |
+| Ownership | User destroys a user-owned buffer; dispose ORT-owned outputs | User destroys a user-owned `MLTensor`; dispose ORT-owned outputs |
 
-Do not compare a GPU-resident kernel benchmark with this demo's CPU-output end-to-end latency. They answer different questions.
-
-WebGPU browser profiling:
+Do not compare a GPU-resident kernel benchmark against this demo's CPU-output end-to-end latency — they answer different questions.
 
 ```js
 ort.env.webgpu.profiling = {
@@ -681,84 +841,83 @@ ort.env.logLevel = 'verbose';
 ort.env.debug = true;
 ```
 
-Configure profiling before creating the device/session. If supplying a custom `GPUDevice`, request `timestamp-query` (or Chromium's inside-passes timestamp feature) only when the adapter advertises it; otherwise callbacks may be absent. Enable diagnostics only while debugging; validation and verbose logging distort benchmark results.
+Configure profiling before creating the device/session. Request `timestamp-query` only when the adapter advertises it. Enable diagnostics only while debugging — verbose logging distorts benchmarks.
 
 ## 10. Deploy locally or offline
 
-The demo loader tries these sources in order:
-
-1. `node_modules/onnxruntime-web/dist/ort.all.min.js`
-2. Pinned jsDelivr 1.27.0
-
-To avoid the CDN:
+The demo loader tries, in order: (1) `node_modules/onnxruntime-web/dist/ort.all.min.js`, then (2) pinned jsDelivr `1.27.0`.
 
 ```bash
 npm ci
 python3 launch_demo.py webgpu
 ```
 
-`npm ci` uses the committed lockfile and requires Node.js/npm. It is optional when Internet access to the pinned jsDelivr assets is acceptable.
+`npm ci` needs the committed lockfile and Node.js/npm; skip it if the pinned CDN is acceptable.
 
-For a production app, copy/serve the required files from the same `onnxruntime-web` version. The safest approach is to deploy the matching `dist` assets together. The `all` bundle used by this demo loads the JSEP WebAssembly artifact (`ort-wasm-simd-threaded.jsep.wasm` plus its matching loader) for every route, including its WASM baseline. A separate WASM-only build imported from `onnxruntime-web/wasm` uses the non-JSEP artifact.
-
-Never mix a JavaScript bundle from one ORT version with a `.wasm`/`.mjs` file from another version. Configure the directory before session creation:
+The `all` bundle used here loads the JSEP WebAssembly artifact (`ort-wasm-simd-threaded.jsep.wasm` + loader) for **every** route, including WASM baseline — a separate `onnxruntime-web/wasm` import uses the non-JSEP artifact instead. Never mix a JS bundle from one ORT version with a `.wasm`/`.mjs` from another:
 
 ```js
 ort.env.wasm.wasmPaths = '/assets/ort-1.27.0/';
 ```
 
-Production checklist:
+**Production checklist:**
 
-- Serve over HTTPS; localhost HTTP is only the development exception.
+- Serve over HTTPS; localhost HTTP is a development-only exception.
 - Set correct MIME types, especially `application/wasm`.
 - Add COOP/COEP when using WASM threads.
-- Configure CSP for scripts, workers, WASM, models, and any CDN intentionally used.
-- Pin versions and apply an integrity/dependency update process.
-- Cache large models deliberately (for example IndexedDB), including model version/checksum.
-- Do not enable unsafe browser flags for end users.
+- Configure CSP for scripts, workers, WASM, models, and any CDN actually used.
+- Pin versions and keep an integrity/update process.
+- Cache large models deliberately (e.g. IndexedDB) with a version/checksum.
+- Never enable unsafe browser flags for end users.
 
-## 11. Troubleshooting
+## 11. Troubleshoot
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart TD
-    A[Demo failed] --> B{Does WASM pass?}
-    B -->|No| C[Check model path, CDN/local assets, input names/types, console]
-    B -->|Yes| D{WebGPU or WebNN?}
-    D -->|WebGPU| E{navigator.gpu exists?}
-    E -->|No| F[Use localhost/HTTPS, update browser, inspect flags]
-    E -->|Yes| G{requestAdapter returns a device?}
-    G -->|No| H[Enable hardware acceleration, update driver, inspect chrome://gpu]
-    G -->|Yes| I[Check unsupported operators, limits, memory, verbose profile]
-    D -->|WebNN| J{navigator.ml exists?}
-    J -->|No| K[Use Canary/Dev, enable WebNN flag, relaunch]
-    J -->|Yes| L{MLContext is created?}
-    L -->|No| M[Try CPU/GPU/NPU separately; check OS backend and drivers]
-    L -->|Yes| N[Check ORT WebNN operator support and backend status]
+    A["Demo failed"] --> B{"Does WASM pass?"}
+    B -->|No| C["Check model path,<br/>local/CDN assets,<br/>input names and types"]
+    B -->|Yes| D{"WebGPU or WebNN?"}
+    D -->|WebGPU| E{"navigator.gpu exists?"}
+    E -->|No| F["Use localhost or HTTPS,<br/>update the browser"]
+    E -->|Yes| G{"requestAdapter returns a device?"}
+    G -->|No| H["Enable hardware acceleration,<br/>update driver, check chrome://gpu"]
+    G -->|Yes| I["Check unsupported operators,<br/>limits, memory, verbose profile"]
+    D -->|WebNN| J{"navigator.ml exists?"}
+    J -->|No| K["Use Canary or Dev,<br/>enable the WebNN flag"]
+    J -->|Yes| L{"MLContext is created?"}
+    L -->|No| M["Try cpu, gpu, npu separately;<br/>check OS backend and drivers"]
+    L -->|Yes| N["Check ORT WebNN operator<br/>and backend support"]
+
+    classDef bad fill:#fee2e2,stroke:#ef4444,color:#7f1d1d;
+    classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    class A bad;
+    class B,D,E,G,J,L dec;
+    class C,F,H,I,K,M,N step;
 ```
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `ort is undefined` | Local npm assets absent and CDN blocked | Install Node.js, run `npm ci`, and verify the DevTools Network tab |
-| `navigator.gpu` undefined | Old browser, insecure `file://`/HTTP origin, unsupported build | Use launcher/HTTPS and update browser |
-| `requestAdapter()` returns `null` | Hardware acceleration off, driver/blocklist, unsupported Linux path | Enable graphics acceleration, update driver, inspect `chrome://gpu` |
-| `WebGPU: Software only` | Browser is using software rendering | Fix driver/remote-session policy; do not report GPU acceleration |
-| `navigator.ml` undefined | WebNN disabled or unavailable build | Use current Canary/Dev, enable **Enables WebNN API**, relaunch |
-| WebNN `gpu`/`npu` context fails | Backend/device/driver unavailable | Test `cpu`, visit WebNN Report, inspect `chrome://histograms` |
-| Session says unsupported operator | EP coverage gap | Check current operator tables; simplify/export differently or add explicit fallback |
-| Browser WASM hangs/threads stay at 1 | No cross-origin isolation | Serve COOP/COEP or force one thread |
-| Native `No matching distribution` | Unsupported Python/OS/architecture/glibc | Use 64-bit CPython 3.11–3.14 and the complete plugin + ORT-core matrix above; Intel macOS has no pinned core wheel |
-| Native plugin registration incompatibility | Core ORT too old/incompatible | Use pinned requirements or at least the plugin's advertised minimum |
-| Native plugin finds zero devices | D3D12/Vulkan/Metal adapter unavailable | Update driver/OS; test outside container/remote session; verify Vulkan on Linux |
-| Dawn says a dynamic-buffer limit was “artificially reduced” | Adapter limit is higher than Dawn's internal dynamic-offset allocation cap | Informational for this demo; judge the run by the final PASS/profile unless a later error appears |
-| Native profile has zero WebGPU events | Graph did not execute on WebGPU | Keep strict fallback disabled; inspect model/operator assignment |
-| Output differences | Precision, unsupported behavior, wrong preprocessing | Compare dtype/shape first, then use justified tolerances; keep a CPU oracle |
+| `ort is undefined` | Local assets missing, CDN blocked | Install Node.js, run `npm ci`, check DevTools Network tab |
+| `navigator.gpu` undefined | Old browser, insecure origin, unsupported build | Use the launcher/HTTPS, update the browser |
+| `requestAdapter()` returns `null` | Acceleration off, driver/blocklist, unsupported Linux path | Enable graphics acceleration, update driver, check `chrome://gpu` |
+| `WebGPU: Software only` | Software rendering | Fix driver/remote-session policy — never report this as GPU acceleration |
+| `navigator.ml` undefined | WebNN disabled or unavailable build | Use Canary/Dev, enable **Enables WebNN API**, relaunch |
+| WebNN `gpu`/`npu` context fails | Backend/device/driver unavailable | Test `cpu`, check WebNN Report and `chrome://histograms` |
+| Unsupported operator error | EP coverage gap | Check the current operator tables; simplify/export differently, or add explicit fallback |
+| Browser WASM hangs / stuck at 1 thread | No cross-origin isolation | Serve COOP/COEP, or force one thread |
+| Native `No matching distribution` | Unsupported Python/OS/arch/glibc | Use 64-bit CPython 3.11–3.14 and the full matrix in §3.3; Intel macOS has no core wheel |
+| Native plugin registration incompatibility | Core ORT too old | Use the pinned requirements, or at least the plugin's minimum |
+| Native plugin finds zero devices | D3D12/Vulkan/Metal adapter unavailable | Update driver/OS, test outside a container/remote session, verify Vulkan on Linux |
+| Dawn: dynamic-buffer limit "artificially reduced" | Adapter limit exceeds Dawn's internal cap | Informational — judge the run by the final PASS/profile |
+| Native profile has zero WebGPU events | Graph did not execute on WebGPU | Keep strict fallback disabled; inspect operator assignment |
+| Output differences | Precision, unsupported behavior, wrong preprocessing | Compare dtype/shape first, then use justified tolerances, keeping a CPU oracle |
 | First run is very slow | Download, graph optimization, shader compilation | Separate load/compile, warm-up, and steady-state measurements |
 
-Chrome's official troubleshooting order is useful: browser version → secure context → graphics acceleration → platform support/flags → blocklist → adapter options → `chrome://gpu` → GPU-process stability.
+Chrome's own troubleshooting order: browser version → secure context → graphics acceleration → platform support/flags → blocklist → adapter options → `chrome://gpu` → GPU-process stability.
 
 ## 12. Build from source (advanced)
-
-Native WebGPU is built in ONNX Runtime with `--use_webgpu`; `shared_lib` produces the plugin library:
 
 ```bash
 python tools/ci_build/build.py \
@@ -771,15 +930,15 @@ python tools/ci_build/build.py \
 | Build flag | Meaning |
 |---|---|
 | `--use_webgpu static_lib` | Link WebGPU EP into native ORT |
-| `--use_webgpu shared_lib` | Build `onnxruntime_providers_webgpu` plugin EP |
+| `--use_webgpu shared_lib` | Build the `onnxruntime_providers_webgpu` plugin EP |
 | `--use_external_dawn` | Link an externally supplied Dawn |
-| `--enable_pix_capture` | Windows PIX support for a compatible build |
+| `--enable_pix_capture` | Windows PIX support on a compatible build |
 
-A source build requires the full ONNX Runtime toolchain and is not a rookie fallback for a missing wheel. First verify whether the public wheel supports the machine.
+A source build needs the full ONNX Runtime toolchain — first confirm the public wheel truly does not support your machine.
 
 ## 13. References
 
-### ONNX Runtime official
+**ONNX Runtime official**
 
 - [Native WebGPU Execution Provider](https://onnxruntime.ai/docs/execution-providers/WebGPU-ExecutionProvider.html)
 - [Plugin EP overview](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/)
@@ -792,29 +951,34 @@ A source build requires the full ONNX Runtime toolchain and is not a rookie fall
 - [WebGPU provider source](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/providers/webgpu)
 - [WebNN provider source](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/providers/webnn)
 - [WebGPU plugin package source](https://github.com/microsoft/onnxruntime/tree/main/plugin-ep-webgpu)
+- [WebGPU provider options (all keys)](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webgpu/webgpu_provider_options.h)
+- [WebGPU execution provider config + defaults](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webgpu/webgpu_execution_provider.h)
+- [WebGPU context config + defaults](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webgpu/webgpu_context.h)
+- [WebNN execution provider (native, Emscripten)](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webnn/webnn_execution_provider.cc)
+- [ORT Web TypeScript execution-provider option types](https://github.com/microsoft/onnxruntime/blob/main/js/common/lib/inference-session.ts)
 - [Current WebGPU operator table](https://github.com/microsoft/onnxruntime/blob/main/js/web/docs/webgpu-operators.md)
 - [Current WebNN operator table](https://github.com/microsoft/onnxruntime/blob/main/js/web/docs/webnn-operators.md)
 
-### Package records
+**Package records**
 
 - [`onnxruntime-web` on npm](https://www.npmjs.com/package/onnxruntime-web)
 - [`onnxruntime` on PyPI](https://pypi.org/project/onnxruntime/)
 - [`onnxruntime-ep-webgpu` on PyPI](https://pypi.org/project/onnxruntime-ep-webgpu/)
 
-### Browser/Web standards and field guidance
+**Browser/Web standards and field guidance**
 
 - [WebGPU implementation status](https://webgpu.io/status/)
 - [Chrome WebGPU troubleshooting](https://developer.chrome.com/docs/web-platform/webgpu/troubleshooting-tips)
 - [Chrome 147–148 WebGPU blog: Linux NVIDIA rollout](https://developer.chrome.com/blog/new-in-webgpu-147-148)
-- [Chrome on-device AI acceleration hub: WASM and WebGPU](https://developer.chrome.com/docs/ai/platform)
+- [Chrome on-device AI acceleration hub](https://developer.chrome.com/docs/ai/platform)
 - [WebNN implementation/operator status](https://webmachinelearning.github.io/webnn-status/)
 - [WebNN installation guide](https://webnn.io/en/learn/get-started/installation)
 - [WebNN architecture/backend FAQ](https://webnn.io/en/faq/architecture/)
 - [Windows ML overview](https://learn.microsoft.com/windows/ai/new-windows-ml/overview)
 
-### Independent field reading (secondary, not normative)
+**Independent field reading (secondary, not normative)**
 
-- [WebGPU vs WebNN browser-AI field article](https://sachinsharma.dev/blogs/accelerating-llms-browser-webgpu-webnn) — useful as an example of local-first architecture and why memory residency matters. Its single-machine benchmark, broad browser-support statements, model names, and raw WebNN snippets are **not** used as compatibility evidence here; verify them against the live ORT/operator/browser sources above.
+- [WebGPU vs WebNN browser-AI field article](https://sachinsharma.dev/blogs/accelerating-llms-browser-webgpu-webnn) — useful for local-first architecture ideas; its benchmark numbers, browser-support claims, and code snippets are **not** used as compatibility evidence here.
 
 ## 14. Production checklist
 
@@ -822,11 +986,11 @@ A source build requires the full ONNX Runtime toolchain and is not a rookie fall
 |---|---|
 | Does WASM run the exact model/input? | Yes, outputs match the CPU oracle |
 | Is the requested browser API present? | `navigator.gpu`/`navigator.ml` succeeds in a secure context |
-| Is hardware acceleration real? | Browser diagnostics or native profile proves hardware/provider use |
+| Is hardware acceleration real? | Browser diagnostics or the native profile proves hardware/provider use |
 | Are unsupported nodes understood? | Strict mode passes, or every fallback and copy is documented |
 | Are outputs correct? | Shape/dtype and numerical/task metrics pass |
-| Is performance measured fairly? | Warm-up, fixed workload, load vs run separated, I/O policy documented |
+| Is performance measured fairly? | Warm-up, fixed workload, load vs. run separated, I/O policy documented |
 | Is deployment supportable? | Version/browser/OS/device matrix and fallback policy are explicit |
 | Is the app secure/offline-ready? | HTTPS/CSP/assets/model privacy and update policy reviewed |
 
-If any answer is “unknown,” keep WASM/CPU as a visible fallback and do not advertise the accelerator path as production-ready.
+If any answer is "unknown," keep WASM/CPU as a visible fallback and do not advertise the accelerator path as production-ready.

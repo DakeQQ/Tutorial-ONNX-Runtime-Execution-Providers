@@ -1,197 +1,220 @@
-# ONNX Runtime + DirectML / Windows ML on Windows
+# ONNX Runtime on Windows: DirectML & Windows ML
 
 [简体中文](README.zh-CN.md) · [Repository index](../README.md) · [Official DirectML EP guide](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html)
 
-| Item | Baseline |
+**DirectML** is Microsoft's GPU compute library for Windows. ONNX Runtime's DirectML EP runs your model on any DirectX 12 GPU through it. **Windows ML** goes one step further: a Windows-supported ORT build that also *finds and picks* the best vendor EP for you — GPU, NPU, or CPU. This folder *proves* both really execute on real hardware, not just that a provider loaded.
+
+> [!IMPORTANT]
+> **There is no `WinMLExecutionProvider`.**
+> - **Standalone DirectML** = one real provider, `DmlExecutionProvider`, on a DirectX 12 GPU.
+> - **Windows ML** = a Windows-supported ORT build **plus** an *EP catalog* that registers real vendor EPs (`DmlExecutionProvider`, `QNNExecutionProvider`, `VitisAIExecutionProvider`, …) and a policy that auto-picks one.
+
+| You are here for… | Go to |
 |---|---|
-| Last verified | `2026-07-17` against official docs, PyPI metadata/files, and ONNX Runtime source |
-| Audited source | ONNX Runtime `bf6aa0063d1c178c4a4d33ed6770425834147e2a` (`main` HEAD at `2026-07-17T04:49:55Z`) |
-| Hosts | Native Windows; DirectML wheel: x64; Windows ML: x64 or ARM64 |
-| Standalone route | `onnxruntime-directml==1.24.4`, `DmlExecutionProvider`, DirectX 12 GPU |
-| Windows ML route | Windows App SDK `2.1.3` projection + exact `onnxruntime-windowsml==1.24.6.202605042033` |
-| Strategic status | DirectML remains supported in sustained engineering; Microsoft recommends Windows ML for new Windows deployments |
+| The 60-second overview | [§1 Pick your route](#1-pick-your-route) |
+| Plain-English terms | [§2 Names you'll meet](#2-names-youll-meet) |
+| Running the proof right now | [§4 Run it](#4-run-it) |
+| What "PASS" actually proves | [§5 Read a PASS correctly](#5-read-a-pass-correctly) |
+| Wiring the EP into your own app | [§8 Use it in your app](#8-use-it-in-your-app) |
+| How it works internally | [§6](#6-inside-directml) / [§7](#7-inside-windows-ml) — optional deep dive |
+| Something failed | [§10 Troubleshooting](#10-troubleshooting) |
+
+| Baseline | Value |
+|---|---|
+| Last verified | `2026-07-18`, against official docs, PyPI, and ONNX Runtime source |
+| Audited source | ONNX Runtime [`bf6aa006`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a) (`main` HEAD) |
+| Standalone route | `onnxruntime-directml==1.24.4` · `DmlExecutionProvider` · DirectX 12 GPU · x64 |
+| Windows ML route | Windows App SDK `2.1.3` + `onnxruntime-windowsml==1.24.6.202605042033` · x64 or ARM64 |
 | Entry point | [`one_click.py`](one_click.py) |
-| Proof | CPU parity + recorded graph assignment + current-run profile + default ORT CPU EP fallback disabled |
-| Validation boundary | Helper tests and CPython 3.12 dependency resolution passed on Linux for DirectML x64 and Windows ML x64/ARM64; final DirectML/catalog execution requires a matching Windows target |
+| Proof | CPU parity + graph assignment + current-run profile + default CPU EP fallback disabled |
+| Validation boundary | Prepared on Linux; final DirectML/catalog execution needs a matching Windows target |
 
 ### Files
 
 | File | Purpose |
 |---|---|
-| [`README.md`](README.md) | Complete English setup and source guide |
-| [`README.zh-CN.md`](README.zh-CN.md) | Complete Simplified Chinese guide |
-| [`one_click.py`](one_click.py) | One-command environment setup and strict proof test |
+| [`README.md`](README.md) · [`README.zh-CN.md`](README.zh-CN.md) | This guide (English / 简体中文) |
+| [`one_click.py`](one_click.py) | One-command setup and strict proof test |
 | [`requirements-directml.txt`](requirements-directml.txt) | Standalone DirectML environment |
 | [`requirements-winml.txt`](requirements-winml.txt) | Windows ML catalog environment |
 
-> [!IMPORTANT]
-> There is no `WinMLExecutionProvider`. Standalone DirectML is an ORT execution provider named `DmlExecutionProvider`. Windows ML is a Windows-supported ONNX Runtime distribution plus an execution-provider catalog and automatic selection layer. The catalog registers real EP names such as `DmlExecutionProvider`, `QNNExecutionProvider`, `VitisAIExecutionProvider`, `MIGraphXExecutionProvider`, or vendor-specific providers.
->
-> This tutorial's `windowsml` command requires Windows 11 24H2 (build 26100)+ because it qualifies the dynamically acquired catalog route. Windows ML's included CPU and legacy DirectML EPs are available on every OS version supported by the matching Windows App SDK.
+### Contents
 
-### 60-second mental model
+- [1. Pick your route](#1-pick-your-route)
+- [2. Names you'll meet](#2-names-youll-meet)
+- [3. Check requirements](#3-check-requirements)
+- [4. Run it](#4-run-it)
+- [5. Read a PASS correctly](#5-read-a-pass-correctly)
+- [6. Inside DirectML](#6-inside-directml)
+- [7. Inside Windows ML](#7-inside-windows-ml)
+- [8. Use it in your app](#8-use-it-in-your-app)
+- [9. Model and performance tips](#9-model-and-performance-tips)
+- [10. Troubleshooting](#10-troubleshooting)
+- [11. Source map](#11-source-map)
+- [12. Validation boundary](#12-validation-boundary)
+
+### The whole picture
 
 ```mermaid
-%%{init: {"themeCSS": ".mindmap-node:not(.section-root) text { fill: #20242b !important; } .mindmap-node:not(.section-root) span { color: #20242b !important; }"}}%%
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","primaryColor":"#dbeafe","primaryTextColor":"#1e293b","primaryBorderColor":"#3b82f6","lineColor":"#94a3b8"},"themeCSS":".mindmap-node text{fill:#1e293b !important;} .mindmap-node span{color:#1e293b !important;}"}}%%
 mindmap
   root((Windows ONNX inference))
     Standalone DirectML
-      Python wheel
-      One DXGI GPU
-      Explicit adapter index
-      Broad DirectX 12 support
-    Modern Windows ML
+      Python wheel, x64 only
+      One DirectX 12 GPU
+      Pick adapter by index
+    Windows ML
       Windows-supported ORT
-      Included CPU and legacy DirectML
-      EP catalog
-        Discovers compatible vendor EPs
-        Downloads only with consent
-        Registers OrtEpDevice records
-      ORT policy
-        Chooses among registered devices
+      EP Catalog finds vendor EPs
+      Policy picks CPU, GPU, or NPU
     Legacy WinML
       LearningModel WinRT API
-      Uses ORT CPU or DirectML underneath
+      Runs on ORT CPU or DML
+    Remember
+      No WinMLExecutionProvider
+      Prove the EP, not just load it
 ```
 
 ---
 
-## 1. Choose the route
-
-| Goal | Route | Use it when | Main constraint |
-|---|---|---|---|
-| Fastest Python GPU bring-up | **Standalone DirectML** | You need one broad DirectX 12 GPU backend and explicit adapter selection | Sustained engineering; current PyPI wheel is Windows x64 only |
-| New Windows application | **Windows ML** | You want Windows-managed vendor EP discovery, acquisition, updates, and ORT automatic device policy | Dynamically acquired hardware EPs require Windows 11 24H2 (build 26100)+ |
-| WinRT media/tensor API | **Legacy WinML API** | Existing code uses `LearningModel`, `VideoFrame`, and `LearningModelBinding` | This is an API layer over ORT CPU/DML, not another EP |
-| Maximum vendor control | Vendor EP directly | Deployment already owns a CUDA, QNN, OpenVINO, MIGraphX, or Vitis AI stack | More packaging and compatibility work |
+## 1. Pick your route
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart TD
-  A["Need ONNX inference on Windows"] --> B{"What matters most?"}
-  B -->|Small Python experiment| C["Standalone DirectML"]
-  B -->|New cross-vendor Windows app| D["Windows ML"]
-  B -->|Existing LearningModel WinRT app| E["Legacy WinML API"]
-  C --> F["DmlExecutionProvider on one DXGI GPU"]
-  D --> G["EP Catalog registers device-specific EPs"]
-  G --> H["ORT policy selects CPU, GPU, or NPU"]
-  E --> I["WinRT layer builds ORT CPU or DML session"]
+    A["Need ONNX inference on Windows"] --> B{"What matters most?"}
+    B -->|"Fast Python GPU test"| C["Standalone DirectML"]
+    B -->|"New cross-vendor app"| D["Windows ML"]
+    B -->|"Existing LearningModel app"| E["Legacy WinML API"]
+    C --> F["DmlExecutionProvider on one GPU"]
+    D --> G["EP Catalog registers vendor EPs"]
+    G --> H["ORT policy picks CPU, GPU, or NPU"]
+    E --> I["WinRT layer over ORT CPU or DML"]
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
+    classDef dev fill:#ede9fe,stroke:#8b5cf6,color:#4c1d95;
+    class A,C,D,E step;
+    class B dec;
+    class F,G,H,I dev;
 ```
 
-**Recommended learning order:**
+| Goal | Route | Use it when | Main limit |
+|---|---|---|---|
+| Fastest Python GPU bring-up | **Standalone DirectML** | You want one broad DirectX 12 GPU backend with explicit adapter choice | Windows x64 wheel only |
+| New Windows application | **Windows ML** | You want Windows to discover, update, and auto-pick vendor EPs | Dynamic EP downloads need Windows 11 24H2 (build 26100)+ |
+| Existing WinRT media/tensor app | **Legacy WinML API** | Your code already uses `LearningModel`, `VideoFrame`, `LearningModelBinding` | It's an API layer over ORT CPU/DML, not another EP |
+| Full vendor control | Vendor EP directly | You already manage a CUDA, QNN, OpenVINO, MIGraphX, or Vitis AI stack | More packaging and compatibility work |
 
-1. Run standalone DirectML on the default adapter.
-2. Qualify every intended DirectML adapter explicitly with `--device-id`.
-3. Run Windows ML with only an already-installed provider.
-4. Permit catalog downloads with `--allow-download`, then qualify the selected vendor EP.
-5. Repeat the same assignment, fallback, and accuracy checks with the production model.
+**Learning order:** DirectML on the default adapter → qualify each adapter with `--device-id` → Windows ML with an already-installed provider → allow catalog downloads → repeat every check on your production model.
 
 ---
 
-## 2. Understand the names and layers
-
-| Name | What it is | What it is not |
-|---|---|---|
-| **Direct3D 12** | Windows GPU/compute device, resource, queue, command-list, and fence API | A neural-network graph runtime |
-| **DirectML** | Low-level DirectX 12 machine-learning operator and graph library | ONNX Runtime itself |
-| **DirectML EP** | ORT adapter that maps supported ONNX work to DirectML | A vendor-specific driver |
-| **Legacy WinML** | `Windows.AI.MachineLearning` / `Microsoft.AI.MachineLearning` WinRT object model built over ORT | An EP named WinML |
-| **Modern Windows ML** | Windows-supported ORT distribution, EP catalog, model tooling, and selection policy | The old `LearningModel` layer alone |
-| **Plugin EP** | Public ORT C ABI for a separately shipped provider library | A particular CPU/GPU/NPU |
-| **Driver** | Vendor software implementing DirectX 12 or a hardware-specific EP interface | Something installed by the ONNX model |
+## 2. Names you'll meet
 
 ```mermaid
-flowchart LR
-  MODEL["ONNX model"] --> ORT["ONNX Runtime graph partitioner"]
-  ORT --> DML["DmlExecutionProvider"]
-  DML --> D3D["DirectML + Direct3D 12"]
-  D3D --> GPU["Selected DXGI GPU"]
-
-  CATALOG["Windows ML EP Catalog"] --> REG["Register plugin EP libraries"]
-  REG --> AUTO["ORT automatic EP policy"]
-    AUTO --> ORT
-  AUTO --> VENDOR["Vendor CPU / GPU / NPU EP"]
-
-  LEGACY["LearningModel WinRT API"] --> ADAPTER["Private WinML adapter"]
-    ADAPTER --> ORT
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","primaryColor":"#dbeafe","primaryTextColor":"#1e293b","primaryBorderColor":"#3b82f6","lineColor":"#94a3b8"},"themeCSS":".mindmap-node text{fill:#1e293b !important;} .mindmap-node span{color:#1e293b !important;}"}}%%
+mindmap
+  root((Who does what))
+    Hardware
+      D3D12 device
+      DXGI GPU adapter
+    Compute library
+      DirectML operators
+    ORT layer
+      DirectML EP
+      Windows ML EP Catalog
+    App layer
+      Legacy LearningModel API
+      Your Python or C++ code
 ```
 
-The source layout reflects those layers:
+| Name | Plain meaning | What it is *not* |
+|---|---|---|
+| **Direct3D 12** | Windows GPU device, queue, and command API | A neural-network runtime |
+| **DirectML** | Low-level DirectX 12 ML operator library | ONNX Runtime itself |
+| **DirectML EP** | ORT adapter mapping ONNX work to DirectML | A vendor driver |
+| **Legacy WinML** | `Windows.AI.MachineLearning` WinRT object model over ORT | An EP named WinML |
+| **Modern Windows ML** | Windows-supported ORT + EP catalog + selection policy | The old `LearningModel` layer alone |
+| **Plugin EP** | Public ORT C ABI for a separately shipped provider | A specific CPU/GPU/NPU |
+| **Driver** | Vendor software implementing DirectX 12 or an EP | Anything the ONNX model installs |
 
-- [`onnxruntime/core/providers/dml`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml) is the real DirectML EP.
-- [`onnxruntime/core/providers/winml`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/winml) contains only the `OrtGetWinMLAdapter` export surface. Its own header explicitly says it is **not a true execution provider**.
-- [`winml`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml) contains the legacy WinRT `LearningModel` implementation, private adapter, image conversion, engine, and tests.
-- Modern Windows ML catalog APIs are serviced through the Windows App SDK. They use ORT's public plugin-device and automatic-selection APIs, not a hidden `WinMLExecutionProvider`.
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
+flowchart LR
+    MODEL["ONNX model"] --> ORT["ONNX Runtime partitioner"]
+    ORT --> DML["DmlExecutionProvider"]
+    DML --> D3D["DirectML + Direct3D 12"]
+    D3D --> GPU["Selected DXGI GPU"]
+    CATALOG["Windows ML EP Catalog"] --> REG["Register plugin EP libraries"]
+    REG --> AUTO["ORT automatic EP policy"]
+    AUTO --> ORT
+    AUTO --> VENDOR["Vendor CPU / GPU / NPU EP"]
+    LEGACY["LearningModel WinRT API"] --> ADAPTER["Private WinML adapter"]
+    ADAPTER --> ORT
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef dev fill:#ede9fe,stroke:#8b5cf6,color:#4c1d95;
+    classDef note fill:#f1f5f9,stroke:#94a3b8,color:#1e293b;
+    class MODEL,ORT,DML,D3D step;
+    class GPU,VENDOR dev;
+    class CATALOG,REG,AUTO,LEGACY,ADAPTER note;
+```
+
+The source layout matches these layers: [`providers/dml`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml) is the real DirectML EP; [`providers/winml`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/winml) only exports the `OrtGetWinMLAdapter` bridge and says it is **not a true EP**; [`winml`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml) holds the legacy `LearningModel` implementation.
 
 ---
 
-## 3. Check requirements and versions
+## 3. Check requirements
 
 ### 3.1 Standalone DirectML
 
-| Requirement | Tutorial baseline | Why |
+| Requirement | Baseline | Why |
 |---|---|---|
 | OS | Windows 10 1903 (build 18362)+; Windows 11 recommended | DirectML entered Windows in 1903 |
-| GPU | DirectX 12 capable | DML creates a D3D12 device for the chosen adapter |
-| Examples from Microsoft | NVIDIA Kepler+, AMD GCN 1st Gen+, Intel Haswell graphics+, Qualcomm Adreno 600+ | Broad compatibility, not a promise that every model is fast |
-| Driver | Current stable OEM or GPU-vendor driver | D3D12 and DirectML capability comes from the driver |
-| Process | x64 CPython 3.12 | Current PyPI DirectML wheel has `win_amd64` files only |
-| Runtime | `onnxruntime-directml==1.24.4` | Latest published stable DirectML Python distribution in this audit |
+| GPU | DirectX 12 capable | DML creates a D3D12 device for the adapter |
+| Driver | Current stable OEM / GPU-vendor driver | D3D12 and DirectML come from the driver |
+| Process | x64 CPython 3.12 | Current PyPI wheel ships `win_amd64` files only |
+| Runtime | `onnxruntime-directml==1.24.4` | Latest published stable DirectML wheel |
+| Pinned extras | `numpy==1.26.4`, `onnx==1.22.0` | Matches [`requirements-directml.txt`](requirements-directml.txt) |
 
-The official released contract reports DirectML `1.15.2`, ONNX opset support through 20, and exceptions including 5-D `GridSample` 20 and `DeformConv`. The audited `main` source already contains newer operator-version code, but that does not retroactively expand the released 1.24.4 wheel's support contract.
+> The released 1.24.4 contract reports DirectML `1.15.2` and ONNX opset support through 20 (with exceptions such as 5-D `GridSample` 20 and `DeformConv`). Newer operator code in `main` does not expand that released wheel's support.
 
 ### 3.2 Windows ML catalog route
 
-| Requirement | Tutorial baseline | Why |
+| Requirement | Baseline | Why |
 |---|---|---|
-| Tutorial route OS | Windows 11 24H2, build 26100+ | The launcher intentionally qualifies dynamically acquired hardware EPs |
-| Wider platform scope | Any OS supported by the matching Windows App SDK | Included ORT CPU and DirectML require no catalog download; this launcher does not test that reduced route |
-| Architecture | x64 or ARM64 | Windows ML publishes both architectures |
-| Python | CPython 3.12 | One common, audited wheel ABI across this guide |
+| OS (this route) | Windows 11 24H2, build 26100+ | The launcher qualifies dynamically acquired hardware EPs |
+| Architecture | x64 or ARM64 | Windows ML publishes both |
+| Python | CPython 3.12 | One audited wheel ABI across this guide |
 | Windows App Runtime | `2.1.3` | Must match both `wasdk-*` projections |
 | ML projection | `wasdk-Microsoft.Windows.AI.MachineLearning[all]==2.1.3` | Exposes `ExecutionProviderCatalog` to Python |
-| Bootstrap projection | `wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.1.3` | Activates the matching App Runtime for unpackaged Python |
-| ORT distribution | `onnxruntime-windowsml==1.24.6.202605042033` | Exact dependency declared by the 2.1.3 ML projection |
-| NumPy | `2.4.6` | Compatible CPython 3.12 wheels exist for both Windows x64 and ARM64; NumPy 1.26.4 has no Windows ARM64 wheel |
+| Bootstrap projection | `wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.1.3` | Activates the App Runtime for unpackaged Python |
+| ORT distribution | `onnxruntime-windowsml==1.24.6.202605042033` | Exact dependency of the 2.1.3 ML projection |
+| Pinned extras | `numpy==2.4.6`, `onnx==1.22.0` | Matches [`requirements-winml.txt`](requirements-winml.txt); NumPy has CPython 3.12 wheels for both x64 and ARM64 |
 
-The exact PyPI relationships on the audit date are:
+**Keep the tuple together.** The projection pins one exact ORT build; the installed App Runtime must share its release line.
 
-| Package line | Exact ORT relationship | Meaning |
+| Package line | Requires ORT | Meaning |
 |---|---|---|
-| This guide: `wasdk-*==2.1.3` | ML projection requires `onnxruntime-windowsml==1.24.6.202605042033` | Audited tuple used by the launcher |
-| Newer projection: `wasdk-*==2.3.0` | ML projection requires `onnxruntime-windowsml==1.25.2.202605110140` | A different complete tuple, not an in-place ORT upgrade |
-| Latest standalone Windows ML wheel | `onnxruntime-windowsml==1.27.1.202607110137` | Newer than both projection-pinned builds; do not mix it into either tuple |
-
-The ML projection declares an exact ORT build, and the installed Windows App Runtime must share its release line. This guide keeps the audited 2.1.3 tuple until a newer complete tuple is hardware-qualified.
+| `wasdk-*==2.1.3` (this guide) | `onnxruntime-windowsml==1.24.6.202605042033` | The audited tuple |
+| `wasdk-*==2.3.0` | `onnxruntime-windowsml==1.25.2.202605110140` | A different complete tuple |
+| Latest standalone wheel | `onnxruntime-windowsml==1.27.1.202607110137` | Newer than both; do not mix in |
 
 ### 3.3 One ORT distribution per environment
 
-Every distribution below installs the same Python package named `onnxruntime`:
-
-- `onnxruntime`
-- `onnxruntime-directml`
-- `onnxruntime-gpu`
-- `onnxruntime-openvino`
-- `onnxruntime-windowsml`
-
-Installing two together can overwrite Python files and native DLLs without a useful resolver error. The launcher creates `.venv-directml` and `.venv-windowsml` separately, verifies the import owner, checks exact top-level versions, and runs `pip check` before inference.
+`onnxruntime`, `onnxruntime-directml`, `onnxruntime-gpu`, `onnxruntime-openvino`, and `onnxruntime-windowsml` all install the **same** `onnxruntime` package and can overwrite each other's files. The launcher isolates `.venv-directml` and `.venv-windowsml`, checks the import owner, verifies exact versions, and runs `pip check` before inference.
 
 ---
 
-## 4. Run the shortest path
+## 4. Run it
 
 ### 4.1 Install Python and the Visual C++ runtime
 
-Open PowerShell:
-
 ```powershell
-winget install --id Python.Python.3.12 -e `
-  --accept-package-agreements --accept-source-agreements
-
-winget install --id Microsoft.VCRedist.2015+.x64 -e `
-  --accept-package-agreements --accept-source-agreements
+winget install --id Python.Python.3.12 -e --accept-package-agreements --accept-source-agreements
+winget install --id Microsoft.VCRedist.2015+.x64 -e --accept-package-agreements --accept-source-agreements
 ```
 
-Use the ARM64 Visual C++ redistributable for a native ARM64 Windows ML process. Close the terminal after a first Python installation, open a new one, and verify:
+Use the ARM64 VC++ redistributable for a native ARM64 Windows ML process. Reopen the terminal after a first Python install, then verify:
 
 ```powershell
 py -3.12 --version
@@ -200,102 +223,97 @@ py -3.12 -c "import platform, struct; print(platform.machine(), struct.calcsize(
 
 Expected: Python 3.12, the intended architecture, and `64`.
 
-### 4.2 Standalone DirectML, one command
-
-From the repository root:
+### 4.2 Standalone DirectML
 
 ```powershell
-py -3.12 DirectML\one_click.py directml
+py -3.12 DirectML\one_click.py directml                # default adapter
+py -3.12 DirectML\one_click.py directml --device-id 1  # another GPU
 ```
 
-For another GPU shown in the launcher's DXGI list:
+`device_id` follows `IDXGIFactory::EnumAdapters` order. Adapter 0 is usually the display GPU, not necessarily the fastest. The launcher prints every adapter (name, PCI IDs, dedicated memory, selected marker) in that order.
 
-```powershell
-py -3.12 DirectML\one_click.py directml --device-id 1
-```
+### 4.3 Windows ML
 
-`device_id` follows `IDXGIFactory::EnumAdapters` order. Adapter 0 is usually the display/default GPU, not necessarily the fastest GPU. The launcher prints every adapter in that same order, including name, PCI vendor/device IDs, dedicated memory, and the selected marker.
-
-### 4.3 Windows ML, one command after the App Runtime exists
-
-The Python bootstrap uses `ON_NO_MATCH_SHOW_UI`, so Windows may offer to install a missing matching runtime. For a controlled x64 setup, preinstall and verify Microsoft's signed 2.1.3 installer:
+Preinstall Microsoft's signed 2.1.3 App Runtime first, verifying the signature before running it:
 
 ```powershell
 $installer = "$env:TEMP\windowsappruntimeinstall-2.1.3-x64.exe"
-Invoke-WebRequest `
-  https://aka.ms/windowsappsdk/2.1/2.1.3/windowsappruntimeinstall-x64.exe `
-  -OutFile $installer
-
-$signature = Get-AuthenticodeSignature -LiteralPath $installer
-if ($signature.Status -ne 'Valid' -or
-    $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
+Invoke-WebRequest https://aka.ms/windowsappsdk/2.1/2.1.3/windowsappruntimeinstall-x64.exe -OutFile $installer
+$sig = Get-AuthenticodeSignature -LiteralPath $installer
+if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
   Remove-Item $installer -Force -ErrorAction SilentlyContinue
   throw 'Windows App Runtime installer signature is not a valid Microsoft signature.'
 }
-
 try {
-  $process = Start-Process $installer -ArgumentList '--quiet' -Wait -PassThru
-  if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
-} finally {
-  Remove-Item $installer -Force -ErrorAction SilentlyContinue
-}
+  $p = Start-Process $installer -ArgumentList '--quiet' -Wait -PassThru
+  if ($p.ExitCode -ne 0) { throw "Installer failed: $($p.ExitCode)" }
+} finally { Remove-Item $installer -Force -ErrorAction SilentlyContinue }
 ```
 
-For native ARM64 Python, use the ARM64 installer from the official [Windows App SDK deployment guide](https://learn.microsoft.com/windows/apps/windows-app-sdk/deploy-unpackaged-apps) for the same 2.1.3 release, or let the bootstrap UI install the matching runtime. Do not run the x64 installer block above and call the ARM64 path validated.
-
-Then run:
+Use the ARM64 installer for native ARM64 Python. Then run:
 
 ```powershell
-py -3.12 DirectML\one_click.py windowsml --allow-download
-```
-
-If `--policy` is omitted, the launcher uses `max-performance` (`MAX_PERFORMANCE`), not ORT's CPU-preferring `DEFAULT` policy.
-
-Useful qualification variants:
-
-```powershell
-# Prefer a GPU among every registered catalog EP.
+py -3.12 DirectML\one_click.py windowsml --allow-download            # default policy: max-performance
 py -3.12 DirectML\one_click.py windowsml --policy prefer-gpu --allow-download
-
-# Prepare only the exact catalog provider, then use the policy to select its device.
-py -3.12 DirectML\one_click.py windowsml `
-  --provider DmlExecutionProvider --policy prefer-gpu --allow-download
-
-# Rebuild a route's disposable environment.
-py -3.12 DirectML\one_click.py directml --refresh
+py -3.12 DirectML\one_click.py windowsml --provider DmlExecutionProvider --policy prefer-gpu --allow-download
+py -3.12 DirectML\one_click.py directml --refresh                    # rebuild a route's venv
 ```
 
-Without `--allow-download`, the launcher skips a `NotPresent` catalog entry unless the same EP already exposes an `OrtEpDevice` in this ORT process, which requires no acquisition. Managed machines may also block Microsoft Store or Windows Update package acquisition; that is an administrator policy issue, not an ONNX model issue.
+Without `--allow-download`, the launcher skips a `NotPresent` catalog entry unless the same EP already exposes an `OrtEpDevice` in this process.
 
 | Catalog state | Meaning | Launcher action |
 |---|---|---|
-| `NotPresent` | EP package is not installed | Skip/fail unless `--allow-download`, except when ORT already exposes the same EP device |
-| `NotReady` | Installed, but absent from this app's dependency graph | Call `ensure_ready_async()`; no new download is normally needed |
-| `Ready` | Installed and in the app's dependency graph | Reuse an existing ORT device or register the returned library path |
+| `NotPresent` | EP package not installed | Skip/fail unless `--allow-download` (or ORT already exposes the EP) |
+| `NotReady` | Installed, not in this app's dependency graph | Call `ensure_ready_async()`; usually no download |
+| `Ready` | Installed and in the dependency graph | Reuse the ORT device or register the library path |
+
+### 4.4 CLI reference
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `route` | `directml` | `directml` or `windowsml` |
+| `--device-id` | `0` | DirectML DXGI adapter index (standalone only) |
+| `--policy` | `max-performance` | Windows ML policy: `default`, `prefer-cpu`, `prefer-npu`, `prefer-gpu`, `max-performance`, `max-efficiency`, `min-power` |
+| `--provider` | none | Prepare only this exact Windows ML catalog provider |
+| `--allow-download` | off | Let Windows ML acquire a catalog provider that isn't installed |
+| `--warmups` | `3` | Warm-up runs before timing |
+| `--runs` | `20` | Timed runs |
+| `--refresh` | off | Rebuild the route's virtual environment |
 
 ---
 
-## 5. What the one-click proof actually does
+## 5. Read a PASS correctly
 
-The launcher is a qualification test, not a provider-list demo:
+The launcher is a **qualification test**, not a provider-list demo.
 
-1. Rejects non-Windows, 32-bit, unsupported OS, wrong Python, and Microsoft Store alias hosts.
-2. Creates one route-specific virtual environment and installs the pinned manifest.
-3. Rejects multiple ORT distributions or the wrong owner of the `onnxruntime` import.
-4. Generates an offline static FP32 ONNX graph with two `MatMul`, two `Add`, and one `Relu` node.
-5. Runs a separate `CPUExecutionProvider` reference.
-6. Selects a DXGI adapter for DirectML, or applies the official Python sample's `winrt/msvcp140.dll` collision workaround inside `.venv-windowsml`, then prepares and explicitly registers certified catalog libraries in the same Python ORT process.
-7. Enables all graph optimizations, disables memory patterns, forces sequential execution, records graph assignment, enables profiling, and sets `session.disable_cpu_ep_fallback=1`.
-8. Creates the target session, disables runtime fallback, executes warm-up and timed runs, and compares output to CPU.
-9. Rejects any `CPUExecutionProvider` assignment/profile event, or a target assignment with no matching current-run profile event.
-10. Unregisters catalog plugins while the Windows App SDK bootstrap context is still alive.
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
+flowchart TD
+    A["Check host: OS, arch, Python"] --> B["Create route venv, install pinned stack"]
+    B --> C["Reject multiple ORT distributions"]
+    C --> D["Build FP32 smoke model: 2 MatMul, 2 Add, 1 Relu"]
+    D --> E["CPU reference run"]
+    E --> F["Create target session, fallback disabled"]
+    F --> G["Warm-up + timed runs, compare to CPU"]
+    G --> H{"Any CPU node assigned or profiled?"}
+    H -->|"Yes"| X["FAIL"]
+    H -->|"No"| I{"Target EP has a current-run event?"}
+    I -->|"No"| X
+    I -->|"Yes"| P["PASS"]
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
+    classDef good fill:#dcfce7,stroke:#22c55e,color:#14532d;
+    classDef bad fill:#fee2e2,stroke:#ef4444,color:#7f1d1d;
+    class A,B,C,D,E,F,G step;
+    class H,I dec;
+    class P good;
+    class X bad;
+```
 
-### Read a PASS correctly
-
-| Route | A PASS proves | It does not prove |
+| Route | A PASS proves | It does **not** prove |
 |---|---|---|
-| Standalone DirectML | The graph was assigned to `DmlExecutionProvider`, a current-run DML event was profiled, and the explicitly indexed DXGI adapter backed the DML session | Production-model support, speed, or accuracy outside the smoke input |
-| Windows ML | A registered catalog EP owned the graph and produced a current-run event without default ORT CPU EP nodes | A unique GPU/NPU identity when one EP name exposes several device classes; a vendor CPU EP can pass because assignment/profile records identify the EP name, not its exact device |
+| Standalone DirectML | Graph assigned to `DmlExecutionProvider`, a current-run DML event was profiled, and the indexed DXGI adapter backed the session | Production-model support, speed, or accuracy beyond the smoke input |
+| Windows ML | A registered catalog EP owned the graph and produced a current-run event with no default ORT CPU nodes | A unique GPU/NPU identity; a vendor **CPU** EP can also pass because records name the EP, not its silicon |
 | Both | Output matched an independent CPU reference within `rtol=1e-3`, `atol=1e-4` | Bitwise equality or a hardware benchmark |
 
 Two similarly named controls close different gaps:
@@ -305,18 +323,18 @@ Two similarly named controls close different gaps:
 | `session.disable_cpu_ep_fallback=1` | C++ graph initialization | Nodes silently assigned to the default Microsoft `CPUExecutionProvider` |
 | `session.disable_fallback()` | Python wrapper after session creation | Retrying a failed run by recreating the session with fallback providers |
 
-### Why use assignment and profiling together?
+**Why assignment *and* profiling?** Each alone is weak; together they are auditable.
 
-| Evidence | Strength | Gap closed by the other check |
+| Evidence | Proves | Gap the other closes |
 |---|---|---|
-| `get_available_providers()` | The binary can expose/load an EP | Says nothing about this model's placement |
-| Session provider list | EP registration and priority | CPU can still execute unsupported nodes |
-| Graph assignment record | ORT assigned a subgraph to the EP | Does not alone prove this run reached a profiled kernel event |
-| Current-run profile | A node event was attributed to that EP | Assignment record gives direct partition context |
-| CPU reference comparison | Output is numerically sane | Does not identify the execution device |
-| Default ORT CPU fallback disabled | Unsupported placement fails closed | Assignment/profile make the pass auditable |
+| `get_available_providers()` | The binary can load the EP | Nothing about placement |
+| Session provider list | Registration and priority | CPU can still run unsupported nodes |
+| Graph assignment record | ORT assigned a subgraph to the EP | Not that a kernel actually ran |
+| Current-run profile | A node event was attributed to the EP | Needs assignment for partition context |
+| CPU reference | Output is numerically sane | Cannot identify the device |
+| CPU fallback disabled | Unsupported placement fails closed | Assignment/profile make it auditable |
 
-A successful DirectML run resembles:
+A DirectML PASS looks like:
 
 ```text
 Route              : directml
@@ -332,164 +350,182 @@ Max |target-CPU|    : ...
 PASS: DmlExecutionProvider executed ... profiled node event(s) with ORT CPU fallback disabled.
 ```
 
-`CPUExecutionProvider` may still appear in the session list because ORT implicitly registers it before checking the no-fallback rule. The pass requires zero nodes/events attributed to that EP. This does not rule out a vendor EP that itself targets a CPU device. DML graph fusion can also turn five ONNX nodes into one runtime node, so the profile event count is not expected to equal five.
+`CPUExecutionProvider` may still appear in the session list (ORT registers it before the no-fallback check); the pass requires **zero** nodes/events attributed to it. DML fusion can turn five ONNX nodes into one runtime node, so the event count need not equal five.
 
 ---
 
-## 6. DirectML source deep dive
+## 6. Inside DirectML
 
-This section follows the audited source revision from Python configuration to D3D12 execution.
+> *Optional deep dive — skip to [§8 Use it in your app](#8-use-it-in-your-app) if you just want to use the EP.*
 
-### 6.1 Registration and factory creation
+### 6.1 Registration and factory
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart LR
-  PY["Python provider tuple"] --> PB["pybind CreateExecutionProviderFactoryInstance"]
-  PB --> PARSE["DMLProviderFactoryCreator::CreateFromProviderOptions"]
-  PARSE --> DXGI["device_id path: DXGI adapter"]
-  PARSE --> DXCORE["preference/filter path: DXCore adapters"]
-  DXGI --> D3D["D3D12CreateDevice"]
+    PY["Python provider tuple"] --> PB["pybind factory instance"]
+    PB --> PARSE["DMLProviderFactoryCreator"]
+    PARSE --> DXGI["device_id: DXGI adapter"]
+    PARSE --> DXCORE["preference/filter: DXCore adapters"]
+    DXGI --> D3D["D3D12CreateDevice"]
     DXCORE --> D3D
-  D3D --> DEV["DMLCreateDevice1"]
-  DEV --> QUEUE["DIRECT or COMPUTE queue"]
-  QUEUE --> FACTORY["DMLProviderFactory"]
-  FACTORY --> EP["Dml::ExecutionProvider"]
+    D3D --> DEV["DMLCreateDevice1"]
+    DEV --> QUEUE["DIRECT or COMPUTE queue"]
+    QUEUE --> EP["Dml::ExecutionProvider"]
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef good fill:#dcfce7,stroke:#22c55e,color:#14532d;
+    class PY,PB,PARSE,DXGI,DXCORE,D3D,DEV,QUEUE step;
+    class EP good;
 ```
 
-The public Python route reaches [`CreateExecutionProviderFactoryInstance`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/python/onnxruntime_pybind_state.cc), then [`DMLProviderFactoryCreator`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_provider_factory.cc).
+| Provider option | Values | Default | Behavior |
+|---|---|---|---|
+| `device_id` | Non-empty base-10 integer text, e.g. `"0"` | unset | Legacy DXGI adapter index (`IDXGIFactory::EnumAdapters` order). **Takes full precedence**: when set, `performance_preference` and `device_filter` below are never even parsed. |
+| `performance_preference` | `default`, `high_performance`, `minimum_power` | `default` | Only consulted when `device_id` is absent. Sorts DXCore adapters (`minimum_power` prefers battery-friendly silicon such as an NPU or integrated GPU first). |
+| `device_filter` | `gpu`; also `npu` and `any` in NPU-enumeration builds | `gpu` | Only consulted when `device_id` is absent. Narrows DXCore adapters to the requested hardware class before the highest-priority one is chosen. |
+| `disable_metacommands` | `true` / `True` / `false` / `False` | `false` | Parsed independently of the other three. `true` adds `DML_EXECUTION_FLAG_DISABLE_META_COMMANDS`, forcing DirectML's portable kernels instead of vendor-optimized metacommands — a targeted way to rule out a driver metacommand bug. |
 
-The audited `main` parser accepts:
+The one-click DirectML route uses only `device_id`, the stable released contract for 1.24.4. The DXGI path rejects the software adapter, creates a D3D12 device at feature level 11.0, then an `IDMLDevice` via `DMLCreateDevice1` (DML FL 5.0). It picks a `COMPUTE` queue when the max feature level is `≤ D3D_FEATURE_LEVEL_1_0_CORE`, otherwise `DIRECT`.
 
-| Key | Values | Behavior |
-|---|---|---|
-| `device_id` | Non-empty integer text | Uses the legacy DXGI adapter-index path; it takes precedence over preference/filter |
-| `disable_metacommands` | `true`, `True`, `false`, `False` | Adds `DML_EXECUTION_FLAG_DISABLE_META_COMMANDS` when true |
-| `performance_preference` | `default`, `high_performance`, `minimum_power` | Sorts compatible DXCore adapters |
-| `device_filter` | `gpu`; also `npu` / `any` when NPU enumeration is compiled | Filters DXCore adapters before selecting the first sorted result |
+DML also reads five EP-specific keys from `SessionOptions.add_session_config_entry(key, value)` (source: [`dml_session_options_config_keys.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_session_options_config_keys.h)). These are session-wide, not per-provider, so set them on `SessionOptions` **before** the DML EP is appended — the provider factory reads them at that moment and later changes have no effect.
 
-The one-click standalone route intentionally uses only `device_id`, the stable released Python contract documented for 1.24.4. Newer DXCore filter support in `main` should not be assumed present in every older wheel. For new NPU deployments, Windows ML plus the hardware vendor's EP is usually a clearer support boundary than generic DML NPU enumeration.
+| Session config key | Values | Default | Behavior |
+|---|---|---|---|
+| `ep.dml.disable_graph_fusion` | `0` / `1` | `0` | `1` stops ORT from fusing eligible DML subgraphs into one compiled graph (see [§6.3](#63-capability-fallback-and-partitioning)); every op then dispatches individually. Fusion is also auto-disabled whenever `SessionOptions.optimized_model_filepath` is set, regardless of this key. |
+| `ep.dml.enable_graph_serialization` | `true` / `false` | `false` | `true` dumps each fused DML partition to a `Partition_<N>.bin` file next to the model and round-trips it through (de)serialization — a debugging aid for inspecting the exact graph DirectML compiles. |
+| `ep.dml.enable_graph_capture` | `0` / `1` | `0` | `1` lets ORT record the D3D12 command list(s) once and replay them on later `Run()` calls, skipping CPU re-dispatch. Requires static shapes/bindings and the whole graph on the DML EP; see [§6.4](#64-compilation-and-execution). |
+| `ep.dml.enable_cpu_sync_spinning` | `0` / `1` | `0` | `1` busy-spins the CPU while waiting for the GPU fence instead of blocking on a Win32 event — lower wake-up latency at the cost of a fully-loaded CPU core. Good for latency-critical interactive workloads; leave off for background/batch work. |
+| `ep.dml.disable_memory_arena` | `0` / `1` | `0` | `1` disables the pooling buffer allocator so every DML allocation becomes a fresh committed D3D12 resource. Avoids the arena holding onto GPU memory between allocations, at the cost of more allocation overhead — useful when VRAM is tight or you are diagnosing memory usage. |
 
-The DXGI path rejects the software adapter, creates a D3D12 device at feature level 11.0, then creates an `IDMLDevice` through `DMLCreateDevice1` with DML feature level 5.0. The newer DXCore path enumerates `D3D12_GENERIC_ML` or core-compute adapters, identifies GPU/NPU type, sorts by power/performance preference, and creates the first matching D3D12 device.
+[§8.1](#81-directml-qualification-session) shows every one of these nine options set together with inline comments.
 
-The factory chooses a `COMPUTE` queue when the device's maximum feature level is at most `D3D_FEATURE_LEVEL_1_0_CORE`; otherwise it chooses `DIRECT`. A caller-supplied `IDMLDevice` and command queue must have the same parent D3D12 device; only `DIRECT` or `COMPUTE` queues are accepted. The session retains strong references to both.
+### 6.2 Session constraints
 
-### 6.2 Session constraints and memory
-
-DirectML resources are D3D12 buffers, not ordinary byte-addressable CPU allocations. That drives two public constraints:
+DirectML resources are D3D12 buffers, so two settings are required (the launcher sets them explicitly, which is the portable choice):
 
 ```python
 options.enable_mem_pattern = False
 options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
 ```
 
-Current `InferenceSession::RegisterExecutionProvider` can auto-correct these settings for DML and log the change. The public DirectML contract and legacy WinML adapter still require callers to set them correctly, so explicit configuration is the portable choice. Do not call `Run` concurrently from multiple threads on one DML session; use separate sessions if concurrency is required.
-
-[`ExecutionProviderImpl`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) owns:
-
-- an `ID3D12Device` and `IDMLDevice`;
-- a GPU [`BucketizedBufferAllocator`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/BucketizedBufferAllocator.cpp) with DML `OrtMemoryInfo`;
-- upload/readback paths and a CPU-input allocator;
-- a [`DataTransfer`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src) that copies CPU-to-GPU, GPU-to-CPU, and GPU buffers;
-- an execution context shared by Python I/O binding on the same D3D12 device when available.
-
-The C API can wrap a caller-owned D3D12 resource as a DML allocation or recover the `ID3D12Resource` behind a DML allocation. Those APIs are for native zero-copy integration; normal NumPy feeds still cross the CPU/GPU boundary.
+Do not call `Run` concurrently on one DML session; use separate sessions for concurrency.
 
 ### 6.3 Capability, fallback, and partitioning
 
-[`ExecutionProviderImpl::GetCapability`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) does more than check an operator name:
-
-1. `kernel_lookup.LookUpKernel(node)` must find a DML registration.
-2. An operator-specific `supportQuery` may reject an attribute/shape combination.
-3. The node's tensor types must fit the actual device's data-type mask.
-4. ORT's CPU-preferred analysis can keep shape/cheap nodes on CPU when moving them would be worse.
-5. Accepted nodes become `ComputeCapability` records for ORT's graph partitioner.
-
-The device-type mask is important: DML registers kernels up front, but the selected hardware might not implement every type. Rejecting at capability time permits normal CPU fallback instead of failing much later during operator creation. This tutorial turns that fallback into a session-creation failure because its smoke graph is expected to be fully supported.
-
-After initial assignment, [`GraphPartitioner.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/GraphPartitioner.cpp) and the DML graph transformers merge compatible nodes. Static input/output shapes, required constant inputs, supported edge types, and safe partition boundaries allow multiple nodes to become one DirectML graph. Models containing ONNX subgraphs receive more conservative splitting because implicit inputs and shared initializers complicate partition ownership.
-
-### 6.4 Graph compilation and execution
-
-[`DmlGraphFusionTransformer`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionTransformer.cpp) builds static fused partitions. [`DmlRuntimeGraphFusionTransformer`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/DmlRuntimeGraphFusionTransformer.cpp) supports the graph-capture path. [`DmlGraphFusionHelper`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionHelper.cpp) translates graph edges/operators, calls `IDMLDevice1::CompileGraph`, allocates persistent/temporary resources, builds binding tables, and records reusable command lists.
-
-The normal execution chain is:
+A node is accepted only when every check below passes; otherwise it falls back to CPU. This tutorial turns that fallback into a session-creation failure because the smoke graph is fully supported.
 
 ```mermaid
-flowchart LR
-  K["FusedGraphKernel / DML operator kernel"] --> EC["ExecutionContext"]
-  EC --> REC["DmlCommandRecorder"]
-  REC --> CL["D3D12 command list"]
-  CL --> Q["CommandQueue"]
-  Q --> F["Monotonic D3D12 fence"]
-  F --> LIFE["Release queued COM/resource references"]
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
+flowchart TD
+    N["ONNX node"] --> K{"DML kernel registered?"}
+    K -->|"No"| CPU["CPU fallback"]
+    K -->|"Yes"| S{"supportQuery ok?"}
+    S -->|"No"| CPU
+    S -->|"Yes"| T{"Device data types ok?"}
+    T -->|"No"| CPU
+    T -->|"Yes"| C{"Worth moving off CPU?"}
+    C -->|"No"| CPU
+    C -->|"Yes"| A["Accept, then fuse partitions"]
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
+    classDef good fill:#dcfce7,stroke:#22c55e,color:#14532d;
+    classDef bad fill:#fee2e2,stroke:#ef4444,color:#7f1d1d;
+    class N step;
+    class K,S,T,C dec;
+    class A good;
+    class CPU bad;
 ```
 
-[`CommandQueue`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/CommandQueue.cpp) increments and signals a fence after each submission. Objects needed by asynchronous GPU work are queued with the fence value and released only after completion. `OnRunEnd` flushes pending work without blocking, allowing CPU work to overlap the GPU. `Sync()` flushes and waits for all outstanding work.
+Static shapes, constant required inputs, and supported edge types let the graph transformers merge many nodes into one DirectML graph. Models with ONNX subgraphs split more conservatively.
 
-Advanced graph capture uses `ep.dml.enable_graph_capture=1`. The first user-visible `Run` may perform several internal runs for allocation and capture; after the EP reports capture complete, later calls replay the saved command lists. Bindings and resource addresses must remain valid for the captured graph's lifetime. The one-click qualification test deliberately leaves capture off because it validates ordinary execution, not stable-address I/O binding.
+### 6.4 Compilation and execution
+
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
+flowchart LR
+    K["Fused DML kernel"] --> EC["ExecutionContext"]
+    EC --> REC["DmlCommandRecorder"]
+    REC --> CL["D3D12 command list"]
+    CL --> Q["CommandQueue"]
+    Q --> F["Monotonic D3D12 fence"]
+    F --> LIFE["Release queued resources"]
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef note fill:#f1f5f9,stroke:#94a3b8,color:#1e293b;
+    class K,EC,REC,CL,Q,F step;
+    class LIFE note;
+```
+
+The queue signals a fence after each submission and releases GPU-held objects only after completion. `OnRunEnd` flushes without blocking so CPU and GPU overlap; `Sync()` flushes and waits. Advanced graph capture (`ep.dml.enable_graph_capture=1`) replays saved command lists after the first runs; the one-click test leaves it off.
 
 ---
 
-## 7. WinML source deep dive: legacy and modern
+## 7. Inside Windows ML
+
+> *Optional deep dive — skip to [§8 Use it in your app](#8-use-it-in-your-app) if you just want to use the EP.*
 
 ### 7.1 Why `core/providers/winml` looks empty
 
-[`winml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/winml/winml_provider_factory.h) says the WinML "provider factory" is not a true EP. [`symbols.txt`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/winml/symbols.txt) exports only `OrtGetWinMLAdapter`. The directory is an export bridge so the separate WinML layer can reach private adapter APIs.
+Its header says the "provider factory" is **not a true EP**, and [`symbols.txt`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/winml/symbols.txt) exports only `OrtGetWinMLAdapter`. The directory is a bridge to private adapter APIs.
 
 ### 7.2 Legacy `LearningModel` path
 
-The real legacy implementation under [`winml/`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml) follows this flow:
-
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart LR
-  LM["LearningModel"] --> LMS["LearningModelSession"]
-  DEV["LearningModelDevice"] --> LMS
-  LMS --> EB["OnnxruntimeEngineBuilder"]
-  EB -->|CPU device| CPU["OnnxruntimeCpuSessionBuilder"]
-  EB -->|DirectX device| DB["OnnxruntimeDmlSessionBuilder"]
-  DB --> AD["private WinML adapter"]
-  AD --> IS["ORT InferenceSession"]
-  IS --> DML["DmlExecutionProvider"]
-  BIND["LearningModelBinding"] --> EVAL["Evaluate / EvaluateAsync"]
-    EVAL --> IS
+    LM["LearningModel"] --> LMS["LearningModelSession"]
+    DEV["LearningModelDevice"] --> LMS
+    LMS --> EB["Engine builder"]
+    EB -->|"CPU"| CPU["Cpu session builder"]
+    EB -->|"DirectX"| DB["Dml session builder"]
+    DB --> AD["Private WinML adapter"]
+    AD --> IS["ORT InferenceSession"]
+    IS --> DML["DmlExecutionProvider"]
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef note fill:#f1f5f9,stroke:#94a3b8,color:#1e293b;
+    classDef good fill:#dcfce7,stroke:#22c55e,color:#14532d;
+    class LM,LMS,DEV,EB,DB,AD step;
+    class CPU note;
+    class IS,DML good;
 ```
 
-Key details from source:
+The DML session builder enables all optimizations, disables memory patterns, appends DML with the caller's D3D12 device/queue, adds CPU fallback, and initializes. The adapter contract is explicitly private.
 
-- [`LearningModelDevice`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/lib/Api/LearningModelDevice.cpp) maps `Cpu`, `DirectX`, `DirectXHighPerformance`, and `DirectXMinPower` to cached D3D resources or CPU state. It can also wrap a caller's Direct3D 11 device or D3D12 queue.
-- [`LearningModelSession`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/lib/Api/LearningModelSession.cpp) obtains the optimized model, configures the engine builder from the device, creates the engine, loads the detached ORT model, initializes, and exposes sync/async evaluation.
-- [`OnnxruntimeDmlSessionBuilder`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/lib/Api.Ort/OnnxruntimeDmlSessionBuilder.cpp) enables all graph optimizations, disables memory patterns, appends DML with the caller's D3D12 device/queue, appends CPU fallback, initializes the session, then flushes DML setup work.
-- [`winml_adapter_session.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/adapter/winml_adapter_session.cpp) creates an uninitialized `InferenceSession`, loads an already-parsed `OrtModel` without reparsing, exposes the provider handle, and initializes later.
-- [`winml_adapter_c_api.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/adapter/winml_adapter_c_api.h) explicitly marks that adapter contract private and unsupported for direct application use.
+### 7.3 Modern Windows ML (this tutorial's Python path)
 
-### 7.3 Modern Windows ML Python path used by this tutorial
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
+flowchart TD
+    A["Activate App Runtime via bootstrap"] --> B["find_all_providers"]
+    B --> C{"Certified and ready?"}
+    C -->|"No"| SKIP["Skip"]
+    C -->|"Yes"| D["ensure_ready_async (if allowed)"]
+    D --> E["register_execution_provider_library"]
+    E --> F["get_ep_devices exposes OrtEpDevice"]
+    F --> G["set_provider_selection_policy"]
+    G --> H["Create InferenceSession"]
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
+    classDef good fill:#dcfce7,stroke:#22c55e,color:#14532d;
+    classDef note fill:#f1f5f9,stroke:#94a3b8,color:#1e293b;
+    class A,B,D,E,F,G step;
+    class C dec;
+    class H good;
+    class SKIP note;
+```
 
-Modern Windows ML does not drive inference through `LearningModelSession` in this Python demo. It performs:
-
-1. Activate the matching Windows App Runtime with the dynamic-dependency bootstrap.
-2. Enumerate `ExecutionProviderCatalog.get_default().find_all_providers()`.
-3. Inspect certification and readiness; call `ensure_ready_async().get()` only when preparation is needed and downloads are allowed.
-4. Register the provider's current `library_path` with `ort.register_execution_provider_library()`.
-5. Let `ort.get_ep_devices()` expose the provider's `OrtEpDevice` entries.
-6. Set `SessionOptions.set_provider_selection_policy(...)` or append a chosen device explicitly.
-7. Create a normal `ort.InferenceSession`.
-
-The explicit library registration in step 4 is Python-specific. Microsoft's one-call `EnsureAndRegisterCertifiedAsync()` and `RegisterCertifiedAsync()` APIs work for native/.NET ORT environments but **do not register into Python's ORT environment**.
-
-ORT's [`ProviderPolicyContext`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/provider_policy_context.cc) implements the built-in policies. In this source revision:
+Registering each catalog `library_path` is **Python-specific**. Microsoft's one-call `EnsureAndRegisterCertifiedAsync()` targets native/.NET ORT, not Python's ORT environment.
 
 | Python policy | Internal behavior |
 |---|---|
-| `DEFAULT` | Prefer CPU |
-| `PREFER_CPU` | Prefer CPU |
-| `PREFER_NPU`, `MAX_EFFICIENCY`, `MIN_OVERALL_POWER` | Select the first NPU if present, then add CPU fallback |
-| `PREFER_GPU`, `MAX_PERFORMANCE` | Select the first GPU if present, then add CPU fallback |
+| `DEFAULT`, `PREFER_CPU` | Prefer CPU |
+| `PREFER_NPU`, `MAX_EFFICIENCY`, `MIN_OVERALL_POWER` | First NPU if present, then CPU fallback |
+| `PREFER_GPU`, `MAX_PERFORMANCE` | First GPU if present, then CPU fallback |
 
-A policy chooses among **registered** EP devices. It neither downloads a provider nor makes an incompatible model supported. With `session.disable_cpu_ep_fallback=1`, ORT removes its default Microsoft CPU device and rejects default-CPU graph placement. A vendor CPU EP can still be selected, so treat the Windows ML PASS as proof of the catalog EP path unless the application also records the selected `OrtEpDevice` identity. The catalog manages acquisition/registration; ORT policy chooses; capability analysis partitions; assignment/profile verify the EP path.
+A policy chooses among **registered** devices; it never downloads a provider or makes an incompatible model supported. With `disable_cpu_ep_fallback=1`, ORT drops its default CPU device — but a **vendor** CPU EP can still be selected, so log the chosen `OrtEpDevice` if you need exact silicon proof.
 
 ---
 
-## 8. Use the APIs in your application
+## 8. Use it in your app
 
 ### 8.1 DirectML qualification session
 
@@ -497,31 +533,50 @@ A policy chooses among **registered** EP devices. It neither downloads a provide
 import onnxruntime as ort
 
 options = ort.SessionOptions()
-options.enable_mem_pattern = False
-options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+options.enable_mem_pattern = False  # required by DML (see §6.2)
+options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL  # required by DML (see §6.2)
+
+# Strict-qualification entries (general ORT keys, not DML-specific)
 options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
 options.add_session_config_entry("session.record_ep_graph_assignment_info", "1")
+
+# DML-specific session config keys (`ep.dml.*`, see §6.1). All five must be set
+# before the DML EP is appended below — the provider factory reads them then.
+options.add_session_config_entry("ep.dml.disable_graph_fusion", "0")           # "1" = one DML kernel per op (debug)
+options.add_session_config_entry("ep.dml.enable_graph_serialization", "false")  # "true" = dump Partition_<N>.bin
+options.add_session_config_entry("ep.dml.enable_graph_capture", "0")           # "1" = record once, replay every Run()
+options.add_session_config_entry("ep.dml.enable_cpu_sync_spinning", "0")       # "1" = busy-spin for the GPU fence
+options.add_session_config_entry("ep.dml.disable_memory_arena", "0")          # "1" = skip the pooling allocator
 
 session = ort.InferenceSession(
     "model.onnx",
     sess_options=options,
-    providers=[("DmlExecutionProvider", {"device_id": "0"})],
+    providers=[
+        (
+            "DmlExecutionProvider",
+            {
+                "device_id": "0",  # DXGI adapter index; set -> ignores the two keys below
+                # "performance_preference": "high_performance",  # default | high_performance | minimum_power
+                # "device_filter": "gpu",                        # gpu | npu | any (only if device_id unset)
+                "disable_metacommands": "false",  # "true" forces portable kernels, skipping vendor metacommands
+            },
+        )
+    ],
 )
 session.disable_fallback()
 
-for assignment in session.get_provider_graph_assignment_info():
-    print(assignment.ep_name, [(node.name, node.op_type) for node in assignment.get_nodes()])
+for a in session.get_provider_graph_assignment_info():
+    print(a.ep_name, [(n.name, n.op_type) for n in a.get_nodes()])
 ```
 
-For production, decide fallback deliberately. If partial CPU execution is acceptable, remove `session.disable_cpu_ep_fallback`, append `CPUExecutionProvider`, profile the production model, and disclose the partitioning. Do not call a partially offloaded result "full GPU execution."
+For production, decide fallback deliberately. If partial CPU execution is acceptable, drop `disable_cpu_ep_fallback`, append `CPUExecutionProvider`, and profile — but do not call a partially offloaded result "full GPU execution."
 
 ### 8.2 Windows ML policy session
 
-The catalog/bootstrap objects and registered libraries must remain alive through session use. Python must register each catalog `library_path` in the same ORT process. This skeleton skips downloads until the application grants consent:
+The catalog/bootstrap objects and registered libraries must stay alive through session use. This skeleton avoids downloads until the app grants consent.
 
 ```python
 import gc
-
 import winui3.microsoft.windows.applicationmodel.dynamicdependency.bootstrap as bootstrap
 
 allow_download = False
@@ -530,32 +585,24 @@ with bootstrap.initialize(options=bootstrap.InitializeOptions.ON_NO_MATCH_SHOW_U
     import onnxruntime as ort
     import winui3.microsoft.windows.ai.machinelearning as winml
 
-    registered = []
-    session = None
+    registered, session = [], None
     catalog = winml.ExecutionProviderCatalog.get_default()
     try:
         for provider in catalog.find_all_providers():
             if provider.certification != winml.ExecutionProviderCertification.CERTIFIED:
                 continue
-            if (
-                provider.ready_state == winml.ExecutionProviderReadyState.NOT_PRESENT
-                and not allow_download
-            ):
+            if provider.ready_state == winml.ExecutionProviderReadyState.NOT_PRESENT and not allow_download:
                 continue
-
-            result = provider.ensure_ready_async().get()
-            if result.status != winml.ExecutionProviderReadyResultState.SUCCESS:
+            if provider.ensure_ready_async().get().status != winml.ExecutionProviderReadyResultState.SUCCESS:
                 continue
-            if provider.name in {device.ep_name for device in ort.get_ep_devices()}:
+            if provider.name in {d.ep_name for d in ort.get_ep_devices()}:
                 continue
             if provider.library_path:
                 ort.register_execution_provider_library(provider.name, provider.library_path)
                 registered.append(provider.name)
 
         options = ort.SessionOptions()
-        options.set_provider_selection_policy(
-            ort.OrtExecutionProviderDevicePolicy.MAX_PERFORMANCE
-        )
+        options.set_provider_selection_policy(ort.OrtExecutionProviderDevicePolicy.MAX_PERFORMANCE)
         session = ort.InferenceSession("model.onnx", sess_options=options)
         # Use the session while the bootstrap context and providers are alive.
     finally:
@@ -565,53 +612,79 @@ with bootstrap.initialize(options=bootstrap.InitializeOptions.ON_NO_MATCH_SHOW_U
             ort.unregister_execution_provider_library(name)
 ```
 
-Production code should inspect certification/readiness, avoid downloads without user/admin policy, handle each provider error independently, and unregister only after all sessions and provider-owned objects are destroyed. [`one_click.py`](one_click.py) implements the stricter lifecycle and proof checks.
-
-The official Python sample removes the `msvcp140.dll` copy bundled under `winrt-runtime` before importing Windows ML because it can conflict with other native libraries. This launcher performs that mutation only in its route-specific disposable `.venv-windowsml`; it never edits the system Visual C++ Runtime.
+The official Python sample removes the `msvcp140.dll` bundled under `winrt-runtime` before importing Windows ML. The launcher does this only inside its disposable `.venv-windowsml`; it never edits the system VC++ runtime. [`one_click.py`](one_click.py) implements the full lifecycle and strict checks.
 
 ---
 
-## 9. Model and performance guidance
+## 9. Model and performance tips
+
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
+flowchart LR
+    A["Session creation"] --> B["Warm-up run"]
+    B --> C["Timed runs"]
+    C --> D["App end to end"]
+    A --- A1["compile graph + fuse partitions"]
+    B --- B1["allocate + first dispatch"]
+    C --- C1["GPU compute + copies"]
+    D --- D1["pre/post-processing + UI"]
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef note fill:#f1f5f9,stroke:#94a3b8,color:#1e293b;
+    class A,B,C,D step;
+    class A1,B1,C1,D1 note;
+```
 
 | Topic | Guidance |
 |---|---|
-| Shapes | Prefer known/static dimensions. They improve ORT inference, constant folding, DML graph fusion, weight preprocessing, and first-run predictability. |
-| Dynamic dimensions | Use free-dimension overrides when deployment shapes are known; otherwise expect less fusion and more first-run work. |
-| Opset | Keep the standalone released-wheel qualification at opset 20 or below; this demo uses opset 17. |
-| Precision | Start with FP32, then validate FP16/INT8/QDQ accuracy on each target EP. Hardware and driver support differ. |
-| Transfers | Tiny models are often dominated by NumPy-to-GPU and GPU-to-CPU copies. Use realistic batches and I/O binding before drawing performance conclusions. |
-| Warm-up | Session creation and first inference can compile graphs, preprocess weights, allocate persistent resources, and populate caches. Measure them separately. |
-| Metacommands | Driver-specific optimized paths can improve speed. Disable them only to diagnose correctness/driver issues, then compare on the production model. |
-| Concurrency | One DML session is sequential. Use independent sessions for concurrent `Run` calls and measure memory pressure. |
-| Graph capture | Advanced stable-shape/stable-address optimization. Qualify ordinary execution first, then test capture with I/O binding and explicit synchronization. |
-| Windows ML | A vendor EP selected by Windows ML may beat broad DirectML. Benchmark the selected EP, not the policy name. |
+| Shapes | Prefer static dimensions — better inference, constant folding, DML fusion, and predictable first runs |
+| Dynamic dims | Use free-dimension overrides when deployment shapes are known; otherwise expect less fusion |
+| Opset | Keep released-wheel qualification at opset 20 or below; this demo uses 17 |
+| Precision | Start FP32, then validate FP16/INT8/QDQ per target EP |
+| Transfers | Tiny models are dominated by NumPy↔GPU copies; use realistic batches and I/O binding |
+| Warm-up | Session creation and first inference compile graphs and allocate resources; measure them separately |
+| Metacommands | Driver-optimized paths help; disable only to diagnose, then re-compare |
+| Concurrency | One DML session is sequential; use independent sessions for concurrent `Run` |
+| Windows ML | Benchmark the *selected* EP, not the policy name |
 
-The generated graph is intentionally too small to benchmark hardware. Its latency is printed only to catch gross stalls and to show that timing excludes session creation after warm-up.
+The generated graph is intentionally too small to benchmark hardware; its latency only catches gross stalls.
 
 ---
 
 ## 10. Troubleshooting
 
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
+flowchart TD
+    A{"Where did it fail?"}
+    A -->|"Launcher won't start"| B["Check OS, Python, architecture"]
+    A -->|"EP missing"| C["Rebuild the venv; only one ORT package"]
+    A -->|"Session creation fails"| D["Read the rejected-node reason"]
+    A -->|"Windows ML catalog empty"| E["Check build, updates, policy"]
+    A -->|"Numbers look wrong"| F["Compare vs CPU reference"]
+    A -->|"It's slow"| G["Separate cold vs warm timing"]
+    classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    class A dec;
+    class B,C,D,E,F,G step;
+```
+
 | Symptom | Meaning | Action |
 |---|---|---|
-| `The ... route requires native Windows` | Linux, WSL, or another OS started the launcher | Run from native Windows; WSL does not expose this DirectML Python route |
-| Wrong Python / 32-bit failure | Wheel ABI cannot match | Install 64-bit CPython 3.12 and start with `py -3.12` |
-| `DmlExecutionProvider` absent | Wrong ORT distribution or damaged venv | Run `... directml --refresh`; do not install another ORT package into that venv |
-| DXGI adapter index missing | `--device-id` is outside enumeration | Use an index printed by the launcher |
-| D3D12 device creation fails | Adapter/driver lacks working DirectX 12 support, or software adapter was selected | Update OEM/vendor driver; choose a hardware adapter |
-| Session creation reports CPU fallback disabled | Some smoke-graph work was not accepted by the requested EP | Repair runtime/driver first; for a custom model, inspect unsupported operators/types/shapes |
-| Windows App Runtime initialization fails | Missing or mismatched App Runtime | Install signed 2.1.3 runtime matching both `wasdk-*` packages |
-| Empty Windows ML catalog | OS/build, Windows Update, catalog service, or organizational policy issue | Confirm build 26100+, updates, Store/catalog access, and admin policy |
-| Provider is `NotPresent` | Compatible catalog entry exists but package is absent | Rerun with `--allow-download` if policy permits |
-| `ensure_ready_async` fails | Driver/hardware/package requirement is not satisfied | Read its diagnostic text; update the exact OEM/vendor driver and Windows |
-| Catalog library registration fails | App Runtime/ORT/plugin ABI mismatch or stale process state | Recreate the route venv, reboot after runtime updates, and keep one release tuple |
-| `CPUExecutionProvider` is selected and proof fails | `DEFAULT` prefers CPU, or no usable requested device was registered | Use `prefer-gpu`/`prefer-npu`, prepare a compatible provider, or explicitly name it |
-| Windows ML passes but the hardware class is unclear | The selected vendor EP exposes CPU plus GPU/NPU devices; EP-name evidence cannot distinguish them | Explicitly select/log the intended `OrtEpDevice`, then repeat assignment, profile, and parity checks |
-| Target assigned but no target profile event | Run did not produce matching execution evidence | Treat as failure; do not infer acceleration from registration |
-| Numerical mismatch | Precision, driver, or operator issue | Reproduce with FP32/static shapes, update driver, and minimize the model |
-| Device removed / TDR | GPU reset, timeout, memory pressure, or driver defect | Reduce workload, inspect Event Viewer, update driver, and test without metacommands |
-
-Useful diagnostics:
+| `The ... route requires native Windows` | Started on Linux/WSL/other OS | Run on native Windows; WSL has no DirectML Python route |
+| Wrong Python / 32-bit failure | Wheel ABI cannot match | Install 64-bit CPython 3.12; start with `py -3.12` |
+| `DmlExecutionProvider` absent | Wrong ORT distribution or damaged venv | `... directml --refresh`; never add another ORT package |
+| DXGI index missing | `--device-id` outside enumeration | Use an index the launcher printed |
+| D3D12 device creation fails | Adapter/driver lacks working DX12, or software adapter chosen | Update the driver; choose a hardware adapter |
+| Session reports CPU fallback disabled | Some smoke work was not accepted by the EP | Repair runtime/driver; for a custom model, inspect unsupported ops/types/shapes |
+| App Runtime init fails | Missing/mismatched App Runtime | Install signed 2.1.3 matching both `wasdk-*` packages |
+| Empty Windows ML catalog | OS build, Windows Update, catalog service, or policy | Confirm build 26100+, updates, Store/catalog access, admin policy |
+| Provider is `NotPresent` | Compatible entry exists but package absent | Rerun with `--allow-download` if policy permits |
+| `ensure_ready_async` fails | Driver/hardware/package requirement unmet | Read its diagnostic; update the exact OEM/vendor driver |
+| Library registration fails | App Runtime/ORT/plugin ABI mismatch | Recreate the venv, reboot after updates, keep one tuple |
+| `CPUExecutionProvider` selected, proof fails | `DEFAULT` prefers CPU, or no usable device registered | Use `prefer-gpu`/`prefer-npu`, prepare a provider, or name it |
+| Windows ML passes but hardware class unclear | The EP exposes CPU plus GPU/NPU; EP-name evidence cannot tell them apart | Select/log the intended `OrtEpDevice`, then repeat the checks |
+| Numerical mismatch | Precision, driver, or operator issue | Reproduce with FP32/static shapes, update driver, minimize the model |
+| Device removed / TDR | GPU reset, timeout, memory pressure, or driver defect | Reduce workload, check Event Viewer, update driver, test without metacommands |
 
 ```powershell
 winver
@@ -622,64 +695,46 @@ py -3.12 DirectML\one_click.py windowsml --provider DmlExecutionProvider --allow
 
 ---
 
-## 11. Source map and primary references
+## 11. Source map
 
 ### Claim-to-source audit
 
-| Claim | Primary evidence | Audit result |
+| Claim | Primary evidence | Result |
 |---|---|---|
-| DirectML is sustained engineering; released contract is DirectML 1.15.2 through opset 20 with named exceptions | [Official DirectML EP guide](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html) | Confirmed; newer `main` code is not treated as a released-wheel promise |
-| `device_id` is DXGI order; DML requires sequential execution and no memory pattern | [`dml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/dml/dml_provider_factory.h) + [`inference_session.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/inference_session.cc) | Confirmed |
-| DML capability depends on kernel registration, support query, device data types, and CPU-preferred analysis | [`ExecutionProvider.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) | Confirmed |
-| There is no true `WinMLExecutionProvider` | [`winml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/winml/winml_provider_factory.h) + [`symbols.txt`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/winml/symbols.txt) | Confirmed; only the private adapter bridge is exported |
-| Python must register each catalog `library_path`; one-call registration targets another ORT environment | [Install EPs](https://learn.microsoft.com/windows/ai/new-windows-ml/initialize-execution-providers) + [Register EPs](https://learn.microsoft.com/windows/ai/new-windows-ml/register-execution-providers) | Confirmed for the pinned Python projection |
-| Built-in policies map to CPU-, NPU-, or GPU-oriented selectors with CPU fallback | [`provider_policy_context.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/provider_policy_context.cc) | Confirmed; EP-name proof is not exact silicon proof |
-| Package versions and architectures in section 3 exist as pinned | [DirectML PyPI](https://pypi.org/project/onnxruntime-directml/1.24.4/) + [Windows ML projection PyPI](https://pypi.org/project/wasdk-Microsoft.Windows.AI.MachineLearning/2.1.3/) | Confirmed from metadata and wheel filenames |
+| DirectML is sustained engineering; released contract is DirectML 1.15.2 through opset 20 | [Official DirectML EP guide](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html) | Confirmed |
+| `device_id` is DXGI order; DML needs sequential execution and no memory pattern | [`dml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/dml/dml_provider_factory.h) + [`inference_session.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/inference_session.cc) | Confirmed |
+| DML takes exactly 4 provider options (`device_id`, `performance_preference`, `device_filter`, `disable_metacommands`) plus 5 `ep.dml.*` session config keys — no others exist | [`dml_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_provider_factory.cc) + [`dml_session_options_config_keys.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_session_options_config_keys.h) | Confirmed |
+| Capability depends on kernel registration, support query, device data types, and CPU-preferred analysis | [`ExecutionProvider.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) | Confirmed |
+| There is no true `WinMLExecutionProvider` | [`winml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/winml/winml_provider_factory.h) + [`symbols.txt`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/winml/symbols.txt) | Confirmed |
+| Python must register each catalog `library_path` | [Install EPs](https://learn.microsoft.com/windows/ai/new-windows-ml/initialize-execution-providers) + [Register EPs](https://learn.microsoft.com/windows/ai/new-windows-ml/register-execution-providers) | Confirmed |
+| Built-in policies map to CPU/NPU/GPU selectors with CPU fallback | [`provider_policy_context.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/provider_policy_context.cc) | Confirmed |
+| Pinned versions/architectures exist | [DirectML PyPI](https://pypi.org/project/onnxruntime-directml/1.24.4/) + [Windows ML projection PyPI](https://pypi.org/project/wasdk-Microsoft.Windows.AI.MachineLearning/2.1.3/) | Confirmed |
 
-### ONNX Runtime source, audited commit
+### ONNX Runtime source (audited commit)
 
 | Area | File |
 |---|---|
-| Public DML C API and device options | [`dml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/dml/dml_provider_factory.h) |
-| Adapter enumeration, D3D/DML creation, provider options | [`dml_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_provider_factory.cc) |
-| EP capability, allocators, data transfer, run lifecycle | [`ExecutionProvider.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) |
-| DML graph partition merging | [`GraphPartitioner.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/GraphPartitioner.cpp) |
+| Public DML C API and options | [`dml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/dml/dml_provider_factory.h) |
+| Adapter enumeration, D3D/DML creation | [`dml_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_provider_factory.cc) |
+| DML-specific session config keys | [`dml_session_options_config_keys.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_session_options_config_keys.h) |
+| Capability, allocators, run lifecycle | [`ExecutionProvider.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) |
+| Graph partition merging | [`GraphPartitioner.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/GraphPartitioner.cpp) |
 | Command recording and submission | [`DmlCommandRecorder.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/DmlCommandRecorder.cpp) |
 | Queue and fence lifetime | [`CommandQueue.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/CommandQueue.cpp) |
-| DML session config keys | [`dml_session_options_config_keys.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_session_options_config_keys.h) |
-| Built-in DML Plugin-EP adapter | [`ep_factory_dml.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/plugin_ep/ep_factory_dml.cc) |
-| Automatic EP policy implementation | [`provider_policy_context.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/provider_policy_context.cc) |
+| Automatic EP policy | [`provider_policy_context.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/provider_policy_context.cc) |
 | WinML export is not a true EP | [`winml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/winml/winml_provider_factory.h) |
-| Legacy private session adapter | [`winml_adapter_session.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/adapter/winml_adapter_session.cpp) |
 | Legacy DML session builder | [`OnnxruntimeDmlSessionBuilder.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/lib/Api.Ort/OnnxruntimeDmlSessionBuilder.cpp) |
-| Legacy WinRT session object | [`LearningModelSession.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/lib/Api/LearningModelSession.cpp) |
 
 ### Official documentation
 
-- [DirectML Execution Provider](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html)
-- [Install ONNX Runtime / Windows ML](https://onnxruntime.ai/docs/install/#cccwinml-installs)
-- [ONNX Runtime on Windows](https://onnxruntime.ai/docs/get-started/with-windows.html)
-- [What is Windows ML?](https://learn.microsoft.com/windows/ai/new-windows-ml/overview)
-- [Windows ML walkthrough](https://learn.microsoft.com/windows/ai/new-windows-ml/tutorial)
-- [Install Windows ML EPs](https://learn.microsoft.com/windows/ai/new-windows-ml/initialize-execution-providers)
-- [Register Windows ML EPs](https://learn.microsoft.com/windows/ai/new-windows-ml/register-execution-providers)
-- [Supported Windows ML EPs](https://learn.microsoft.com/windows/ai/new-windows-ml/supported-execution-providers)
-- [Windows ML catalog vs. bring-your-own EPs](https://learn.microsoft.com/windows/ai/new-windows-ml/windows-ml-eps-vs-bring-your-own)
-- [Windows ML samples](https://github.com/microsoft/WindowsAppSDK-Samples/tree/main/Samples/WindowsML)
-- [DirectML API documentation](https://learn.microsoft.com/windows/ai/directml/dml)
+- [DirectML Execution Provider](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html) · [Install ORT / Windows ML](https://onnxruntime.ai/docs/install/#cccwinml-installs) · [ORT on Windows](https://onnxruntime.ai/docs/get-started/with-windows.html)
+- [What is Windows ML?](https://learn.microsoft.com/windows/ai/new-windows-ml/overview) · [Walkthrough](https://learn.microsoft.com/windows/ai/new-windows-ml/tutorial) · [Install EPs](https://learn.microsoft.com/windows/ai/new-windows-ml/initialize-execution-providers) · [Register EPs](https://learn.microsoft.com/windows/ai/new-windows-ml/register-execution-providers)
+- [Supported EPs](https://learn.microsoft.com/windows/ai/new-windows-ml/supported-execution-providers) · [Catalog vs. bring-your-own](https://learn.microsoft.com/windows/ai/new-windows-ml/windows-ml-eps-vs-bring-your-own) · [Windows ML samples](https://github.com/microsoft/WindowsAppSDK-Samples/tree/main/Samples/WindowsML) · [DirectML API](https://learn.microsoft.com/windows/ai/directml/dml)
 
 ---
 
 ## 12. Validation boundary
 
-This folder was prepared on Linux, so no claim is made that a Windows GPU/NPU executed during this edit. The following checks did run:
+Prepared on Linux — no Windows GPU/NPU executed during this edit. What did run: helper tests (profile parsing, strict assignment, policy mapping, package-name normalization); `one_click.py` bytecode compilation; full CPython 3.12 dependency resolution for DirectML x64 and Windows ML x64/ARM64; source/API audit against the pinned commit and Microsoft Learn; PyPI metadata/file audit; syntax parsing of every Python example and Mermaid diagram; HTTP availability of the pinned x64 App Runtime installer.
 
-- Python helper tests for profile parsing, strict assignment rules, policy mapping, and package-name normalization;
-- Python bytecode compilation of [`one_click.py`](one_click.py);
-- complete dependency resolution to CPython 3.12 Windows wheels: DirectML x64 plus Windows ML x64 and ARM64;
-- source-path and API audit against the pinned ONNX Runtime commit, Microsoft Learn, and official Windows ML samples;
-- PyPI metadata/file audit for exact versions and architectures, plus direct inspection of the pinned 2.1.3 projection's Python type stubs;
-- syntax parsing of every Python example and all six Mermaid diagrams in each README;
-- HTTP availability of the pinned x64 App Runtime installer. Authenticode verification still belongs on Windows and is enforced by the shown PowerShell block.
-
-Run the appropriate one-click command on the target Windows device before treating the route as qualified. A pass applies only to the generated smoke model, selected adapter/provider, current driver, and current package tuple. Repeat the proof with the production model and representative inputs.
+Run the matching one-click command on the target Windows device before treating a route as qualified. A pass applies only to the generated smoke model, selected adapter/provider, current driver, and current package tuple. Repeat the proof with your production model and representative inputs.

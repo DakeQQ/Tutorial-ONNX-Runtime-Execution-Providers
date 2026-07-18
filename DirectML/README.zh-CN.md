@@ -1,322 +1,340 @@
-# 在 Windows 上使用 ONNX Runtime + DirectML / Windows ML
+# 在 Windows 上使用 ONNX Runtime：DirectML 与 Windows ML
 
 [English](README.md) · [仓库首页](../README.zh-CN.md) · [DirectML EP 官方指南](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html)
 
-| 项目 | 本文采用的版本或环境 |
+**DirectML** 是微软面向 Windows 的 GPU 计算库。ONNX Runtime 的 DirectML EP 借助它，把你的模型跑在任意一块 DirectX 12 GPU 上。**Windows ML** 更进一步：它是 Windows 官方支持的 ORT 发行版，还会替你*自动发现并挑选*最合适的厂商 EP —— GPU、NPU 或 CPU。本目录用来*证明*这两条路线真的跑在了真实硬件上，而不只是"加载成功"。
+
+> [!IMPORTANT]
+> **不存在 `WinMLExecutionProvider`。**
+> - **独立 DirectML** = 一个真实的 Provider，名叫 `DmlExecutionProvider`，运行在某块 DirectX 12 GPU 上。
+> - **Windows ML** = Windows 支持的 ORT 发行版，**外加**一个 *EP 目录*：它会注册真实的厂商 EP（`DmlExecutionProvider`、`QNNExecutionProvider`、`VitisAIExecutionProvider` 等），再由策略自动选一个。
+
+| 你想做什么… | 去这里 |
 |---|---|
-| 最近核验 | `2026-07-17`；已核对官方文档、PyPI 元数据和文件，以及 ONNX Runtime 源码 |
-| 核验源码 | ONNX Runtime `bf6aa0063d1c178c4a4d33ed6770425834147e2a`（`2026-07-17T04:49:55Z` 时的 `main` HEAD） |
-| 运行环境 | 原生 Windows；DirectML wheel 仅支持 x64，Windows ML 支持 x64 或 ARM64 |
-| 独立 DirectML 方案 | `onnxruntime-directml==1.24.4`、`DmlExecutionProvider`、DirectX 12 GPU |
-| Windows ML 方案 | Windows App SDK `2.1.3` Python 投影包（语言绑定），以及精确匹配的 `onnxruntime-windowsml==1.24.6.202605042033` |
-| 维护状态 | DirectML 仍受支持，但目前处于持续工程维护阶段；微软建议新的 Windows 部署优先使用 Windows ML |
+| 60 秒看懂全局 | [§1 选择你的方案](#1-选择你的方案) |
+| 搞清楚这些术语 | [§2 你会遇到的名词](#2-你会遇到的名词) |
+| 现在就跑一遍验证 | [§4 运行](#4-运行) |
+| "PASS" 到底证明了什么 | [§5 正确理解 PASS](#5-正确理解-pass) |
+| 把 EP 接入自己的应用 | [§8 在你的应用中使用](#8-在你的应用中使用) |
+| 想了解内部原理 | [§6](#6-directml-内部原理) / [§7](#7-windows-ml-内部原理) —— 选读的深入内容 |
+| 遇到了问题 | [§10 故障排查](#10-故障排查) |
+
+| 基线 | 取值 |
+|---|---|
+| 最近核验 | `2026-07-18`，已核对官方文档、PyPI 和 ONNX Runtime 源码 |
+| 核验源码 | ONNX Runtime [`bf6aa006`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a)（`main` HEAD） |
+| 独立方案 | `onnxruntime-directml==1.24.4` · `DmlExecutionProvider` · DirectX 12 GPU · x64 |
+| Windows ML 方案 | Windows App SDK `2.1.3` + `onnxruntime-windowsml==1.24.6.202605042033` · x64 或 ARM64 |
 | 入口 | [`one_click.py`](one_click.py) |
-| 验证方式 | 与 CPU 结果对比，记录计算图分配和当前运行的 profile，并禁止回退到默认 ORT CPU EP |
-| 已验证范围 | 辅助测试以及面向 CPython 3.12 的 DirectML x64、Windows ML x64/ARM64 依赖解析已在 Linux 上通过；DirectML 和 EP 目录中的 Provider 仍需在匹配的 Windows 设备上实际运行 |
+| 验证方式 | 与 CPU 结果一致 + 图分配记录 + 当前运行 profile + 禁用默认 CPU EP 回退 |
+| 验证范围 | 在 Linux 上准备；DirectML/目录 Provider 的最终执行仍需匹配的 Windows 设备 |
 
 ### 文件
 
 | 文件 | 用途 |
 |---|---|
-| [`README.md`](README.md) | 完整英文配置与源码指南 |
-| [`README.zh-CN.md`](README.zh-CN.md) | 本中文指南 |
-| [`one_click.py`](one_click.py) | 用一条命令搭建环境并执行严格验证 |
+| [`README.md`](README.md) · [`README.zh-CN.md`](README.zh-CN.md) | 本指南（English / 简体中文） |
+| [`one_click.py`](one_click.py) | 一条命令完成配置并严格验证 |
 | [`requirements-directml.txt`](requirements-directml.txt) | 独立 DirectML 环境 |
-| [`requirements-winml.txt`](requirements-winml.txt) | Windows ML EP 目录环境 |
+| [`requirements-winml.txt`](requirements-winml.txt) | Windows ML 目录环境 |
 
-> [!IMPORTANT]
-> 不存在名为 `WinMLExecutionProvider` 的 EP。独立 DirectML 使用的是 ORT 中名为 `DmlExecutionProvider` 的执行提供程序。Windows ML 则由 Windows 支持的 ONNX Runtime 发行版、EP 目录和自动选择机制共同组成。EP 目录实际注册的是 `DmlExecutionProvider`、`QNNExecutionProvider`、`VitisAIExecutionProvider`、`MIGraphXExecutionProvider` 或其他厂商 EP。
->
-> 本文的 `windowsml` 命令要求 Windows 11 24H2（build 26100）或更新版本，因为它会验证从 EP 目录动态获取硬件 Provider 的完整流程。Windows ML 内置的 CPU 和旧版 DirectML EP 不需要经过目录下载，可以在对应 Windows App SDK 支持的所有系统版本上使用。
+### 目录
 
-### 60 秒概览
+- [1. 选择你的方案](#1-选择你的方案)
+- [2. 你会遇到的名词](#2-你会遇到的名词)
+- [3. 检查前置条件](#3-检查前置条件)
+- [4. 运行](#4-运行)
+- [5. 正确理解 PASS](#5-正确理解-pass)
+- [6. DirectML 内部原理](#6-directml-内部原理)
+- [7. Windows ML 内部原理](#7-windows-ml-内部原理)
+- [8. 在你的应用中使用](#8-在你的应用中使用)
+- [9. 模型与性能建议](#9-模型与性能建议)
+- [10. 故障排查](#10-故障排查)
+- [11. 源码地图](#11-源码地图)
+- [12. 验证范围](#12-验证范围)
+
+### 全局概览
 
 ```mermaid
-%%{init: {"themeCSS": ".mindmap-node:not(.section-root) text { fill: #20242b !important; } .mindmap-node:not(.section-root) span { color: #20242b !important; }"}}%%
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","primaryColor":"#dbeafe","primaryTextColor":"#1e293b","primaryBorderColor":"#3b82f6","lineColor":"#94a3b8"},"themeCSS":".mindmap-node text{fill:#1e293b !important;} .mindmap-node span{color:#1e293b !important;}"}}%%
 mindmap
   root((Windows ONNX 推理))
     独立 DirectML
-      Python wheel
-      一个 DXGI GPU
-      显式适配器索引
-      广泛支持 DirectX 12 硬件
-    现代 Windows ML
+      Python wheel，仅 x64
+      一个 DirectX 12 GPU
+      按索引选择适配器
+    Windows ML
       Windows 支持的 ORT
-      内置 CPU 和旧版 DirectML
-      EP 目录
-        发现兼容的厂商 EP
-        只在获得许可时下载
-        注册 OrtEpDevice 记录
-      ORT 策略
-        在已注册设备中选择
+      EP 目录发现厂商 EP
+      策略选择 CPU、GPU 或 NPU
     旧版 WinML
       LearningModel WinRT API
-      底层使用 ORT CPU 或 DirectML
+      底层是 ORT CPU 或 DML
+    牢记
+      没有 WinMLExecutionProvider
+      要证明 EP，而不只是加载
 ```
 
 ---
 
-## 1. 选择合适的方案
-
-| 目标 | 建议方案 | 适用场景 | 主要限制 |
-|---|---|---|---|
-| 尽快完成 Python GPU 验证 | **独立 DirectML** | 需要通用的 DirectX 12 GPU 后端，并且希望显式选择适配器 | 处于持续工程维护阶段；当前 PyPI wheel 仅支持 Windows x64 |
-| 新的 Windows 应用 | **Windows ML** | 希望由 Windows 发现、获取、更新厂商 EP，并使用 ORT 自动设备策略 | 动态获取的硬件 EP 需要 Windows 11 24H2（build 26100）或更新版本 |
-| 使用 WinRT 媒体/张量 API | **旧版 WinML API** | 现有代码已使用 `LearningModel`、`VideoFrame` 和 `LearningModelBinding` | 它只是 ORT CPU/DML 之上的 API 层，并不是另一个 EP |
-| 完全掌控厂商软件栈 | 直接使用厂商 EP | 部署环境已经自行管理 CUDA、QNN、OpenVINO、MIGraphX 或 Vitis AI | 需要自行处理更多打包和兼容性问题 |
+## 1. 选择你的方案
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart TD
-    A["需要在 Windows 上运行 ONNX"] --> B{"最重要的目标是什么？"}
-    B -->|小型 Python 实验| C["独立 DirectML"]
-    B -->|新的跨厂商 Windows 应用| D["Windows ML"]
-    B -->|已有 LearningModel WinRT 应用| E["旧版 WinML API"]
-    C --> F["一个 DXGI GPU 上的 DmlExecutionProvider"]
-    D --> G["EP 目录注册设备专用 EP"]
+    A["需要在 Windows 上做 ONNX 推理"] --> B{"最看重什么？"}
+    B -->|"快速做 Python GPU 验证"| C["独立 DirectML"]
+    B -->|"新的跨厂商应用"| D["Windows ML"]
+    B -->|"已有 LearningModel 应用"| E["旧版 WinML API"]
+    C --> F["在一块 GPU 上运行 DmlExecutionProvider"]
+    D --> G["EP 目录注册厂商 EP"]
     G --> H["ORT 策略选择 CPU、GPU 或 NPU"]
-    E --> I["WinRT 层创建 ORT CPU 或 DML 会话"]
+    E --> I["ORT CPU 或 DML 之上的 WinRT 层"]
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
+    classDef dev fill:#ede9fe,stroke:#8b5cf6,color:#4c1d95;
+    class A,C,D,E step;
+    class B dec;
+    class F,G,H,I dev;
 ```
 
-**建议按以下顺序上手：**
+| 目标 | 方案 | 适用场景 | 主要限制 |
+|---|---|---|---|
+| 最快完成 Python GPU 验证 | **独立 DirectML** | 需要一个通用的 DirectX 12 GPU 后端，并显式选择适配器 | 仅有 Windows x64 wheel |
+| 新的 Windows 应用 | **Windows ML** | 希望由 Windows 负责发现、更新并自动选择厂商 EP | 动态获取的 EP 需要 Windows 11 24H2（build 26100）+ |
+| 已有 WinRT 媒体/张量应用 | **旧版 WinML API** | 代码已使用 `LearningModel`、`VideoFrame`、`LearningModelBinding` | 它是 ORT CPU/DML 之上的 API 层，不是另一个 EP |
+| 完全掌控厂商软件栈 | 直接使用厂商 EP | 已经自行管理 CUDA、QNN、OpenVINO、MIGraphX 或 Vitis AI | 需要更多打包和兼容性工作 |
 
-1. 在默认适配器上运行独立 DirectML。
-2. 使用 `--device-id` 逐一验证计划部署的 DirectML 适配器。
-3. 先让 Windows ML 只使用已经安装的 Provider。
-4. 增加 `--allow-download`，允许从 EP 目录下载软件包，再严格验证选中的厂商 EP。
-5. 使用生产模型重新检查节点分配、CPU 回退和精度。
+**建议的学习顺序：** 在默认适配器上运行 DirectML → 用 `--device-id` 逐一验证每个适配器 → 先用已安装的 Provider 运行 Windows ML → 允许目录下载 → 在生产模型上重复所有检查。
 
 ---
 
-## 2. 了解各个名称和软件层
-
-| 名称 | 是什么 | 不是什么 |
-|---|---|---|
-| **Direct3D 12** | Windows GPU/计算设备、资源、队列、命令列表和 fence API | 神经网络计算图运行时 |
-| **DirectML** | 面向 DirectX 12 的底层机器学习算子和图执行库 | ONNX Runtime 本身 |
-| **DirectML EP** | 将受支持的 ONNX 计算映射到 DirectML 的 ORT 适配层 | 厂商专用驱动 |
-| **旧版 WinML** | 构建在 ORT 上的 `Windows.AI.MachineLearning` / `Microsoft.AI.MachineLearning` WinRT 对象模型 | 名为 WinML 的 EP |
-| **现代 Windows ML** | Windows 支持的 ORT 发行版、EP 目录、模型工具和选择策略 | 只有旧版 `LearningModel` 层 |
-| **Plugin EP** | 独立 Provider 动态库使用的公开 ORT C ABI | 某个固定 CPU/GPU/NPU |
-| **驱动** | 实现 DirectX 12 或硬件专用 EP 接口的厂商软件 | 由 ONNX 模型自动安装的软件 |
+## 2. 你会遇到的名词
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","primaryColor":"#dbeafe","primaryTextColor":"#1e293b","primaryBorderColor":"#3b82f6","lineColor":"#94a3b8"},"themeCSS":".mindmap-node text{fill:#1e293b !important;} .mindmap-node span{color:#1e293b !important;}"}}%%
+mindmap
+  root((谁负责什么))
+    硬件层
+      D3D12 设备
+      DXGI GPU 适配器
+    计算库
+      DirectML 算子
+    ORT 层
+      DirectML EP
+      Windows ML EP 目录
+    应用层
+      旧版 LearningModel API
+      你的 Python 或 C++ 代码
+```
+
+| 名词 | 通俗含义 | 它*不是*什么 |
+|---|---|---|
+| **Direct3D 12** | Windows GPU 设备、队列和命令 API | 神经网络运行时 |
+| **DirectML** | 底层 DirectX 12 机器学习算子库 | ONNX Runtime 本身 |
+| **DirectML EP** | 把 ONNX 计算映射到 DirectML 的 ORT 适配层 | 厂商驱动 |
+| **旧版 WinML** | ORT 之上的 `Windows.AI.MachineLearning` WinRT 对象模型 | 名为 WinML 的 EP |
+| **现代 Windows ML** | Windows 支持的 ORT + EP 目录 + 选择策略 | 仅指旧版 `LearningModel` 层 |
+| **Plugin EP** | 面向独立 Provider 的公开 ORT C ABI | 某个固定的 CPU/GPU/NPU |
+| **驱动** | 实现 DirectX 12 或 EP 接口的厂商软件 | 由 ONNX 模型安装的任何东西 |
+
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart LR
     MODEL["ONNX 模型"] --> ORT["ONNX Runtime 分图器"]
     ORT --> DML["DmlExecutionProvider"]
     DML --> D3D["DirectML + Direct3D 12"]
     D3D --> GPU["选中的 DXGI GPU"]
-
-    CATALOG["Windows ML EP 目录"] --> REG["注册 Plugin EP 动态库"]
+    CATALOG["Windows ML EP 目录"] --> REG["注册 plugin EP 动态库"]
     REG --> AUTO["ORT 自动 EP 策略"]
     AUTO --> ORT
     AUTO --> VENDOR["厂商 CPU / GPU / NPU EP"]
-
-    LEGACY["LearningModel WinRT API"] --> ADAPTER["私有 WinML adapter"]
+    LEGACY["LearningModel WinRT API"] --> ADAPTER["私有 WinML 适配层"]
     ADAPTER --> ORT
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef dev fill:#ede9fe,stroke:#8b5cf6,color:#4c1d95;
+    classDef note fill:#f1f5f9,stroke:#94a3b8,color:#1e293b;
+    class MODEL,ORT,DML,D3D step;
+    class GPU,VENDOR dev;
+    class CATALOG,REG,AUTO,LEGACY,ADAPTER note;
 ```
 
-源码目录同样反映了这些层次：
-
-- [`onnxruntime/core/providers/dml`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml) 才是真正的 DirectML EP。
-- [`onnxruntime/core/providers/winml`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/winml) 只保留 `OrtGetWinMLAdapter` 导出接口。其头文件明确说明它**并不是真正的执行提供程序**。
-- [`winml`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml) 包含旧版 WinRT `LearningModel` 实现、私有 adapter、图像转换、engine 和测试代码。
-- 现代 Windows ML 的 EP 目录由 Windows App SDK 提供。它使用 ORT 公开的插件设备和自动选择 API，而不是某个隐藏的 `WinMLExecutionProvider`。
+源码目录也对应这些层次：[`providers/dml`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml) 才是真正的 DirectML EP；[`providers/winml`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/winml) 只导出 `OrtGetWinMLAdapter` 桥接，并声明它**不是真正的 EP**；[`winml`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml) 才是旧版 `LearningModel` 的实现。
 
 ---
 
-## 3. 核对系统要求和版本
+## 3. 检查前置条件
 
 ### 3.1 独立 DirectML
 
-| 要求 | 本文基线 | 原因 |
+| 要求 | 基线 | 原因 |
 |---|---|---|
-| 系统 | Windows 10 1903（build 18362）+；推荐 Windows 11 | DirectML 从 1903 开始进入 Windows |
-| GPU | 支持 DirectX 12 | DML 会为选中的适配器创建 D3D12 设备 |
-| 微软列举的示例 | NVIDIA Kepler+、AMD GCN 第一代+、Intel Haswell 核显+、Qualcomm Adreno 600+ | 说明覆盖面广，不代表每个模型都很快 |
-| 驱动 | 当前稳定 OEM 或 GPU 厂商驱动 | D3D12 和 DirectML 能力来自驱动 |
-| 进程 | x64 CPython 3.12 | 当前 PyPI DirectML 只有 `win_amd64` 文件 |
-| Runtime | `onnxruntime-directml==1.24.4` | 核验时最新的稳定 DirectML Python 发行版 |
+| 系统 | Windows 10 1903（build 18362）+；推荐 Windows 11 | DirectML 从 1903 起进入 Windows |
+| GPU | 支持 DirectX 12 | DML 会为适配器创建 D3D12 设备 |
+| 驱动 | 当前稳定的 OEM / GPU 厂商驱动 | D3D12 和 DirectML 能力来自驱动 |
+| 进程 | x64 CPython 3.12 | 当前 PyPI wheel 只有 `win_amd64` 文件 |
+| Runtime | `onnxruntime-directml==1.24.4` | 最新发布的稳定 DirectML wheel |
+| 附加固定版本 | `numpy==1.26.4`、`onnx==1.22.0` | 对应 [`requirements-directml.txt`](requirements-directml.txt) |
 
-官方发布信息注明 DirectML 版本为 `1.15.2`，支持到 ONNX opset 20，并列出了 5-D `GridSample` 20 和 `DeformConv` 等例外。本文核验的 `main` 源码已经包含更新的算子版本代码，但这些变化不会自动扩大 1.24.4 wheel 已承诺的支持范围。
+> 已发布的 1.24.4 版本信息注明 DirectML `1.15.2`、支持到 ONNX opset 20（例外如 5-D `GridSample` 20 和 `DeformConv`）。`main` 中较新的算子代码不会扩大该已发布 wheel 的支持范围。
 
-### 3.2 Windows ML EP 目录方案
+### 3.2 Windows ML 目录方案
 
-| 要求 | 本文基线 | 原因 |
+| 要求 | 基线 | 原因 |
 |---|---|---|
-| 本文完整验证所需系统 | Windows 11 24H2，build 26100+ | 启动脚本会验证动态获取硬件 EP 的完整流程 |
-| Windows ML 的更广平台范围 | 对应 Windows App SDK 支持的任意系统 | 内置 ORT CPU 和 DirectML 无需从目录下载；本文脚本不测试这种简化用法 |
-| 架构 | x64 或 ARM64 | Windows ML 同时发布这两种架构 |
-| Python | CPython 3.12 | 本文统一核验的 wheel ABI |
-| Windows App Runtime | `2.1.3` | 必须与两个 `wasdk-*` Python 投影包保持一致 |
+| 系统（本方案） | Windows 11 24H2，build 26100+ | 启动脚本会验证动态获取硬件 EP 的流程 |
+| 架构 | x64 或 ARM64 | Windows ML 同时发布两种架构 |
+| Python | CPython 3.12 | 本指南统一核验的 wheel ABI |
+| Windows App Runtime | `2.1.3` | 必须与两个 `wasdk-*` 投影包一致 |
 | ML 投影包 | `wasdk-Microsoft.Windows.AI.MachineLearning[all]==2.1.3` | 向 Python 提供 `ExecutionProviderCatalog` |
-| Bootstrap 投影包 | `wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.1.3` | 为未打包的 Python 程序激活匹配的 App Runtime |
-| ORT 发行版 | `onnxruntime-windowsml==1.24.6.202605042033` | ML 投影包 2.1.3 声明的精确依赖 |
-| NumPy | `2.4.6` | 同时提供 CPython 3.12 Windows x64 与 ARM64 wheel；NumPy 1.26.4 没有 Windows ARM64 wheel |
+| Bootstrap 投影包 | `wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.1.3` | 为未打包的 Python 激活 App Runtime |
+| ORT 发行版 | `onnxruntime-windowsml==1.24.6.202605042033` | 2.1.3 ML 投影包的精确依赖 |
+| 附加固定版本 | `numpy==2.4.6`、`onnx==1.22.0` | 对应 [`requirements-winml.txt`](requirements-winml.txt)；NumPy 在 x64 与 ARM64 均有 CPython 3.12 wheel |
 
-核验当天，PyPI 上的精确依赖关系如下：
+**保持整套版本一致。** 投影包会固定一个精确的 ORT build，已安装的 App Runtime 也必须来自同一发布系列。
 
-| 包发布线 | 精确 ORT 关系 | 含义 |
+| 包发布线 | 依赖的 ORT | 含义 |
 |---|---|---|
-| 本文使用：`wasdk-*==2.1.3` | ML 投影包要求 `onnxruntime-windowsml==1.24.6.202605042033` | 启动脚本采用并经过核验的组合 |
-| 更新的投影包：`wasdk-*==2.3.0` | ML 投影包要求 `onnxruntime-windowsml==1.25.2.202605110140` | 这是另一套完整组合，不能只升级其中的 ORT |
-| 最新的独立 Windows ML wheel | `onnxruntime-windowsml==1.27.1.202607110137` | 比上述两套投影包所固定的版本都新，不能混入其中任意一套组合 |
+| `wasdk-*==2.1.3`（本指南） | `onnxruntime-windowsml==1.24.6.202605042033` | 经过核验的组合 |
+| `wasdk-*==2.3.0` | `onnxruntime-windowsml==1.25.2.202605110140` | 另一套完整组合 |
+| 最新独立 wheel | `onnxruntime-windowsml==1.27.1.202607110137` | 比上述两者都新；不要混入 |
 
-ML 投影包会指定准确的 ORT build，已安装的 Windows App Runtime 也必须来自同一发布系列。本文继续使用已经核验的 2.1.3 组合，直到更新的完整组合通过硬件验证。
+### 3.3 每个环境只能有一个 ORT 发行版
 
-### 3.3 每个环境只能有一个 ORT 发行包
-
-下面每个发行包都会安装同名 Python 包 `onnxruntime`：
-
-- `onnxruntime`
-- `onnxruntime-directml`
-- `onnxruntime-gpu`
-- `onnxruntime-openvino`
-- `onnxruntime-windowsml`
-
-同时安装两个发行包，可能会直接相互覆盖 Python 文件和原生 DLL，依赖解析器也不一定会给出有用的错误信息。启动脚本会分别创建 `.venv-directml` 和 `.venv-windowsml`，确认 `onnxruntime` 实际来自哪个发行包，核对准确版本，并在推理前运行 `pip check`。
+`onnxruntime`、`onnxruntime-directml`、`onnxruntime-gpu`、`onnxruntime-openvino` 和 `onnxruntime-windowsml` 都安装**同一个** `onnxruntime` 包，会互相覆盖文件。启动脚本会隔离 `.venv-directml` 和 `.venv-windowsml`，检查导入归属、核对精确版本，并在推理前运行 `pip check`。
 
 ---
 
-## 4. 用最少步骤运行
+## 4. 运行
 
 ### 4.1 安装 Python 和 Visual C++ Runtime
 
-打开 PowerShell：
-
 ```powershell
-winget install --id Python.Python.3.12 -e `
-  --accept-package-agreements --accept-source-agreements
-
-winget install --id Microsoft.VCRedist.2015+.x64 -e `
-  --accept-package-agreements --accept-source-agreements
+winget install --id Python.Python.3.12 -e --accept-package-agreements --accept-source-agreements
+winget install --id Microsoft.VCRedist.2015+.x64 -e --accept-package-agreements --accept-source-agreements
 ```
 
-如果使用原生 ARM64 Windows ML 进程，请安装 ARM64 版 Visual C++ Redistributable。首次安装 Python 后，请关闭当前终端并重新打开，然后执行以下检查：
+原生 ARM64 Windows ML 进程请安装 ARM64 版 VC++ Redistributable。首次安装 Python 后重开终端，然后验证：
 
 ```powershell
 py -3.12 --version
 py -3.12 -c "import platform, struct; print(platform.machine(), struct.calcsize('P') * 8)"
 ```
 
-输出应包含 Python 3.12、目标架构和 `64`。
+期望输出：Python 3.12、目标架构和 `64`。
 
-### 4.2 独立 DirectML，一条命令
-
-在仓库根目录运行：
+### 4.2 独立 DirectML
 
 ```powershell
-py -3.12 DirectML\one_click.py directml
+py -3.12 DirectML\one_click.py directml                # 默认适配器
+py -3.12 DirectML\one_click.py directml --device-id 1  # 另一个 GPU
 ```
 
-如需选择启动脚本列出的其他 GPU：
+`device_id` 遵循 `IDXGIFactory::EnumAdapters` 顺序。适配器 0 通常是显示 GPU，不一定最快。启动脚本会按该顺序打印每个适配器（名称、PCI ID、专用显存、选中标记）。
 
-```powershell
-py -3.12 DirectML\one_click.py directml --device-id 1
-```
+### 4.3 Windows ML
 
-`device_id` 遵循 `IDXGIFactory::EnumAdapters` 的枚举顺序。适配器 0 通常是负责显示的默认 GPU，但不一定是性能最高的 GPU。启动脚本会按同一顺序列出每个适配器的名称、PCI 厂商/设备 ID、专用显存，并标出当前选择。
-
-### 4.3 安装 App Runtime 后，一条命令运行 Windows ML
-
-Python bootstrap 使用 `ON_NO_MATCH_SHOW_UI`，因此缺少匹配的 Runtime 时，Windows 可能会弹出安装提示。若要搭建便于核验的 x64 环境，可以预先安装 2.1.3，并验证安装程序确实由微软签名：
+先安装微软签名的 2.1.3 App Runtime，并在运行前验证签名：
 
 ```powershell
 $installer = "$env:TEMP\windowsappruntimeinstall-2.1.3-x64.exe"
-Invoke-WebRequest `
-  https://aka.ms/windowsappsdk/2.1/2.1.3/windowsappruntimeinstall-x64.exe `
-  -OutFile $installer
-
-$signature = Get-AuthenticodeSignature -LiteralPath $installer
-if ($signature.Status -ne 'Valid' -or
-    $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
+Invoke-WebRequest https://aka.ms/windowsappsdk/2.1/2.1.3/windowsappruntimeinstall-x64.exe -OutFile $installer
+$sig = Get-AuthenticodeSignature -LiteralPath $installer
+if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
   Remove-Item $installer -Force -ErrorAction SilentlyContinue
   throw 'Windows App Runtime 安装器没有有效的微软签名。'
 }
-
 try {
-  $process = Start-Process $installer -ArgumentList '--quiet' -Wait -PassThru
-  if ($process.ExitCode -ne 0) { throw "安装器失败：$($process.ExitCode)" }
-} finally {
-  Remove-Item $installer -Force -ErrorAction SilentlyContinue
-}
+  $p = Start-Process $installer -ArgumentList '--quiet' -Wait -PassThru
+  if ($p.ExitCode -ne 0) { throw "安装器失败：$($p.ExitCode)" }
+} finally { Remove-Item $installer -Force -ErrorAction SilentlyContinue }
 ```
 
-原生 ARM64 Python 应按照官方 [Windows App SDK 部署指南](https://learn.microsoft.com/windows/apps/windows-app-sdk/deploy-unpackaged-apps)获取同一 2.1.3 发布系列的 ARM64 安装程序，或通过 bootstrap 界面安装匹配的 Runtime。上面的 x64 安装命令不能用于验证 ARM64 环境。
-
-然后运行：
+原生 ARM64 Python 请使用 ARM64 安装器。然后运行：
 
 ```powershell
-py -3.12 DirectML\one_click.py windowsml --allow-download
-```
-
-未指定 `--policy` 时，启动脚本默认使用 `max-performance`（`MAX_PERFORMANCE`），而不是 ORT 中优先选择 CPU 的 `DEFAULT` 策略。
-
-常用验证方式：
-
-```powershell
-# 在所有已注册的 EP 目录 Provider 中优先选择 GPU。
+py -3.12 DirectML\one_click.py windowsml --allow-download            # 默认策略：max-performance
 py -3.12 DirectML\one_click.py windowsml --policy prefer-gpu --allow-download
-
-# 只准备指定的 EP 目录 Provider，再由策略选择其设备。
-py -3.12 DirectML\one_click.py windowsml `
-  --provider DmlExecutionProvider --policy prefer-gpu --allow-download
-
-# 重建独立 DirectML 的临时环境。
-py -3.12 DirectML\one_click.py directml --refresh
+py -3.12 DirectML\one_click.py windowsml --provider DmlExecutionProvider --policy prefer-gpu --allow-download
+py -3.12 DirectML\one_click.py directml --refresh                    # 重建某方案的 venv
 ```
 
-未指定 `--allow-download` 时，启动脚本会跳过状态为 `NotPresent` 的目录项。不过，如果当前 ORT 进程已经为同名 EP 提供了 `OrtEpDevice`，就可以直接复用，无需下载新软件包。企业设备还可能通过管理策略禁止 Microsoft Store 或 Windows Update 下载软件包；这属于系统管理策略问题，与 ONNX 模型无关。
+未指定 `--allow-download` 时，除非当前进程中同名 EP 已暴露 `OrtEpDevice`，否则启动脚本会跳过 `NotPresent` 的目录项。
 
-| 目录状态 | 含义 | 启动脚本的处理方式 |
+| 目录状态 | 含义 | 启动脚本处理 |
 |---|---|---|
-| `NotPresent` | EP 包尚未安装 | 未指定 `--allow-download` 时跳过/失败；如果 ORT 已暴露同名 EP 设备则直接复用 |
-| `NotReady` | 已安装，但尚未加入本应用的依赖图 | 调用 `ensure_ready_async()`；通常不需要重新下载 |
-| `Ready` | 已安装且已加入应用依赖图 | 复用现有 ORT 设备，或注册返回的动态库路径 |
+| `NotPresent` | EP 包未安装 | 跳过/失败，除非加 `--allow-download`（或 ORT 已暴露该 EP） |
+| `NotReady` | 已安装，但不在本应用依赖图中 | 调用 `ensure_ready_async()`；通常无需下载 |
+| `Ready` | 已安装且在依赖图中 | 复用 ORT 设备或注册动态库路径 |
+
+### 4.4 命令行参数参考
+
+| 参数 | 默认值 | 含义 |
+|---|---|---|
+| `route` | `directml` | `directml` 或 `windowsml` |
+| `--device-id` | `0` | DirectML 的 DXGI 适配器索引（仅独立方案） |
+| `--policy` | `max-performance` | Windows ML 策略：`default`、`prefer-cpu`、`prefer-npu`、`prefer-gpu`、`max-performance`、`max-efficiency`、`min-power` |
+| `--provider` | 无 | 只准备这一个指定的 Windows ML 目录 Provider |
+| `--allow-download` | 关闭 | 允许 Windows ML 获取尚未安装的目录 Provider |
+| `--warmups` | `3` | 计时前的预热运行次数 |
+| `--runs` | `20` | 计时运行次数 |
+| `--refresh` | 关闭 | 重建该方案的虚拟环境 |
 
 ---
 
-## 5. 一键严格验证具体做了什么
+## 5. 正确理解 PASS
 
-这个脚本用于严格验证实际执行情况，并不只是打印 Provider 列表：
+启动脚本是**严格验证测试**，不是列举 Provider 的演示。
 
-1. 拒绝非 Windows、32 位、系统版本过低、Python 不匹配和 Microsoft Store alias 主机。
-2. 为所选方案创建独立虚拟环境，并安装固定版本的依赖。
-3. 如果发现多个 ORT 发行包，或 `onnxruntime` 实际来自错误的发行包，则立即退出。
-4. 离线生成一个静态 FP32 ONNX 图：两个 `MatMul`、两个 `Add`、一个 `Relu`。
-5. 用独立 `CPUExecutionProvider` 生成参考结果。
-6. 对独立 DirectML 选择 DXGI 适配器；对于 Windows ML，则在 `.venv-windowsml` 中执行官方 Python 示例提供的 `winrt/msvcp140.dll` 冲突规避操作，然后在同一个 Python ORT 进程中准备并显式注册经过认证的 EP 目录动态库。
-7. 开启全部图优化、禁用内存模式、强制顺序执行、记录计算图分配、开启 profile，并设置 `session.disable_cpu_ep_fallback=1`。
-8. 创建目标会话，禁用运行时回退，执行预热和计时，并将结果与 CPU 参考值比较。
-9. 如果发现任何 `CPUExecutionProvider` 节点分配/profile 事件，或者虽然有目标 EP 分配、当前运行却没有对应事件，则判定失败。
-10. 在 Windows App SDK bootstrap 上下文仍然有效时，注销从 EP 目录注册的插件。
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
+flowchart TD
+    A["检查主机：系统、架构、Python"] --> B["创建方案 venv，安装固定版本"]
+    B --> C["拒绝多个 ORT 发行版"]
+    C --> D["构建 FP32 冒烟模型：2 MatMul、2 Add、1 Relu"]
+    D --> E["CPU 参考运行"]
+    E --> F["创建目标会话，禁用回退"]
+    F --> G["预热 + 计时运行，与 CPU 对比"]
+    G --> H{"有 CPU 节点被分配或 profile 到吗？"}
+    H -->|"有"| X["FAIL"]
+    H -->|"没有"| I{"目标 EP 有当前运行事件吗？"}
+    I -->|"没有"| X
+    I -->|"有"| P["PASS"]
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
+    classDef good fill:#dcfce7,stroke:#22c55e,color:#14532d;
+    classDef bad fill:#fee2e2,stroke:#ef4444,color:#7f1d1d;
+    class A,B,C,D,E,F,G step;
+    class H,I dec;
+    class P good;
+    class X bad;
+```
 
-### 正确理解 PASS
-
-| 方案 | PASS 可以确认 | PASS 无法确认 |
+| 方案 | PASS 能证明 | PASS **不能**证明 |
 |---|---|---|
-| 独立 DirectML | 计算图已分配给 `DmlExecutionProvider`，当前运行产生了 DML profile 事件，并且 DML 会话使用了显式指定索引的 DXGI 适配器 | 生产模型是否受支持、实际性能，以及冒烟测试输入之外的精度 |
-| Windows ML | 已注册的 EP 目录 Provider 获得了计算图并产生当前运行事件，而且没有节点交给默认 ORT CPU EP | 如果同一个 EP 名称提供多类设备，则无法唯一确定具体 GPU/NPU；厂商 CPU EP 也可能通过，因为分配和 profile 只记录 EP 名称，不记录准确设备 |
-| 两种方案 | 输出在 `rtol=1e-3`、`atol=1e-4` 范围内与独立 CPU 参考结果一致 | 位级一致性或硬件性能 |
+| 独立 DirectML | 图分配给 `DmlExecutionProvider`，当前运行 profile 到 DML 事件，且指定索引的 DXGI 适配器承载了会话 | 生产模型是否受支持、性能，或冒烟输入之外的精度 |
+| Windows ML | 已注册的目录 EP 拥有该图并产生当前运行事件，且没有默认 ORT CPU 节点 | 唯一的 GPU/NPU 身份；厂商 **CPU** EP 也可能通过，因为记录只标注 EP 名称，而非具体硬件 |
+| 两者 | 输出在 `rtol=1e-3`、`atol=1e-4` 内与独立 CPU 参考一致 | 逐位一致或硬件性能基准 |
 
-两个名称相似的开关解决不同问题：
+两个名称相近的开关解决不同问题：
 
 | 开关 | 作用范围 | 防止的问题 |
 |---|---|---|
-| `session.disable_cpu_ep_fallback=1` | C++ 计算图初始化 | 节点静默分配给默认微软 `CPUExecutionProvider` |
-| `session.disable_fallback()` | 会话创建后的 Python 包装层 | 运行失败后用 fallback Provider 重建会话并重试 |
+| `session.disable_cpu_ep_fallback=1` | C++ 图初始化 | 节点被静默分配给默认微软 `CPUExecutionProvider` |
+| `session.disable_fallback()` | 会话创建后的 Python 包装层 | 运行失败后用回退 Provider 重建会话重试 |
 
-### 为什么要同时检查分配记录和 profile？
+**为什么要同时看分配*和* profile？** 单独看都很弱，合起来才可审计。
 
-| 证据 | 可以确认 | 还缺少什么 |
+| 证据 | 能证明 | 需要另一项补齐的缺口 |
 |---|---|---|
-| `get_available_providers()` | 二进制能够提供或加载该 EP | 无法说明当前模型的节点分配情况 |
-| 会话 Provider 列表 | EP 注册和优先级 | 不支持的节点仍可能由 CPU 执行 |
-| 计算图分配记录 | ORT 已将子图分配给该 EP | 单独无法确认当前运行是否真的产生了对应内核事件 |
-| 当前运行的 profile | 节点事件归属于该 EP | 仍需分配记录提供明确的分图上下文 |
-| CPU 参考结果 | 数值结果基本正确 | 不能识别执行设备 |
-| 禁用默认 ORT CPU 回退 | 不受支持的节点分配会直接失败 | 仍需分配/profile 信息确认目标 EP 的执行情况 |
+| `get_available_providers()` | 二进制能加载该 EP | 无法说明节点分配 |
+| 会话 Provider 列表 | 注册和优先级 | CPU 仍可运行不支持的节点 |
+| 图分配记录 | ORT 把子图分配给该 EP | 不代表内核真的运行了 |
+| 当前运行 profile | 节点事件归属该 EP | 需要分配记录提供分图上下文 |
+| CPU 参考 | 输出数值合理 | 无法识别执行设备 |
+| 禁用 CPU 回退 | 不受支持的分配会直接失败 | 由分配/profile 让结果可审计 |
 
-成功的 DirectML 输出大致如下：
+DirectML 的 PASS 大致如下：
 
 ```text
 Route              : directml
@@ -332,164 +350,182 @@ Max |target-CPU|    : ...
 PASS: DmlExecutionProvider executed ... profiled node event(s) with ORT CPU fallback disabled.
 ```
 
-ORT 会先隐式注册 `CPUExecutionProvider`，再检查禁止回退的配置，因此它仍可能出现在会话 Provider 列表中。只有当分配给该 EP 的节点数和事件数都为零时，验证才会通过。即便如此，也不能排除某个厂商 EP 自身选择了 CPU 设备。DML 图融合还可能把五个 ONNX 节点合并成一个运行时节点，因此 profile 事件数不需要等于五。
+`CPUExecutionProvider` 仍可能出现在会话列表中（ORT 在检查禁止回退前就注册了它）；通过的条件是归属它的节点/事件数为**零**。DML 融合可能把五个 ONNX 节点合并成一个运行时节点，因此事件数不必等于五。
 
 ---
 
-## 6. DirectML 源码实现
+## 6. DirectML 内部原理
 
-下面沿着本文核验版本的源码，从 Python 配置一直追踪到 D3D12 执行。
+> *选读的深入内容 —— 只想使用 EP 的话可以跳到 [§8 在你的应用中使用](#8-在你的应用中使用)。*
 
-### 6.1 注册与工厂创建
+### 6.1 注册与工厂
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart LR
-    PY["Python Provider 配置"] --> PB["pybind CreateExecutionProviderFactoryInstance"]
-    PB --> PARSE["DMLProviderFactoryCreator::CreateFromProviderOptions"]
-    PARSE --> DXGI["device_id 方式：DXGI 适配器"]
-    PARSE --> DXCORE["偏好/过滤方式：DXCore 适配器"]
+    PY["Python provider 配置"] --> PB["pybind 工厂实例"]
+    PB --> PARSE["DMLProviderFactoryCreator"]
+    PARSE --> DXGI["device_id：DXGI 适配器"]
+    PARSE --> DXCORE["偏好/过滤：DXCore 适配器"]
     DXGI --> D3D["D3D12CreateDevice"]
     DXCORE --> D3D
     D3D --> DEV["DMLCreateDevice1"]
     DEV --> QUEUE["DIRECT 或 COMPUTE 队列"]
-    QUEUE --> FACTORY["DMLProviderFactory"]
-    FACTORY --> EP["Dml::ExecutionProvider"]
+    QUEUE --> EP["Dml::ExecutionProvider"]
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef good fill:#dcfce7,stroke:#22c55e,color:#14532d;
+    class PY,PB,PARSE,DXGI,DXCORE,D3D,DEV,QUEUE step;
+    class EP good;
 ```
 
-公开的 Python API 会先进入 [`CreateExecutionProviderFactoryInstance`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/python/onnxruntime_pybind_state.cc)，再调用 [`DMLProviderFactoryCreator`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_provider_factory.cc)。
+| Provider 选项 | 取值 | 默认值 | 行为 |
+|---|---|---|---|
+| `device_id` | 非空十进制整数字符串，例如 `"0"` | 未设置 | 旧版 DXGI 适配器索引（`IDXGIFactory::EnumAdapters` 顺序）。**具有完全优先权**：一旦设置，下面的 `performance_preference` 和 `device_filter` 根本不会被解析。 |
+| `performance_preference` | `default`、`high_performance`、`minimum_power` | `default` | 仅在未设置 `device_id` 时生效。对 DXCore 适配器排序（`minimum_power` 会优先选择更省电的硬件，例如 NPU 或核显）。 |
+| `device_filter` | `gpu`；在支持 NPU 枚举的编译版本中还有 `npu`、`any` | `gpu` | 仅在未设置 `device_id` 时生效。先把 DXCore 适配器过滤到指定硬件类别，再选出其中优先级最高的一个。 |
+| `disable_metacommands` | `true` / `True` / `false` / `False` | `false` | 与前三项独立解析。设为 `true` 会附加 `DML_EXECUTION_FLAG_DISABLE_META_COMMANDS`，强制 DirectML 使用通用内核而非厂商优化的 metacommand——可用来定点排查驱动 metacommand 的问题。 |
 
-本文核验的 `main` 会解析以下选项：
+一键 DirectML 方案只用 `device_id`——这是 1.24.4 已发布的稳定接口。DXGI 路径会拒绝软件适配器，先以 feature level 11.0 创建 D3D12 设备，再通过 `DMLCreateDevice1`（DML FL 5.0）创建 `IDMLDevice`。当最高 feature level `≤ D3D_FEATURE_LEVEL_1_0_CORE` 时选 `COMPUTE` 队列，否则选 `DIRECT`。
 
-| Key | 值 | 行为 |
-|---|---|---|
-| `device_id` | 非空整数字符串 | 使用旧版 DXGI 适配器索引方式；优先级高于偏好/过滤配置 |
-| `disable_metacommands` | `true`、`True`、`false`、`False` | 为 true 时增加 `DML_EXECUTION_FLAG_DISABLE_META_COMMANDS` |
-| `performance_preference` | `default`、`high_performance`、`minimum_power` | 对兼容 DXCore 适配器排序 |
-| `device_filter` | `gpu`；编译了 NPU 枚举时还支持 `npu` / `any` | 先过滤 DXCore 适配器，再选择排序第一项 |
+DML 还会从 `SessionOptions.add_session_config_entry(key, value)` 读取五个专属配置键（来源：[`dml_session_options_config_keys.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_session_options_config_keys.h)）。这些是会话级设置而非按 Provider 设置，请在**追加 DML EP 之前**设置到 `SessionOptions` 上——Provider 工厂会在那一刻读取它们，之后再改就不起作用了。
 
-一键脚本的独立 DirectML 方案只使用 `device_id`，因为这是 1.24.4 已发布并正式记录的稳定 Python 接口。不能假设 `main` 中较新的 DXCore 过滤功能也存在于所有旧版 wheel 中。对于新的 NPU 部署，通常应通过 Windows ML 选择硬件厂商提供的 EP；与依赖通用 DML NPU 枚举相比，这种方式的支持范围更明确。
+| 会话配置键 | 取值 | 默认值 | 行为 |
+|---|---|---|---|
+| `ep.dml.disable_graph_fusion` | `0` / `1` | `0` | 设为 `1` 会阻止 ORT 把符合条件的 DML 子图融合成一个已编译图（参见 [§6.3](#63-能力判断回退与分图)）；之后每个算子都单独派发。只要设置了 `SessionOptions.optimized_model_filepath`，无论这个键的值是什么，融合都会自动关闭。 |
+| `ep.dml.enable_graph_serialization` | `true` / `false` | `false` | 设为 `true` 会把每个融合后的 DML 分区导出成模型旁边的 `Partition_<N>.bin` 文件，并经过（反）序列化往返——便于调试 DirectML 实际编译出的图。 |
+| `ep.dml.enable_graph_capture` | `0` / `1` | `0` | 设为 `1` 后 ORT 只录制一次 D3D12 命令列表，之后的 `Run()` 直接重放，跳过 CPU 端重新派发。需要静态形状/绑定，且整张图都在 DML EP 上；参见 [§6.4](#64-编译与执行)。 |
+| `ep.dml.enable_cpu_sync_spinning` | `0` / `1` | `0` | 设为 `1` 后 CPU 会忙等（自旋）GPU fence，而不是阻塞在 Win32 事件上——唤醒延迟更低，代价是占满一个 CPU 核心。适合延迟敏感的交互式工作负载；后台/批处理场景建议保持关闭。 |
+| `ep.dml.disable_memory_arena` | `0` / `1` | `0` | 设为 `1` 会禁用池化缓冲区分配器，让每次 DML 分配都变成一次全新的 committed D3D12 资源。可以避免 arena 占着 GPU 显存不放，代价是分配开销更高——适合显存紧张或正在排查显存占用的场景。 |
 
-DXGI 方式会拒绝软件适配器，先以 feature level 11.0 创建 D3D12 设备，再通过 `DMLCreateDevice1` 和 DML feature level 5.0 创建 `IDMLDevice`。较新的 DXCore 方式会枚举 `D3D12_GENERIC_ML` 或 core-compute 适配器，识别 GPU/NPU 类型，按功耗或性能偏好排序，然后创建第一个匹配的设备。
+[§8.1](#81-directml-严格验证会话) 展示了把这九项配置全部设置在一起并附带行内注释的写法。
 
-设备支持的最高 feature level 不超过 `D3D_FEATURE_LEVEL_1_0_CORE` 时，工厂选择 `COMPUTE` 队列；否则选择 `DIRECT`。调用方传入的 `IDMLDevice` 与命令队列必须属于同一个 D3D12 设备，只允许 `DIRECT` 或 `COMPUTE` 队列；会话会持有二者的强引用。
+### 6.2 会话限制
 
-### 6.2 会话限制与内存
-
-DirectML 资源是 D3D12 buffer，不是普通可按字节寻址的 CPU 分配，因此有两个公开限制：
+DirectML 资源是 D3D12 buffer，因此必须设置两项（启动脚本显式设置，兼容性最好）：
 
 ```python
 options.enable_mem_pattern = False
 options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
 ```
 
-当前的 `InferenceSession::RegisterExecutionProvider` 可以自动修正 DML 的这两项配置并记录日志。不过，DirectML 的公开要求和旧版 WinML adapter 仍要求调用方正确设置，因此显式配置的兼容性更好。不要从多个线程并发调用同一个 DML 会话的 `Run`；如需并发，请创建多个独立会话。
-
-[`ExecutionProviderImpl`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) 持有：
-
-- `ID3D12Device` 和 `IDMLDevice`；
-- 带 DML `OrtMemoryInfo` 的 GPU [`BucketizedBufferAllocator`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/BucketizedBufferAllocator.cpp)；
-- upload/readback 数据通道和 CPU 输入分配器；
-- 在 CPU 到 GPU、GPU 到 CPU 和 GPU buffer 之间复制的 [`DataTransfer`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src)；
-- 在条件允许时，由同一 D3D12 设备上的 Python I/O binding 共享的执行上下文。
-
-C API 可以把调用方持有的 D3D12 资源封装为 DML 分配，也可以获取 DML 分配背后的 `ID3D12Resource`。这些接口用于原生零拷贝集成；普通 NumPy 输入仍然需要在 CPU 与 GPU 之间传输。
+不要在同一个 DML 会话上并发调用 `Run`；需要并发就用多个独立会话。
 
 ### 6.3 能力判断、回退与分图
 
-[`ExecutionProviderImpl::GetCapability`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) 不只是检查算子名称：
-
-1. `kernel_lookup.LookUpKernel(node)` 必须找到 DML 注册。
-2. 算子专用 `supportQuery` 可能拒绝某种属性/形状组合。
-3. 节点张量类型必须位于当前设备的数据类型 mask 中。
-4. ORT CPU-preferred 分析可能让 shape/轻量节点留在 CPU，避免得不偿失的传输。
-5. 接受的节点成为 ORT 分图器使用的 `ComputeCapability` 记录。
-
-设备类型 mask 很重要：DML 会预先注册内核，但所选硬件可能不支持所有数据类型。在 capability 检查阶段拒绝节点，可以让普通模式回退到 CPU，而不是拖到创建算子时才失败。本文的冒烟测试图应当完全受支持，因此严格模式会把这种回退直接变成会话创建失败。
-
-完成初始分配后，[`GraphPartitioner.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/GraphPartitioner.cpp) 和 DML 图变换器会合并兼容节点。当输入和输出 shape 静态、必需输入为常量、边类型受支持且分区边界安全时，多个节点可以合并成一个 DirectML 图。对于包含 ONNX 子图的模型，分区会更保守，因为隐式输入和共享 initializer 会让所有权关系更复杂。
-
-### 6.4 图编译与执行
-
-[`DmlGraphFusionTransformer`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionTransformer.cpp) 负责创建静态融合分区，[`DmlRuntimeGraphFusionTransformer`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/DmlRuntimeGraphFusionTransformer.cpp) 则用于 graph capture。[`DmlGraphFusionHelper`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionHelper.cpp) 会转换图边和算子、调用 `IDMLDevice1::CompileGraph`、分配持久资源和临时资源、创建 binding table，并记录可复用的命令列表。
-
-普通执行链：
+只有下面每一步都通过，节点才会被接受，否则回退到 CPU。本教程把这种回退变成会话创建失败，因为冒烟图应完全受支持。
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
+flowchart TD
+    N["ONNX 节点"] --> K{"注册了 DML 内核？"}
+    K -->|"否"| CPU["CPU 回退"]
+    K -->|"是"| S{"supportQuery 通过？"}
+    S -->|"否"| CPU
+    S -->|"是"| T{"设备数据类型支持？"}
+    T -->|"否"| CPU
+    T -->|"是"| C{"移出 CPU 是否值得？"}
+    C -->|"否"| CPU
+    C -->|"是"| A["接受，然后融合分区"]
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
+    classDef good fill:#dcfce7,stroke:#22c55e,color:#14532d;
+    classDef bad fill:#fee2e2,stroke:#ef4444,color:#7f1d1d;
+    class N step;
+    class K,S,T,C dec;
+    class A good;
+    class CPU bad;
+```
+
+静态形状、常量必需输入和受支持的边类型，能让图变换器把多个节点合并成一个 DirectML 图。含 ONNX 子图的模型会更保守地拆分。
+
+### 6.4 编译与执行
+
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart LR
-    K["FusedGraphKernel / DML 算子内核"] --> EC["ExecutionContext"]
+    K["融合后的 DML 内核"] --> EC["ExecutionContext"]
     EC --> REC["DmlCommandRecorder"]
     REC --> CL["D3D12 命令列表"]
     CL --> Q["CommandQueue"]
     Q --> F["单调递增 D3D12 fence"]
-    F --> LIFE["释放排队的 COM/资源引用"]
+    F --> LIFE["释放排队的资源"]
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef note fill:#f1f5f9,stroke:#94a3b8,color:#1e293b;
+    class K,EC,REC,CL,Q,F step;
+    class LIFE note;
 ```
 
-[`CommandQueue`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/CommandQueue.cpp) 每次提交后都会递增 fence 值并发送信号。异步 GPU 工作所需的对象会连同对应 fence 值一起排队，只有任务完成后才会释放。`OnRunEnd` 会提交待执行工作，但不会阻塞，因此 CPU 与 GPU 可以重叠执行；`Sync()` 才会提交并等待所有工作完成。
-
-高级 graph capture 通过 `ep.dml.enable_graph_capture=1` 启用。用户第一次调用 `Run` 时，内部可能会执行多次，以完成资源分配和捕获。EP 报告捕获完成后，后续调用会重放已保存的命令列表。绑定和资源地址在捕获图的整个生命周期内都必须保持有效。一键严格验证会关闭 capture，因为它检查的是普通执行方式，而不是要求固定地址的 I/O binding。
+队列每次提交后都会发送 fence 信号，只有任务完成才释放 GPU 持有的对象。`OnRunEnd` 不阻塞地提交，使 CPU 与 GPU 重叠；`Sync()` 才提交并等待。高级 graph capture（`ep.dml.enable_graph_capture=1`）在最初几次运行后重放已保存的命令列表；一键测试不启用它。
 
 ---
 
-## 7. WinML 源码实现：旧版与现代版
+## 7. Windows ML 内部原理
+
+> *选读的深入内容 —— 只想使用 EP 的话可以跳到 [§8 在你的应用中使用](#8-在你的应用中使用)。*
 
 ### 7.1 为什么 `core/providers/winml` 几乎是空的
 
-[`winml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/winml/winml_provider_factory.h) 明确说明 WinML 的“provider factory”并不是真正的 EP。[`symbols.txt`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/winml/symbols.txt) 只导出 `OrtGetWinMLAdapter`。这个目录只是一个导出桥梁，让独立的 WinML 层能够访问私有 adapter API。
+其头文件声明这个"provider factory"**不是真正的 EP**，[`symbols.txt`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/winml/symbols.txt) 只导出 `OrtGetWinMLAdapter`。这个目录只是通往私有 adapter API 的桥梁。
 
-### 7.2 旧版 `LearningModel` 实现
-
-[`winml/`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml) 中的旧版实现按以下流程工作：
+### 7.2 旧版 `LearningModel` 路径
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart LR
     LM["LearningModel"] --> LMS["LearningModelSession"]
     DEV["LearningModelDevice"] --> LMS
-    LMS --> EB["OnnxruntimeEngineBuilder"]
-    EB -->|CPU 设备| CPU["OnnxruntimeCpuSessionBuilder"]
-    EB -->|DirectX 设备| DB["OnnxruntimeDmlSessionBuilder"]
-    DB --> AD["私有 WinML adapter"]
+    LMS --> EB["engine builder"]
+    EB -->|"CPU"| CPU["Cpu session builder"]
+    EB -->|"DirectX"| DB["Dml session builder"]
+    DB --> AD["私有 WinML 适配层"]
     AD --> IS["ORT InferenceSession"]
     IS --> DML["DmlExecutionProvider"]
-    BIND["LearningModelBinding"] --> EVAL["Evaluate / EvaluateAsync"]
-    EVAL --> IS
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef note fill:#f1f5f9,stroke:#94a3b8,color:#1e293b;
+    classDef good fill:#dcfce7,stroke:#22c55e,color:#14532d;
+    class LM,LMS,DEV,EB,DB,AD step;
+    class CPU note;
+    class IS,DML good;
 ```
 
-源码关键点：
+DML session builder 会开启全部优化、禁用内存模式、用调用方的 D3D12 设备/队列附加 DML、再加 CPU 回退并初始化。该 adapter 接口明确是私有的。
 
-- [`LearningModelDevice`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/lib/Api/LearningModelDevice.cpp) 把 `Cpu`、`DirectX`、`DirectXHighPerformance` 和 `DirectXMinPower` 映射到缓存的 D3D 资源或 CPU 状态，也能包装调用方提供的 Direct3D 11 设备或 D3D12 队列。
-- [`LearningModelSession`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/lib/Api/LearningModelSession.cpp) 获取优化后的模型，根据设备配置 engine builder，创建 engine，载入已经分离的 ORT model，完成初始化，然后提供同步和异步求值接口。
-- [`OnnxruntimeDmlSessionBuilder`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/lib/Api.Ort/OnnxruntimeDmlSessionBuilder.cpp) 开启全部图优化、禁用内存模式，使用调用方提供的 D3D12 设备和队列附加 DML，再添加 CPU 回退、初始化会话，并提交 DML 初始化工作。
-- [`winml_adapter_session.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/adapter/winml_adapter_session.cpp) 创建尚未初始化的 `InferenceSession`，直接载入已解析的 `OrtModel`，无需再次解析；随后提供 Provider handle，并在最后完成初始化。
-- [`winml_adapter_c_api.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/adapter/winml_adapter_c_api.h) 明确说明该 adapter 属于私有接口，不支持应用直接调用。
+### 7.3 现代 Windows ML（本教程的 Python 路径）
 
-### 7.3 本文使用的现代 Windows ML Python 方案
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
+flowchart TD
+    A["用 bootstrap 激活 App Runtime"] --> B["find_all_providers"]
+    B --> C{"已认证且就绪？"}
+    C -->|"否"| SKIP["跳过"]
+    C -->|"是"| D["ensure_ready_async（若允许）"]
+    D --> E["register_execution_provider_library"]
+    E --> F["get_ep_devices 暴露 OrtEpDevice"]
+    F --> G["set_provider_selection_policy"]
+    G --> H["创建 InferenceSession"]
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
+    classDef good fill:#dcfce7,stroke:#22c55e,color:#14532d;
+    classDef note fill:#f1f5f9,stroke:#94a3b8,color:#1e293b;
+    class A,B,D,E,F,G step;
+    class C dec;
+    class H good;
+    class SKIP note;
+```
 
-本文的 Python 示例不会通过 `LearningModelSession` 调用现代 Windows ML，而是按以下步骤执行：
-
-1. 用 dynamic-dependency bootstrap 激活匹配的 Windows App Runtime。
-2. 枚举 `ExecutionProviderCatalog.get_default().find_all_providers()`。
-3. 检查认证状态和 ready 状态；只有确实需要准备，并且允许下载时，才调用 `ensure_ready_async().get()`。
-4. 使用 `ort.register_execution_provider_library()` 注册 Provider 当前的 `library_path`。
-5. 通过 `ort.get_ep_devices()` 获取该 Provider 的 `OrtEpDevice`。
-6. 设置 `SessionOptions.set_provider_selection_policy(...)`，或显式添加选中的设备。
-7. 创建普通 `ort.InferenceSession`。
-
-第 4 步必须显式注册动态库，这是 Python 环境的特殊要求。微软提供的 `EnsureAndRegisterCertifiedAsync()` 和 `RegisterCertifiedAsync()` 可用于原生或 .NET ORT 环境，但**不会把 Provider 注册到 Python 使用的 ORT 环境中**。
-
-ORT 的 [`ProviderPolicyContext`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/provider_policy_context.cc) 实现内置策略。这个源码版本中的映射为：
+逐个注册目录 `library_path` 是 **Python 专有**的。微软的一键式 `EnsureAndRegisterCertifiedAsync()` 面向原生/.NET ORT，而非 Python 的 ORT 环境。
 
 | Python 策略 | 内部行为 |
 |---|---|
-| `DEFAULT` | 优先 CPU |
-| `PREFER_CPU` | 优先 CPU |
-| `PREFER_NPU`、`MAX_EFFICIENCY`、`MIN_OVERALL_POWER` | 如果存在 NPU，则选择第一个 NPU，然后添加 CPU 回退 |
-| `PREFER_GPU`、`MAX_PERFORMANCE` | 如果存在 GPU，则选择第一个 GPU，然后添加 CPU 回退 |
+| `DEFAULT`、`PREFER_CPU` | 优先 CPU |
+| `PREFER_NPU`、`MAX_EFFICIENCY`、`MIN_OVERALL_POWER` | 有 NPU 则先选 NPU，再加 CPU 回退 |
+| `PREFER_GPU`、`MAX_PERFORMANCE` | 有 GPU 则先选 GPU，再加 CPU 回退 |
 
-策略只会从**已经注册**的 EP 设备中进行选择。它不会下载 Provider，也无法让原本不兼容的模型获得支持。设置 `session.disable_cpu_ep_fallback=1` 后，ORT 会移除微软默认的 CPU 设备，并禁止将节点分配给默认 CPU EP；但厂商提供的 CPU EP 仍有可能被选中。因此，如果应用没有同时记录所选 `OrtEpDevice` 的身份，Windows ML 的 PASS 只能说明 EP 目录中的某个 Provider 已执行，不能唯一确定具体硬件。整个流程中，EP 目录负责发现、准备和注册 Provider，ORT policy 负责选择设备，capability 检查负责分图，最后由节点分配记录和 profile 验证实际执行情况。
+策略只在**已注册**的设备中选择；它不会下载 Provider，也无法让不兼容的模型变得受支持。设 `disable_cpu_ep_fallback=1` 后，ORT 会移除默认 CPU 设备——但厂商的 **CPU** EP 仍可能被选中，因此若需精确硬件证据，请记录所选的 `OrtEpDevice`。
 
 ---
 
-## 8. 在应用中使用 API
+## 8. 在你的应用中使用
 
 ### 8.1 DirectML 严格验证会话
 
@@ -497,31 +533,50 @@ ORT 的 [`ProviderPolicyContext`](https://github.com/microsoft/onnxruntime/blob/
 import onnxruntime as ort
 
 options = ort.SessionOptions()
-options.enable_mem_pattern = False
-options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+options.enable_mem_pattern = False  # DML 要求（见 §6.2）
+options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL  # DML 要求（见 §6.2）
+
+# 严格验证用的配置项（通用 ORT 键，非 DML 专属）
 options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
 options.add_session_config_entry("session.record_ep_graph_assignment_info", "1")
+
+# DML 专属会话配置键（`ep.dml.*`，见 §6.1）。这五项都必须在下面追加
+# DML EP 之前设置好——Provider 工厂会在那一刻读取它们。
+options.add_session_config_entry("ep.dml.disable_graph_fusion", "0")           # "1" = 每个算子各自一个 DML 内核（调试用）
+options.add_session_config_entry("ep.dml.enable_graph_serialization", "false")  # "true" = 导出 Partition_<N>.bin
+options.add_session_config_entry("ep.dml.enable_graph_capture", "0")           # "1" = 只录制一次，之后每次 Run() 都重放
+options.add_session_config_entry("ep.dml.enable_cpu_sync_spinning", "0")       # "1" = 忙等 GPU fence
+options.add_session_config_entry("ep.dml.disable_memory_arena", "0")          # "1" = 跳过池化分配器
 
 session = ort.InferenceSession(
     "model.onnx",
     sess_options=options,
-    providers=[("DmlExecutionProvider", {"device_id": "0"})],
+    providers=[
+        (
+            "DmlExecutionProvider",
+            {
+                "device_id": "0",  # DXGI 适配器索引；一旦设置会忽略下面两项
+                # "performance_preference": "high_performance",  # default | high_performance | minimum_power
+                # "device_filter": "gpu",                        # gpu | npu | any（仅在未设置 device_id 时生效）
+                "disable_metacommands": "false",  # "true" 强制使用通用内核，跳过厂商 metacommand
+            },
+        )
+    ],
 )
 session.disable_fallback()
 
-for assignment in session.get_provider_graph_assignment_info():
-    print(assignment.ep_name, [(node.name, node.op_type) for node in assignment.get_nodes()])
+for a in session.get_provider_graph_assignment_info():
+    print(a.ep_name, [(n.name, n.op_type) for n in a.get_nodes()])
 ```
 
-生产环境必须明确决定是否允许 CPU 回退。如果可以接受部分节点由 CPU 执行，请移除 `session.disable_cpu_ep_fallback`，添加 `CPUExecutionProvider`，对生产模型运行 profile，并如实说明分图结果。只有部分计算卸载到 GPU 时，不能称为“完整 GPU 执行”。
+生产环境要明确决定是否回退。若可以接受部分 CPU 执行，就去掉 `disable_cpu_ep_fallback`、追加 `CPUExecutionProvider` 并做 profile——但部分卸载的结果不能叫"完整 GPU 执行"。
 
 ### 8.2 Windows ML 策略会话
 
-在会话使用期间，EP 目录对象、bootstrap 对象和已注册的动态库都必须保持有效。Python 必须在同一个 ORT 进程中逐一注册目录返回的 `library_path`。下面的代码在应用明确授权之前不会下载任何软件包：
+在会话使用期间，目录/bootstrap 对象和已注册的动态库都必须保持存活。下面的骨架在应用授权前不下载任何东西。
 
 ```python
 import gc
-
 import winui3.microsoft.windows.applicationmodel.dynamicdependency.bootstrap as bootstrap
 
 allow_download = False
@@ -530,34 +585,26 @@ with bootstrap.initialize(options=bootstrap.InitializeOptions.ON_NO_MATCH_SHOW_U
     import onnxruntime as ort
     import winui3.microsoft.windows.ai.machinelearning as winml
 
-    registered = []
-    session = None
+    registered, session = [], None
     catalog = winml.ExecutionProviderCatalog.get_default()
     try:
         for provider in catalog.find_all_providers():
             if provider.certification != winml.ExecutionProviderCertification.CERTIFIED:
                 continue
-            if (
-                provider.ready_state == winml.ExecutionProviderReadyState.NOT_PRESENT
-                and not allow_download
-            ):
+            if provider.ready_state == winml.ExecutionProviderReadyState.NOT_PRESENT and not allow_download:
                 continue
-
-            result = provider.ensure_ready_async().get()
-            if result.status != winml.ExecutionProviderReadyResultState.SUCCESS:
+            if provider.ensure_ready_async().get().status != winml.ExecutionProviderReadyResultState.SUCCESS:
                 continue
-            if provider.name in {device.ep_name for device in ort.get_ep_devices()}:
+            if provider.name in {d.ep_name for d in ort.get_ep_devices()}:
                 continue
             if provider.library_path:
                 ort.register_execution_provider_library(provider.name, provider.library_path)
                 registered.append(provider.name)
 
         options = ort.SessionOptions()
-        options.set_provider_selection_policy(
-            ort.OrtExecutionProviderDevicePolicy.MAX_PERFORMANCE
-        )
+        options.set_provider_selection_policy(ort.OrtExecutionProviderDevicePolicy.MAX_PERFORMANCE)
         session = ort.InferenceSession("model.onnx", sess_options=options)
-        # 只能在 bootstrap 上下文和 Provider 仍然有效时使用会话。
+        # 只能在 bootstrap 上下文和 Provider 存活时使用会话。
     finally:
         session = None
         gc.collect()
@@ -565,53 +612,79 @@ with bootstrap.initialize(options=bootstrap.InitializeOptions.ON_NO_MATCH_SHOW_U
             ort.unregister_execution_provider_library(name)
 ```
 
-生产代码应检查认证状态和 ready 状态；未经用户授权或管理员策略允许，不得下载软件包；每个 Provider 的错误都要单独处理；只有在所有会话和 Provider 对象销毁后，才能注销动态库。[`one_click.py`](one_click.py) 实现了更严格的生命周期与执行验证。
-
-官方 Python 示例会在导入 Windows ML 前删除 `winrt-runtime` 自带的 `msvcp140.dll`，因为该副本可能与其他原生库冲突。启动脚本只会修改专门为 Windows ML 创建、可以随时删除的 `.venv-windowsml`，不会改动系统中的 Visual C++ Runtime。
+官方 Python 示例会在导入 Windows ML 前删除 `winrt-runtime` 自带的 `msvcp140.dll`。启动脚本只在可丢弃的 `.venv-windowsml` 中这么做，绝不改动系统 VC++ Runtime。[`one_click.py`](one_click.py) 实现了完整生命周期和严格检查。
 
 ---
 
 ## 9. 模型与性能建议
 
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
+flowchart LR
+    A["会话创建"] --> B["预热运行"]
+    B --> C["计时运行"]
+    C --> D["应用端到端"]
+    A --- A1["编译图 + 融合分区"]
+    B --- B1["分配资源 + 首次派发"]
+    C --- C1["GPU 计算 + 拷贝"]
+    D --- D1["前后处理 + UI"]
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    classDef note fill:#f1f5f9,stroke:#94a3b8,color:#1e293b;
+    class A,B,C,D step;
+    class A1,B1,C1,D1 note;
+```
+
 | 主题 | 建议 |
 |---|---|
-| Shape | 优先使用已知或静态维度，这有助于 ORT shape inference、常量折叠、DML 图融合、权重预处理，也能让首次运行的开销更可预测。 |
-| 动态维度 | 如果部署时的 shape 已知，可使用 free-dimension override；否则可能减少融合，并增加首次运行的工作量。 |
-| Opset | 验证已发布的独立 DirectML wheel 时，应使用 opset 20 或更低版本；本文示例使用 opset 17。 |
-| 精度 | 先使用 FP32，再逐台目标设备验证 FP16/INT8/QDQ 精度；硬件与驱动支持不同。 |
-| 数据传输 | 小模型的耗时往往主要来自 NumPy 到 GPU、再从 GPU 回到 CPU 的复制。在评估性能前，应使用真实 batch 和 I/O binding。 |
-| 预热 | 创建会话和首次推理时，可能会编译计算图、预处理权重、分配持久资源并填充缓存，因此应与稳定运行后的耗时分开测量。 |
-| Metacommand | 驱动专用的优化方式可能提升速度。只有在排查正确性或驱动问题时才应禁用，并且要用生产模型重新比较。 |
-| 并发 | 单个 DML 会话顺序执行。并发 `Run` 使用独立会话，并测量显存压力。 |
-| Graph capture | 这是面向固定 shape 和固定地址的高级优化。应先验证普通执行，再结合 I/O binding 和显式同步测试 capture。 |
-| Windows ML | Windows ML 选中的厂商 EP 可能比通用 DirectML 更快。性能测试应针对实际选中的 EP，而不是 policy 名称。 |
+| 形状 | 优先静态维度——更利于 shape inference、常量折叠、DML 融合和可预测的首次运行 |
+| 动态维度 | 部署形状已知时用 free-dimension override；否则融合会减少 |
+| Opset | 已发布 wheel 验证保持 opset 20 或更低；本示例用 17 |
+| 精度 | 先 FP32，再逐 EP 验证 FP16/INT8/QDQ |
+| 数据传输 | 小模型主要耗在 NumPy↔GPU 复制上；用真实 batch 和 I/O binding |
+| 预热 | 会话创建和首次推理会编译图、分配资源；单独测量 |
+| Metacommand | 驱动优化路径有帮助；仅为排查时禁用，然后重新对比 |
+| 并发 | 单个 DML 会话顺序执行；并发 `Run` 用独立会话 |
+| Windows ML | 对*实际选中*的 EP 做基准，而非 policy 名称 |
 
-脚本生成的计算图非常小，不能用作硬件性能基准。输出延迟只是为了发现明显卡顿，同时表明计时发生在会话创建和预热之后。
+生成的图故意太小，无法作为硬件基准；它的延迟只用于发现明显卡顿。
 
 ---
 
 ## 10. 故障排查
 
-| 现象 | 可能原因 | 解决方法 |
-|---|---|---|
-| `The ... route requires native Windows` | 从 Linux、WSL 或其他系统启动 | 使用原生 Windows；WSL 不支持这种 DirectML Python 用法 |
-| Python/32 位错误 | wheel ABI 不匹配 | 安装 64 位 CPython 3.12，并使用 `py -3.12` 启动 |
-| 缺少 `DmlExecutionProvider` | ORT 发行包错误或 venv 损坏 | 运行 `... directml --refresh`；不要向该 venv 安装其他 ORT 包 |
-| DXGI 索引不存在 | `--device-id` 超出枚举范围 | 使用启动脚本列出的索引 |
-| 创建 D3D12 设备失败 | 适配器/驱动没有可用 DirectX 12，或选中了软件适配器 | 更新 OEM/厂商驱动，选择硬件适配器 |
-| 创建会话时提示已禁用 CPU 回退 | 冒烟测试图中有节点未被目标 EP 接受 | 先修复 Runtime 或驱动；对于自定义模型，则检查不受支持的算子、类型和 shape |
-| Windows App Runtime 初始化失败 | Runtime 缺失或版本不匹配 | 安装与两个 `wasdk-*` 匹配且有微软签名的 2.1.3 Runtime |
-| Windows ML 目录为空 | 系统 build、Windows Update、目录服务或组织策略问题 | 确认 build 26100+、系统更新、Store/目录访问和管理员策略 |
-| Provider 为 `NotPresent` | 有兼容目录项，但包尚未安装 | 策略允许时增加 `--allow-download` |
-| `ensure_ready_async` 失败 | 驱动/硬件/包要求不满足 | 阅读 diagnostic text，更新精确 OEM/厂商驱动和 Windows |
-| 注册 EP 目录动态库失败 | App Runtime、ORT 与插件 ABI 不匹配，或进程仍保留旧状态 | 重建对应 venv；更新 Runtime 后重启，并确保所有组件来自同一发布组合 |
-| 选中 `CPUExecutionProvider`，严格测试失败 | `DEFAULT` 优先 CPU，或没有注册符合要求的设备 | 使用 `prefer-gpu`/`prefer-npu`，准备兼容 Provider，或明确指定名称 |
-| Windows ML 通过，但硬件类别不明确 | 选中的厂商 EP 同时暴露 CPU 与 GPU/NPU；EP 名称证据无法区分 | 显式选择并记录目标 `OrtEpDevice`，再重复分配、profile 和结果对比检查 |
-| 有目标 EP 分配，却没有对应 profile 事件 | 当前运行没有产生匹配的执行证据 | 应判定失败；不能因为 Provider 已注册就推断模型已获得加速 |
-| 数值不一致 | 精度、驱动或算子问题 | 用 FP32/静态形状复现，更新驱动并最小化模型 |
-| 设备移除 / TDR | GPU reset、超时、显存压力或驱动缺陷 | 减少工作量、检查 Event Viewer、更新驱动并测试禁用 metacommand |
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
+flowchart TD
+    A{"哪个环节出了问题？"}
+    A -->|"启动脚本无法启动"| B["检查系统、Python、架构"]
+    A -->|"EP 缺失"| C["重建 venv；只保留一个 ORT 包"]
+    A -->|"会话创建失败"| D["查看节点被拒绝的原因"]
+    A -->|"Windows ML 目录为空"| E["检查 build、更新、策略"]
+    A -->|"数值不对"| F["与 CPU 参考对比"]
+    A -->|"速度慢"| G["拆分冷启动与热启动计时"]
+    classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
+    classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
+    class A dec;
+    class B,C,D,E,F,G step;
+```
 
-常用诊断：
+| 现象 | 含义 | 解决 |
+|---|---|---|
+| `The ... route requires native Windows` | 在 Linux/WSL/其他系统启动 | 用原生 Windows；WSL 没有 DirectML Python 路径 |
+| Python/32 位错误 | wheel ABI 不匹配 | 安装 64 位 CPython 3.12，用 `py -3.12` 启动 |
+| 缺少 `DmlExecutionProvider` | ORT 发行版错误或 venv 损坏 | `... directml --refresh`；不要再装其他 ORT 包 |
+| DXGI 索引不存在 | `--device-id` 超出枚举 | 用启动脚本打印的索引 |
+| 创建 D3D12 设备失败 | 适配器/驱动无可用 DX12，或选中软件适配器 | 更新驱动；选择硬件适配器 |
+| 会话提示已禁用 CPU 回退 | 部分冒烟计算未被 EP 接受 | 修复 runtime/驱动；自定义模型则检查不支持的算子/类型/形状 |
+| App Runtime 初始化失败 | Runtime 缺失/不匹配 | 安装与两个 `wasdk-*` 匹配且已签名的 2.1.3 |
+| Windows ML 目录为空 | 系统 build、Windows Update、目录服务或策略 | 确认 build 26100+、更新、Store/目录访问、管理员策略 |
+| Provider 为 `NotPresent` | 有兼容项但包未安装 | 策略允许时加 `--allow-download` |
+| `ensure_ready_async` 失败 | 驱动/硬件/包要求不满足 | 阅读其诊断；更新精确 OEM/厂商驱动 |
+| 注册动态库失败 | App Runtime/ORT/插件 ABI 不匹配 | 重建 venv，更新后重启，保持同一组合 |
+| 选中 `CPUExecutionProvider`，验证失败 | `DEFAULT` 优先 CPU，或没有可用设备被注册 | 用 `prefer-gpu`/`prefer-npu`，准备 Provider，或指定名称 |
+| Windows ML 通过但硬件类别不明 | 该 EP 同时暴露 CPU 与 GPU/NPU；EP 名称无法区分 | 选择并记录目标 `OrtEpDevice`，再重复检查 |
+| 数值不一致 | 精度、驱动或算子问题 | 用 FP32/静态形状复现，更新驱动，最小化模型 |
+| 设备移除 / TDR | GPU reset、超时、显存压力或驱动缺陷 | 减少工作量，检查 Event Viewer，更新驱动，禁用 metacommand 测试 |
 
 ```powershell
 winver
@@ -622,64 +695,46 @@ py -3.12 DirectML\one_click.py windowsml --provider DmlExecutionProvider --allow
 
 ---
 
-## 11. 源码地图与主要参考
+## 11. 源码地图
 
-### 结论与主要依据
+### 结论与依据
 
-| 结论 | 主要依据 | 核验结果 |
+| 结论 | 主要依据 | 结果 |
 |---|---|---|
-| DirectML 处于持续工程维护阶段；已发布信息注明 DirectML 1.15.2、支持到 opset 20，并列出明确例外 | [DirectML EP 官方指南](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html) | 已确认；不会将较新的 `main` 源码视为旧 wheel 的兼容性承诺 |
-| `device_id` 使用 DXGI 顺序；DML 要求顺序执行并关闭内存模式 | [`dml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/dml/dml_provider_factory.h) + [`inference_session.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/inference_session.cc) | 已确认 |
-| DML capability 取决于内核注册、support query、设备数据类型和 CPU-preferred 分析 | [`ExecutionProvider.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) | 已确认 |
-| 不存在真正的 `WinMLExecutionProvider` | [`winml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/winml/winml_provider_factory.h) + [`symbols.txt`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/winml/symbols.txt) | 已确认；这里只导出私有 adapter 桥 |
-| Python 必须逐个注册 EP 目录返回的 `library_path`；一键注册 API 面向另一个 ORT 环境 | [安装 EP](https://learn.microsoft.com/windows/ai/new-windows-ml/initialize-execution-providers) + [注册 EP](https://learn.microsoft.com/windows/ai/new-windows-ml/register-execution-providers) | 已对本文固定版本的 Python 投影包确认 |
-| 内置 policy 映射到 CPU、NPU 或 GPU 选择器，并带 CPU fallback | [`provider_policy_context.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/provider_policy_context.cc) | 已确认；EP 名称证据不等于精确硬件证据 |
-| 第 3 节指定的软件包版本和架构确实存在 | [DirectML PyPI](https://pypi.org/project/onnxruntime-directml/1.24.4/) + [Windows ML 投影包 PyPI](https://pypi.org/project/wasdk-Microsoft.Windows.AI.MachineLearning/2.1.3/) | 已从元数据和 wheel 文件名确认 |
+| DirectML 处于持续工程维护；已发布信息为 DirectML 1.15.2、支持到 opset 20 | [DirectML EP 官方指南](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html) | 已确认 |
+| `device_id` 是 DXGI 顺序；DML 需要顺序执行且关闭内存模式 | [`dml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/dml/dml_provider_factory.h) + [`inference_session.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/inference_session.cc) | 已确认 |
+| DML 恰好有 4 个 Provider 选项（`device_id`、`performance_preference`、`device_filter`、`disable_metacommands`）外加 5 个 `ep.dml.*` 会话配置键——不存在其他选项 | [`dml_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_provider_factory.cc) + [`dml_session_options_config_keys.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_session_options_config_keys.h) | 已确认 |
+| 能力取决于内核注册、support query、设备数据类型和 CPU-preferred 分析 | [`ExecutionProvider.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) | 已确认 |
+| 不存在真正的 `WinMLExecutionProvider` | [`winml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/winml/winml_provider_factory.h) + [`symbols.txt`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/winml/symbols.txt) | 已确认 |
+| Python 必须逐个注册目录 `library_path` | [安装 EP](https://learn.microsoft.com/windows/ai/new-windows-ml/initialize-execution-providers) + [注册 EP](https://learn.microsoft.com/windows/ai/new-windows-ml/register-execution-providers) | 已确认 |
+| 内置策略映射到 CPU/NPU/GPU 选择器并带 CPU 回退 | [`provider_policy_context.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/provider_policy_context.cc) | 已确认 |
+| 固定的版本/架构确实存在 | [DirectML PyPI](https://pypi.org/project/onnxruntime-directml/1.24.4/) + [Windows ML 投影包 PyPI](https://pypi.org/project/wasdk-Microsoft.Windows.AI.MachineLearning/2.1.3/) | 已确认 |
 
 ### ONNX Runtime 源码（核验提交）
 
 | 区域 | 文件 |
 |---|---|
-| DML 公开 C API 与设备选项 | [`dml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/dml/dml_provider_factory.h) |
-| 适配器枚举、D3D/DML 创建、Provider 选项 | [`dml_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_provider_factory.cc) |
-| EP capability、分配器、数据传输、run 生命周期 | [`ExecutionProvider.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) |
-| DML 图分区合并 | [`GraphPartitioner.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/GraphPartitioner.cpp) |
+| DML 公开 C API 与选项 | [`dml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/dml/dml_provider_factory.h) |
+| 适配器枚举、D3D/DML 创建 | [`dml_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_provider_factory.cc) |
+| DML 专属会话配置键 | [`dml_session_options_config_keys.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_session_options_config_keys.h) |
+| 能力、分配器、run 生命周期 | [`ExecutionProvider.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) |
+| 图分区合并 | [`GraphPartitioner.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/GraphPartitioner.cpp) |
 | 命令记录与提交 | [`DmlCommandRecorder.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/DmlCommandRecorder.cpp) |
 | 队列与 fence 生命周期 | [`CommandQueue.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/CommandQueue.cpp) |
-| DML 会话配置 key | [`dml_session_options_config_keys.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_session_options_config_keys.h) |
-| 内置 DML Plugin-EP 适配器 | [`ep_factory_dml.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/plugin_ep/ep_factory_dml.cc) |
-| 自动 EP 策略实现 | [`provider_policy_context.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/provider_policy_context.cc) |
+| 自动 EP 策略 | [`provider_policy_context.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/provider_policy_context.cc) |
 | WinML 导出不是真正 EP | [`winml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/winml/winml_provider_factory.h) |
-| 旧版私有会话 adapter | [`winml_adapter_session.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/adapter/winml_adapter_session.cpp) |
-| 旧版 DML 会话 builder | [`OnnxruntimeDmlSessionBuilder.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/lib/Api.Ort/OnnxruntimeDmlSessionBuilder.cpp) |
-| 旧版 WinRT 会话对象 | [`LearningModelSession.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/lib/Api/LearningModelSession.cpp) |
+| 旧版 DML session builder | [`OnnxruntimeDmlSessionBuilder.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/lib/Api.Ort/OnnxruntimeDmlSessionBuilder.cpp) |
 
 ### 官方文档
 
-- [DirectML Execution Provider](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html)
-- [安装 ONNX Runtime / Windows ML](https://onnxruntime.ai/docs/install/#cccwinml-installs)
-- [Windows 上的 ONNX Runtime](https://onnxruntime.ai/docs/get-started/with-windows.html)
-- [什么是 Windows ML？](https://learn.microsoft.com/windows/ai/new-windows-ml/overview)
-- [Windows ML walkthrough](https://learn.microsoft.com/windows/ai/new-windows-ml/tutorial)
-- [安装 Windows ML EP](https://learn.microsoft.com/windows/ai/new-windows-ml/initialize-execution-providers)
-- [注册 Windows ML EP](https://learn.microsoft.com/windows/ai/new-windows-ml/register-execution-providers)
-- [Windows ML 支持的 EP](https://learn.microsoft.com/windows/ai/new-windows-ml/supported-execution-providers)
-- [Windows ML 目录与自带 EP 对比](https://learn.microsoft.com/windows/ai/new-windows-ml/windows-ml-eps-vs-bring-your-own)
-- [Windows ML 示例](https://github.com/microsoft/WindowsAppSDK-Samples/tree/main/Samples/WindowsML)
-- [DirectML API 文档](https://learn.microsoft.com/windows/ai/directml/dml)
+- [DirectML Execution Provider](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html) · [安装 ORT / Windows ML](https://onnxruntime.ai/docs/install/#cccwinml-installs) · [Windows 上的 ORT](https://onnxruntime.ai/docs/get-started/with-windows.html)
+- [什么是 Windows ML？](https://learn.microsoft.com/windows/ai/new-windows-ml/overview) · [Walkthrough](https://learn.microsoft.com/windows/ai/new-windows-ml/tutorial) · [安装 EP](https://learn.microsoft.com/windows/ai/new-windows-ml/initialize-execution-providers) · [注册 EP](https://learn.microsoft.com/windows/ai/new-windows-ml/register-execution-providers)
+- [支持的 EP](https://learn.microsoft.com/windows/ai/new-windows-ml/supported-execution-providers) · [目录 vs 自带 EP](https://learn.microsoft.com/windows/ai/new-windows-ml/windows-ml-eps-vs-bring-your-own) · [Windows ML 示例](https://github.com/microsoft/WindowsAppSDK-Samples/tree/main/Samples/WindowsML) · [DirectML API](https://learn.microsoft.com/windows/ai/directml/dml)
 
 ---
 
-## 12. 本文的验证范围
+## 12. 验证范围
 
-本文和相关辅助检查是在 Linux 上完成的，因此不包含 Windows GPU/NPU 的实际执行。已经完成的检查包括：
+本文在 Linux 上准备——本次编辑没有 Windows GPU/NPU 实际执行。已经运行的检查：辅助测试（profile 解析、严格分配、策略映射、包名规范化）；`one_click.py` 字节码编译；面向 CPython 3.12 的完整依赖解析（DirectML x64 与 Windows ML x64/ARM64）；对固定提交与 Microsoft Learn 的源码/API 核验；PyPI 元数据/文件核验；全部 Python 示例与 Mermaid 图的语法解析；固定 x64 App Runtime 安装器的 HTTP 可用性。
 
-- profile 解析、严格分配规则、策略映射和包名规范化的 Python 辅助测试；
-- [`one_click.py`](one_click.py) 的 Python 字节码编译；
-- 面向 CPython 3.12 Windows wheel 的完整依赖解析：DirectML x64，以及 Windows ML x64 与 ARM64；
-- 对固定 ONNX Runtime 提交、Microsoft Learn 和官方 Windows ML 示例进行源码路径与 API 核验；
-- 核对指定版本和架构的 PyPI 元数据与文件，并直接检查 2.1.3 投影包的 Python 类型 stub；
-- 两份 README 中全部 Python 示例和各六个 Mermaid 图的语法解析；
-- 检查指定 x64 App Runtime 安装程序能否通过 HTTP 获取。Authenticode 签名仍需在 Windows 上验证，文中的 PowerShell 命令会强制执行该检查。
-
-必须先在目标 Windows 设备上运行相应的一键命令，才能确认该方案通过验证。一次 PASS 只适用于脚本生成的冒烟测试模型、当时选中的适配器或 Provider、当前驱动和当前软件包组合。生产模型和有代表性的输入必须重新执行同样的验证。
+在目标 Windows 设备上运行相应的一键命令后，才能认定该方案通过验证。一次 PASS 只适用于生成的冒烟模型、所选适配器/Provider、当前驱动和当前软件包组合。请用生产模型和有代表性的输入重新验证。

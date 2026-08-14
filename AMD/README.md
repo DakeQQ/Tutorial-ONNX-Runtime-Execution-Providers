@@ -4,11 +4,15 @@
 
 ONNX Runtime reaches AMD hardware through four routes — **DirectML**, **Windows ML**, **ROCm/MIGraphX**, and **Ryzen AI/Vitis AI**. This guide picks the right one for your device, then *proves* it with real node placement, not just a provider name in a list.
 
+FastFlowLM is a separate native runtime for its own supported-model catalog on XDNA2 Ryzen AI NPUs, not an ONNX Runtime EP. This guide identifies when that route fits the device, while keeping generic or custom ONNX validation on the Vitis AI path.
+
 | Item | Baseline |
 |---|---|
-| Last verified | `2026-07-17` against linked AMD, Microsoft, Canonical, ONNX Runtime, Docker Hub, and PyPI sources |
+| ORT baseline last verified | `2026-07-17` against linked AMD, Microsoft, Canonical, ONNX Runtime, Docker Hub, and PyPI sources |
+| FastFlowLM review | `v1.0.1` source/docs reviewed `2026-08-13`; native XDNA2 catalog-model route, separate from the audited ORT artifacts |
 | Hosts | Windows and Ubuntu; exact gates vary by GPU/NPU generation |
-| Routes | DirectML · Windows ML MIGraphX · ROCm/MIGraphX · Ryzen AI/Vitis AI |
+| ORT routes | DirectML · Windows ML MIGraphX · ROCm/MIGraphX · Ryzen AI/Vitis AI |
+| Native NPU route | FastFlowLM for its supported models on XDNA2 Ryzen AI PCs; not an ORT EP |
 | Entry point | [`provider_test.py`](provider_test.py) |
 | Proof | Current-run node placement + output sanity; CPU parity for the built-in GPU model, or any model with `--compare-cpu` |
 | Validation boundary | Script self-tests passed on Linux; final DirectML/Windows ML/MIGraphX/Vitis AI proof needs matching hardware |
@@ -25,8 +29,9 @@ ONNX Runtime reaches AMD hardware through four routes — **DirectML**, **Window
 | On Windows with an AMD GPU, want the fastest test | [§9 DirectML](#9-simplest-python-path-directml) |
 | On Windows, building a new app for Win 11 24H2+ | [§10 Windows ML + MIGraphX](#10-new-windows-path-windows-ml--amd-migraphx) |
 | On Ubuntu with an AMD GPU | [§6 Install the matching ROCm track](#6-install-the-matching-rocm-track) |
-| On a Ryzen AI laptop, Windows | [§12 Install Ryzen AI Software](#12-install-ryzen-ai-software-171) |
-| On a Ryzen AI laptop, Ubuntu | [§15 Install the Linux NPU driver](#15-install-the-ubuntu-npu-driver-and-ryzen-ai) |
+| On an XDNA2 Ryzen AI PC with a FastFlowLM-supported local model | [§1.1 FastFlowLM](#fastflowlm-xdna2) |
+| On a Ryzen AI laptop with a generic or custom ONNX model, Windows | [§12 Install Ryzen AI Software](#12-install-ryzen-ai-software-171) |
+| On a Ryzen AI laptop with a generic or custom ONNX model, Ubuntu | [§15 Install the Linux NPU driver](#15-install-the-ubuntu-npu-driver-and-ryzen-ai) |
 | Targeting a Zynq/Versal board | [§16 Embedded Linux targets](#16-embedded-linux-targets) |
 | Asking "why did my node land on CPU?" | [§19 Verification flow](#19-verification-flow) + [§21 Troubleshooting](#21-troubleshooting) |
 | Still not sure | [§1 Choose a route](#1-choose-a-route) |
@@ -40,6 +45,7 @@ ONNX Runtime reaches AMD hardware through four routes — **DirectML**, **Window
 
 - [The whole AMD picture](#the-whole-amd-picture)
 - [1. Choose a route](#1-choose-a-route)
+  - [1.1 FastFlowLM: native XDNA2 local-model route](#fastflowlm-xdna2)
 - [2. Fundamentals](#2-fundamentals)
 - [3. Version and support matrix](#3-version-and-support-matrix)
 - [4. Zero-rookie preflight](#4-zero-rookie-preflight)
@@ -84,9 +90,9 @@ mindmap
       Ubuntu ROCm 7.14, gfx950 or gfx942
       Ubuntu ROCm 7.2.4 or 7.2.1
     Ryzen AI NPU
-      Windows direct SDK
-      Windows ML VitisAI
-      Ubuntu, STX or KRK only
+      FastFlowLM native runtime, XDNA2 catalog models
+      Windows direct SDK and VitisAI
+      Ubuntu VitisAI, STX or KRK only
     Adaptive SoC
       Zynq UltraScale Plus
       Versal AI Core or Edge
@@ -109,10 +115,12 @@ flowchart TD
 
     C -->|"AMD GPU, quick Python test"| E["DirectML<br/>DmlExecutionProvider"]
     C -->|"AMD GPU, new Win 11 24H2+ app"| F["Windows ML<br/>MIGraphXExecutionProvider"]
-    C -->|"Ryzen AI NPU"| G["Ryzen AI Software<br/>VitisAIExecutionProvider"]
+    C -->|"XDNA2 NPU, FastFlowLM-supported model"| G["FastFlowLM<br/>native NPU runtime"]
+    C -->|"NPU, generic/custom ONNX"| K["Ryzen AI Software<br/>VitisAIExecutionProvider"]
 
     D -->|"AMD GPU in the ROCm matrix"| H["ROCm + MIGraphX<br/>MIGraphXExecutionProvider"]
-    D -->|"Ryzen AI NPU, STX or KRK"| I["Ryzen AI for Linux<br/>VitisAIExecutionProvider"]
+    D -->|"XDNA2 NPU, FastFlowLM-supported model"| I["FastFlowLM<br/>native NPU runtime"]
+    D -->|"NPU, generic/custom ONNX"| L["Ryzen AI for Linux<br/>VitisAIExecutionProvider"]
     D -->|"Zynq or Versal SoC"| J["Vitis AI target setup"]
 
     style A fill:#455a64,stroke:#cfd8dc,color:#ffffff
@@ -121,10 +129,12 @@ flowchart TD
     style D fill:#e65100,stroke:#ffcc80,color:#ffffff
     style E fill:#0067b8,stroke:#8dc8f4,color:#ffffff
     style F fill:#5e35b1,stroke:#b388ff,color:#ffffff
-    style G fill:#c62828,stroke:#ff8a80,color:#ffffff
+    style G fill:#2e7d32,stroke:#a5d6a7,color:#ffffff
     style H fill:#0067b8,stroke:#8dc8f4,color:#ffffff
-    style I fill:#c62828,stroke:#ff8a80,color:#ffffff
+    style I fill:#2e7d32,stroke:#a5d6a7,color:#ffffff
     style J fill:#2e7d32,stroke:#a5d6a7,color:#ffffff
+    style K fill:#c62828,stroke:#ff8a80,color:#ffffff
+    style L fill:#c62828,stroke:#ff8a80,color:#ffffff
 ```
 
 | Scenario | Route | ONNX Runtime EP | Status |
@@ -132,16 +142,49 @@ flowchart TD
 | Windows, recent AMD GPU | DirectML for the simplest Python start; evaluate Windows ML for new apps | `DmlExecutionProvider` | Supported, sustained engineering; Windows ML is Microsoft's new direction |
 | Windows 11 24H2+, supported AMD GPU | Dynamically acquire AMD MIGraphX through Windows ML | `MIGraphXExecutionProvider` | Available via catalog; `--windows-ml` supports this path |
 | Ubuntu, AMD GPU in the ONNX matrix | ROCm + MIGraphX + AMD wheel | `MIGraphXExecutionProvider` | **Primary Linux GPU path**; exact GPU/ROCm/Python/wheel gates apply |
-| Windows, Ryzen AI NPU | Ryzen AI Software 1.7.1; Windows ML is also catalog-available | `VitisAIExecutionProvider` | PHX/HPT/STX/KRK; `--windows-ml` is GPU-only, use the vendor env for NPU |
-| Ubuntu 24.04, Ryzen AI NPU | Ryzen AI for Linux 1.7.1 | `VitisAIExecutionProvider` | **STX/KRK only, kernel >= 6.10, Python 3.12** |
+| Windows or Linux, XDNA2 Ryzen AI PC, FastFlowLM-supported model | FastFlowLM native runtime | None — not an ORT EP | **Catalog-model route only**; its own XRT/HRX runtime and model engines; see §1.1 |
+| Windows, Ryzen AI NPU, generic/custom ONNX | Ryzen AI Software 1.7.1; Windows ML is also catalog-available | `VitisAIExecutionProvider` | PHX/HPT/STX/KRK; `--windows-ml` is GPU-only, use the vendor env for NPU |
+| Ubuntu 24.04, Ryzen AI NPU, generic/custom ONNX | Ryzen AI for Linux 1.7.1 | `VitisAIExecutionProvider` | **STX/KRK only, kernel >= 6.10, Python 3.12** |
 | Linux, AMD/Xilinx Adaptive SoC | Vitis AI target image and runtime | `VitisAIExecutionProvider` | Embedded Linux path for Zynq and Versal |
 | Native Windows ROCm Core SDK | Not a current ORT MIGraphX Python path | None | ROCm 7.14 grows Windows core support, but the validated MIGraphX/ORT stack stays Linux-only |
+
+<a id="fastflowlm-xdna2"></a>
+### 1.1 FastFlowLM: native XDNA2 local-model route
+
+At the reviewed `v1.0.1` release, [FastFlowLM](https://fastflowlm.com/docs/) is an AMD ROCm-hosted native NPU runtime, not an ONNX Runtime provider. Its source selects XRT by default or HRX with an opt-in build flag, then loads native model engines. It uses its own supported model catalog and `flm pull`/`flm run` workflow; it is not documented as a general runner for arbitrary `.onnx` files.
+
+| Workload or device | Select | Why |
+|---|---|---|
+| A FastFlowLM-supported local LLM, VLM, ASR, embedding, or MoE model on XDNA2 | FastFlowLM | Native NPU engine, CLI, and OpenAI-compatible local server; no ORT EP is involved |
+| A generic/custom ONNX graph or a need for node-level placement evidence | Ryzen AI/Vitis AI + `provider_test.py` | This guide's ORT profile and Vitis assignment-report proof applies here |
+| Ryzen AI 7000/8000/200-series XDNA1 | Not FastFlowLM | FastFlowLM explicitly excludes XDNA1; use only a separately supported Vitis AI route, such as the Windows PHX/HPT path in §12 |
+
+FastFlowLM currently documents XDNA2 support for Ryzen AI Max 300 (Strix Halo), Ryzen AI 300 (Strix Point and Kraken Point), Ryzen AI 400 (Gorgon Point), and, on Linux, Z2 Extreme. Those claims establish FastFlowLM eligibility only; they do not expand the Vitis AI ONNX support matrix.
+
+| Platform | FastFlowLM gate | Readiness and run evidence |
+|---|---|---|
+| Windows | Windows 11, an XDNA2 Ryzen AI NPU, and NPU driver `>= 32.0.203.304` (`.311` recommended by FastFlowLM) | Run a supported catalog model, then inspect NPU activity in Task Manager |
+| Linux | XDNA2, kernel `>= 7.0` with `amdxdna` or `amdxdna-dkms`, NPU firmware `>= 1.1.0.0`, XRT, and a sufficient memlock limit | Run `flm validate`, then `xrt-smi examine`, then run a supported catalog model |
+
+```bash
+# Use a FastFlowLM-supported model after its platform-specific installation.
+flm run llama3.2:1b
+
+# Optional local OpenAI-compatible server (default: http://127.0.0.1:52625/v1).
+flm serve llama3.2:1b
+```
+
+> [!IMPORTANT]
+> FastFlowLM evidence is runtime-specific, not ORT profile evidence. On Linux, `flm validate` checks the kernel-side setup, while `flm run` requires XRT to open the NPU; `xrt-smi examine` must see the device before a successful validation can be treated as runnable. A FastFlowLM model run and NPU activity do not prove ONNX node placement.
+
+> [!WARNING]
+> Treat FastFlowLM and the vendor Ryzen AI/Vitis AI environment as separately pinned NPU stacks. Do not mix their XRT/driver/runtime packages merely because both target XDNA. `provider_test.py` deliberately cannot validate FastFlowLM: it creates ONNX Runtime sessions and only accepts ORT execution-provider evidence.
 
 > [!IMPORTANT]
 > `ROCMExecutionProvider` was **removed in ONNX Runtime 1.23**. ROCm 7.0 was the last AMD release carrying it — new projects must use `MIGraphXExecutionProvider`.
 
 > [!NOTE]
-> GPU and NPU are separate stacks. ROCm/MIGraphX or DirectML target the GPU; Vitis AI/Ryzen AI targets the XDNA NPU. Installing one never enables the other.
+> GPU and NPU are separate stacks. ROCm/MIGraphX or DirectML target the GPU; Vitis AI/Ryzen AI targets the XDNA NPU for ONNX, while FastFlowLM targets XDNA2 through its separate native model runtime. Installing one never enables the other.
 
 ---
 
@@ -191,6 +234,7 @@ providers = [
 | Latest upstream ORT / PyPI MIGraphX package | 1.27.1 | Dated 2026-07-12; AMD has not published a matching ROCm row, so this guide keeps the audited route |
 | Stable Ryzen AI Software | 1.7.1 | Windows + Ubuntu NPU; 1.8.0 beta is not for production |
 | Minimum Ryzen AI Windows NPU driver | 32.0.203.280 | Compatibility floor for Ryzen AI EP 1.7 |
+| FastFlowLM native NPU runtime | 1.0.1 | Separate XDNA2-only catalog-model route; its driver/XRT/HRX gates are not part of the ORT artifact verifier |
 | PyPI ONNX Runtime DirectML | 1.24.4 | Current x64 wheel; Python >= 3.11 |
 | DirectML operator library in ORT | DirectML 1.15.2, opset up to 20 | Sustained engineering, with some opset-20 exceptions |
 | Python packaging | pip 26.1.2; NumPy pinned to 1.26.4 | AMD's Radeon 7.2.1 ORT wheel is documented as incompatible with NumPy 2.x |
@@ -205,7 +249,7 @@ providers = [
 
 ### 3.2 Documentation skew
 
-The generic ONNX Runtime Vitis AI page still describes Ryzen AI as Windows-only with Linux limited to Adaptive SoCs. Ryzen AI Software 1.7.1's own product documentation adds Ubuntu 24.04 NPU support for STX/KRK. Use the product-version docs for Ryzen AI PCs, and the Vitis AI target docs for Zynq/Versal.
+The generic ONNX Runtime Vitis AI page still describes Ryzen AI as Windows-only with Linux limited to Adaptive SoCs. Ryzen AI Software 1.7.1's own product documentation adds Ubuntu 24.04 NPU support for STX/KRK. FastFlowLM separately documents an XDNA2 native-runtime route on Windows and Linux. That newer route does not change the Vitis AI ONNX matrix or turn FastFlowLM into an ORT EP: use product-version docs for Ryzen AI PCs, and the Vitis AI target docs for Zynq/Versal.
 
 ### 3.3 Audited artifact fingerprints
 
@@ -1121,7 +1165,7 @@ File: [provider_test.py](provider_test.py)
 | Evidence isolation | Every invocation uses a new artifact/cache directory, so stale reports or caches cannot produce a false pass |
 | `--unit-tests` | Runs the built-in deterministic safety/unit suite without AMD hardware, then exits |
 | WSL | Rejects MIGraphX — AMD's current WSL guide marks it unsupported |
-| Scope limit | Ryzen AI PC NPU only; rejects Arm Zynq/Versal Adaptive SoCs, which need board-specific models/options |
+| Scope limit | ONNX Runtime only: Ryzen AI PC NPU only; rejects Arm Zynq/Versal Adaptive SoCs, which need board-specific models/options. It does not validate FastFlowLM. |
 
 ### 17.1 Command table
 
@@ -1130,6 +1174,7 @@ File: [provider_test.py](provider_test.py)
 | Windows AMD GPU, DirectML | `python AMD/provider_test.py --target dml --bootstrap --strict-all` |
 | Windows AMD GPU, Windows ML MIGraphX | `python AMD/provider_test.py --target migraphx --windows-ml --strict-all` |
 | Ubuntu AMD GPU | `python AMD/provider_test.py --target migraphx --bootstrap --strict-all` (auto-detects 7.2.1, 7.2.4, or gated 7.14.0) |
+| Windows/Linux XDNA2 FastFlowLM catalog model | Install FastFlowLM for the platform, then `flm run llama3.2:1b`; use `flm validate` and `xrt-smi examine` on Linux, not `provider_test.py` |
 | Windows Ryzen AI NPU | `python AMD/provider_test.py --target npu --strict-all` |
 | Ubuntu Ryzen AI NPU | `python AMD/provider_test.py --target npu --strict-all` |
 | Existing custom model | Add `--model path/to/model.onnx` |
@@ -1419,6 +1464,7 @@ flowchart TD
 | First NPU load takes minutes | Expected compilation | Enable caching; separate compile time from inference time |
 | NPU cache fails after an update | Cache/driver/EP incompatibility | Delete or version the cache; regenerate EP Context |
 | Ubuntu cannot see the NPU | Kernel < 6.10, XRT/amdxdna absent, or unsupported PHX/HPT | Meet the exact 1.7.1 Linux gate; run `xrt-smi examine` |
+| FastFlowLM `flm validate` passes but `flm run` cannot open NPU device `0` | Kernel-side probe works, but XRT or its AMD XDNA plugin cannot open the NPU | Run `xrt-smi examine`; install/repair the FastFlowLM-required XRT and XDNA plugin for the distribution, then recheck the device before running a catalog model |
 | Docker cannot see the GPU | Device passthrough missing | Add `--device /dev/kfd --device /dev/dri`; verify the host driver |
 | EP registered but demo exits with code 5 | No target-provider profile events and no fresh Vitis NPU evidence | Intentional fail-closed behavior — inspect unsupported nodes, the current-run report, and logs |
 
@@ -1487,6 +1533,9 @@ ORT recommends keeping provider shared libraries beside the matching ORT library
 | Ryzen AI model deployment and options | <https://ryzenai.docs.amd.com/en/latest/modelrun.html> |
 | Ryzen AI release notes | <https://ryzenai.docs.amd.com/en/latest/relnotes.html> |
 | Ryzen AI supported operators | <https://ryzenai.docs.amd.com/en/latest/ops_support.html> |
+| FastFlowLM overview and Windows setup | <https://fastflowlm.com/docs/> · <https://fastflowlm.com/docs/install_win/> |
+| FastFlowLM Linux support and validation | <https://fastflowlm.com/docs/install_lin/> · <https://github.com/ROCm/FastFlowLM/blob/main/docs/linux-getting-started.md> |
+| FastFlowLM source and releases | <https://github.com/ROCm/FastFlowLM> · <https://github.com/ROCm/FastFlowLM/releases> |
 | Windows ML overview | <https://learn.microsoft.com/en-us/windows/ai/new-windows-ml/overview> |
 | Windows ML installation | <https://learn.microsoft.com/en-us/windows/ai/new-windows-ml/distributing-your-app?tabs=python> |
 | Windows ML available EPs | <https://learn.microsoft.com/en-us/windows/ai/new-windows-ml/supported-execution-providers> |

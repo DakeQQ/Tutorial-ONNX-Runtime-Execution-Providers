@@ -4,11 +4,15 @@
 
 ONNX Runtime 通过四条路径接入 AMD 硬件——**DirectML**、**Windows ML**、**ROCm/MIGraphX** 和 **Ryzen AI/Vitis AI**。本指南先帮你选对路径，再用真实的节点分配结果*证明*它确实生效，而不只是 Provider 列表里多了一个名字。
 
+FastFlowLM 是面向 XDNA2 Ryzen AI NPU、运行其自身已支持模型目录的独立原生运行时，并非 ONNX Runtime EP。本指南会说明何时应选择这条路径；通用或自定义 ONNX 模型的验证仍使用 Vitis AI 路径。
+
 | 项目 | 基线 |
 |---|---|
-| 最近验证 | `2026-07-17`；已与 AMD、Microsoft、Canonical、ONNX Runtime、Docker Hub 和 PyPI 官方资料核对 |
+| ORT 基线最近验证 | `2026-07-17`；已与 AMD、Microsoft、Canonical、ONNX Runtime、Docker Hub 和 PyPI 官方资料核对 |
+| FastFlowLM 审查 | `v1.0.1` 源码/文档于 `2026-08-13` 审查；面向 XDNA2 目录模型的原生路径，独立于已审计的 ORT artifact |
 | 支持平台 | Windows 与 Ubuntu；具体要求随 GPU/NPU 代际变化 |
-| 运行方式 | DirectML · Windows ML MIGraphX · ROCm/MIGraphX · Ryzen AI/Vitis AI |
+| ORT 路径 | DirectML · Windows ML MIGraphX · ROCm/MIGraphX · Ryzen AI/Vitis AI |
+| 原生 NPU 路径 | FastFlowLM：用于 XDNA2 Ryzen AI PC 上其已支持的模型；不是 ORT EP |
 | 验证脚本 | [`provider_test.py`](provider_test.py) |
 | 验证内容 | 本次运行的节点分配 + 输出基本有效性；内置 GPU 模型或带 `--compare-cpu` 的自定义模型还会与 CPU 结果做数值对比 |
 | 验证范围 | 脚本自检已在 Linux 上通过；DirectML、Windows ML、MIGraphX、Vitis AI 的最终验证仍需匹配的目标硬件 |
@@ -25,8 +29,9 @@ ONNX Runtime 通过四条路径接入 AMD 硬件——**DirectML**、**Windows M
 | Windows + AMD GPU，想最快跑通 | [§9 DirectML](#9-最简单的-python-方案directml) |
 | Windows，要为 Win 11 24H2+ 开发新应用 | [§10 Windows ML + MIGraphX](#10-windows-新方案windows-ml--amd-migraphx) |
 | Ubuntu + AMD GPU | [§6 安装匹配的 ROCm 方案](#6-安装匹配的-rocm-方案) |
-| Ryzen AI 笔记本，Windows | [§12 安装 Ryzen AI Software](#12-安装-ryzen-ai-software-171) |
-| Ryzen AI 笔记本，Ubuntu | [§15 安装 Linux NPU 驱动](#15-安装-ubuntu-npu-驱动与-ryzen-ai) |
+| XDNA2 Ryzen AI PC，运行 FastFlowLM 已支持的本地模型 | [§1.1 FastFlowLM](#fastflowlm-xdna2) |
+| Ryzen AI 笔记本，运行通用或自定义 ONNX 模型，Windows | [§12 安装 Ryzen AI Software](#12-安装-ryzen-ai-software-171) |
+| Ryzen AI 笔记本，运行通用或自定义 ONNX 模型，Ubuntu | [§15 安装 Linux NPU 驱动](#15-安装-ubuntu-npu-驱动与-ryzen-ai) |
 | 面向 Zynq/Versal 开发板 | [§16 嵌入式 Linux 目标](#16-嵌入式-linux-目标) |
 | 想搞清楚"节点为什么落到了 CPU" | [§19 验证流程](#19-验证流程) + [§21 故障排查](#21-故障排查) |
 | 还没想好选哪条路 | [§1 选择路线](#1-选择路线) |
@@ -38,37 +43,68 @@ ONNX Runtime 通过四条路径接入 AMD 硬件——**DirectML**、**Windows M
 
 ## 目录
 
-- [AMD 全景图](#amd-全景图)
-- [1. 选择路线](#1-选择路线)
-- [2. 基础概念](#2-基础概念)
-- [3. 版本与支持矩阵](#3-版本与支持矩阵)
-- [4. 开始前检查](#4-开始前检查)
-- [A 部分：Ubuntu AMD GPU（ROCm + MIGraphX）](#a-部分ubuntu-amd-gpurocm--migraphx)
+- [ONNX Runtime + AMD：GPU 与 NPU](#onnx-runtime--amdgpu-与-npu)
+    - [文件](#文件)
+  - [目录](#目录)
+  - [AMD 全景图](#amd-全景图)
+  - [1. 选择路线](#1-选择路线)
+    - [1.1 FastFlowLM：原生 XDNA2 本地模型运行时](#11-fastflowlm原生-xdna2-本地模型运行时)
+  - [2. 基础概念](#2-基础概念)
+  - [3. 版本与支持矩阵](#3-版本与支持矩阵)
+    - [3.1 2026-07-17 版本快照](#31-2026-07-17-版本快照)
+    - [3.2 文档版本差异](#32-文档版本差异)
+    - [3.3 已核验的软件包指纹](#33-已核验的软件包指纹)
+  - [4. 开始前检查](#4-开始前检查)
+    - [4.1 Windows：识别 GPU 与 NPU](#41-windows识别-gpu-与-npu)
+    - [4.2 Ubuntu：识别设备、系统与权限](#42-ubuntu识别设备系统与权限)
+  - [A 部分：Ubuntu AMD GPU（ROCm + MIGraphX）](#a-部分ubuntu-amd-gpurocm--migraphx)
   - [5. 硬件和操作系统要求](#5-硬件和操作系统要求)
   - [6. 安装匹配的 ROCm 方案](#6-安装匹配的-rocm-方案)
+    - [6.1 当前 ROCm 7.14.0 ONNX 方案——Ubuntu 24.04，仅 `gfx950/gfx942`](#61-当前-rocm-7140-onnx-方案ubuntu-2404仅-gfx950gfx942)
+    - [6.2 保留的 ROCm 7.2.4 方案——Ubuntu 24.04](#62-保留的-rocm-724-方案ubuntu-2404)
+    - [6.3 保留的 ROCm 7.2.4 方案——Ubuntu 22.04](#63-保留的-rocm-724-方案ubuntu-2204)
+    - [6.4 Radeon 专用 ONNX 方案——ROCm 7.2.1](#64-radeon-专用-onnx-方案rocm-721)
   - [7. 安装 MIGraphX 与 ORT wheel](#7-安装-migraphx-与-ort-wheel)
+    - [7.1 MIGraphX 运行时](#71-migraphx-运行时)
+    - [7.2 创建隔离的 Python 环境](#72-创建隔离的-python-环境)
+    - [7.3 一键运行 GPU 验证](#73-一键运行-gpu-验证)
   - [8. Ubuntu Docker 快速方案](#8-ubuntu-docker-快速方案)
-- [B 部分：Windows AMD GPU](#b-部分windows-amd-gpu)
+  - [B 部分：Windows AMD GPU](#b-部分windows-amd-gpu)
   - [9. 最简单的 Python 方案：DirectML](#9-最简单的-python-方案directml)
   - [10. Windows 新方案：Windows ML + AMD MIGraphX](#10-windows-新方案windows-ml--amd-migraphx)
-- [C 部分：Windows Ryzen AI NPU（Vitis AI）](#c-部分windows-ryzen-ai-npuvitis-ai)
+    - [10.1 Python 如何获取 EP](#101-python-如何获取-ep)
+    - [10.2 为什么原生 Windows ROCm 走不通这条路](#102-为什么原生-windows-rocm-走不通这条路)
+  - [C 部分：Windows Ryzen AI NPU（Vitis AI）](#c-部分windows-ryzen-ai-npuvitis-ai)
   - [11. 支持范围](#11-支持范围)
   - [12. 安装 Ryzen AI Software 1.7.1](#12-安装-ryzen-ai-software-171)
+    - [12.1 厂商 quicktest（STX/KRK）](#121-厂商-quickteststxkrk)
+    - [12.2 自动化性能分析验证](#122-自动化性能分析验证)
   - [13. 按代际配置 Vitis AI Provider](#13-按代际配置-vitis-ai-provider)
-- [D 部分：Ubuntu Ryzen AI NPU（Vitis AI）](#d-部分ubuntu-ryzen-ai-npuvitis-ai)
+  - [D 部分：Ubuntu Ryzen AI NPU（Vitis AI）](#d-部分ubuntu-ryzen-ai-npuvitis-ai)
   - [14. 当前 Linux 支持要求](#14-当前-linux-支持要求)
   - [15. 安装 Ubuntu NPU 驱动与 Ryzen AI](#15-安装-ubuntu-npu-驱动与-ryzen-ai)
-- [E 部分：AMD Adaptive SoC 上的 Vitis AI](#e-部分amd-adaptive-soc-上的-vitis-ai)
+    - [15.1 基础软件包](#151-基础软件包)
+    - [15.2 下载并安装 XRT/NPU 软件包](#152-下载并安装-xrtnpu-软件包)
+    - [15.3 安装 Ryzen AI 1.7.1 软件包](#153-安装-ryzen-ai-171-软件包)
+    - [15.4 Quicktest 与一键验证](#154-quicktest-与一键验证)
+  - [E 部分：AMD Adaptive SoC 上的 Vitis AI](#e-部分amd-adaptive-soc-上的-vitis-ai)
   - [16. 嵌入式 Linux 目标](#16-嵌入式-linux-目标)
-- [F 部分：一键 Python 演示](#f-部分一键-python-演示)
+  - [F 部分：一键 Python 演示](#f-部分一键-python-演示)
   - [17. 验证脚本行为](#17-验证脚本行为)
+    - [17.1 命令表](#171-命令表)
+    - [17.2 运行自己的模型](#172-运行自己的模型)
   - [18. 最小 Provider 代码](#18-最小-provider-代码)
+    - [18.1 Linux MIGraphX GPU](#181-linux-migraphx-gpu)
+    - [18.2 Windows DirectML GPU](#182-windows-directml-gpu)
+    - [18.3 Ryzen AI Vitis AI NPU](#183-ryzen-ai-vitis-ai-npu)
+    - [18.4 高级：从源码构建带 AMD EP 的 ONNX Runtime](#184-高级从源码构建带-amd-ep-的-onnx-runtime)
   - [19. 验证流程](#19-验证流程)
   - [20. 性能建议](#20-性能建议)
   - [21. 故障排查](#21-故障排查)
   - [22. 生产检查表](#22-生产检查表)
   - [23. 参考资料](#23-参考资料)
-- [附录：VSINPU 并非 AMD Provider](#appendix-vsinpu)
+  - [附录：VSINPU 并非 AMD Provider](#附录vsinpu-并非-amd-provider)
+    - [Provider 选项](#provider-选项)
 
 ---
 
@@ -84,9 +120,9 @@ mindmap
       Ubuntu ROCm 7.14，gfx950 或 gfx942
       Ubuntu ROCm 7.2.4 或 7.2.1
     Ryzen AI NPU
-      Windows 直接安装 SDK
-      Windows ML VitisAI
-      Ubuntu，仅 STX 或 KRK
+      FastFlowLM 原生运行时，XDNA2 目录模型
+      Windows 直接安装 SDK 与 VitisAI
+      Ubuntu VitisAI，仅 STX 或 KRK
     Adaptive SoC
       Zynq UltraScale Plus
       Versal AI Core 或 Edge
@@ -109,10 +145,12 @@ flowchart TD
 
     C -->|"AMD GPU，快速 Python 测试"| E["DirectML<br/>DmlExecutionProvider"]
     C -->|"AMD GPU，Win 11 24H2+ 新应用"| F["Windows ML<br/>MIGraphXExecutionProvider"]
-    C -->|"Ryzen AI NPU"| G["Ryzen AI Software<br/>VitisAIExecutionProvider"]
+    C -->|"XDNA2 NPU，FastFlowLM 已支持模型"| G["FastFlowLM<br/>原生 NPU 运行时"]
+    C -->|"NPU，通用/自定义 ONNX"| K["Ryzen AI Software<br/>VitisAIExecutionProvider"]
 
     D -->|"AMD GPU，在 ROCm 矩阵内"| H["ROCm + MIGraphX<br/>MIGraphXExecutionProvider"]
-    D -->|"Ryzen AI NPU，STX 或 KRK"| I["Ryzen AI for Linux<br/>VitisAIExecutionProvider"]
+    D -->|"XDNA2 NPU，FastFlowLM 已支持模型"| I["FastFlowLM<br/>原生 NPU 运行时"]
+    D -->|"NPU，通用/自定义 ONNX"| L["Ryzen AI for Linux<br/>VitisAIExecutionProvider"]
     D -->|"Zynq 或 Versal SoC"| J["Vitis AI 目标环境搭建"]
 
     style A fill:#455a64,stroke:#cfd8dc,color:#ffffff
@@ -121,10 +159,12 @@ flowchart TD
     style D fill:#e65100,stroke:#ffcc80,color:#ffffff
     style E fill:#0067b8,stroke:#8dc8f4,color:#ffffff
     style F fill:#5e35b1,stroke:#b388ff,color:#ffffff
-    style G fill:#c62828,stroke:#ff8a80,color:#ffffff
+    style G fill:#2e7d32,stroke:#a5d6a7,color:#ffffff
     style H fill:#0067b8,stroke:#8dc8f4,color:#ffffff
-    style I fill:#c62828,stroke:#ff8a80,color:#ffffff
+    style I fill:#2e7d32,stroke:#a5d6a7,color:#ffffff
     style J fill:#2e7d32,stroke:#a5d6a7,color:#ffffff
+    style K fill:#c62828,stroke:#ff8a80,color:#ffffff
+    style L fill:#c62828,stroke:#ff8a80,color:#ffffff
 ```
 
 | 场景 | 推荐方案 | ONNX Runtime EP | 状态 |
@@ -132,16 +172,49 @@ flowchart TD
 | Windows，较新 AMD GPU | DirectML 最容易从 Python 上手；新应用也可评估 Windows ML | `DmlExecutionProvider` | 仍受支持，进入持续工程维护；Windows ML 是微软新的推荐方向 |
 | Windows 11 24H2+，受支持 AMD GPU | 通过 Windows ML 动态获取 AMD MIGraphX | `MIGraphXExecutionProvider` | Catalog 已提供；`--windows-ml` 支持该路径 |
 | Ubuntu，AMD GPU 在 ONNX 矩阵内 | ROCm + MIGraphX + AMD wheel | `MIGraphXExecutionProvider` | **Linux GPU 首选方案**；GPU/ROCm/Python/wheel 需精确匹配 |
-| Windows，Ryzen AI NPU | Ryzen AI Software 1.7.1；Windows ML catalog 也可用 | `VitisAIExecutionProvider` | 支持 PHX/HPT/STX/KRK；`--windows-ml` 仅用于 GPU，NPU 请用厂商环境 |
-| Ubuntu 24.04，Ryzen AI NPU | Ryzen AI for Linux 1.7.1 | `VitisAIExecutionProvider` | **仅 STX/KRK，内核 >= 6.10，Python 3.12** |
+| Windows 或 Linux，XDNA2 Ryzen AI PC，FastFlowLM 已支持模型 | FastFlowLM 原生运行时 | 无——不是 ORT EP | **仅目录模型路径**；使用自己的 XRT/HRX 运行时与模型引擎；见 §1.1 |
+| Windows，Ryzen AI NPU，通用/自定义 ONNX | Ryzen AI Software 1.7.1；Windows ML catalog 也可用 | `VitisAIExecutionProvider` | 支持 PHX/HPT/STX/KRK；`--windows-ml` 仅用于 GPU，NPU 请用厂商环境 |
+| Ubuntu 24.04，Ryzen AI NPU，通用/自定义 ONNX | Ryzen AI for Linux 1.7.1 | `VitisAIExecutionProvider` | **仅 STX/KRK，内核 >= 6.10，Python 3.12** |
 | Linux，AMD/Xilinx Adaptive SoC | Vitis AI 目标镜像与运行时 | `VitisAIExecutionProvider` | 面向 Zynq、Versal 的嵌入式 Linux 路径 |
 | Windows 原生 ROCm Core SDK | 目前不是 ORT MIGraphX 的 Python 路径 | 无 | ROCm 7.14 扩展了 Windows core 支持，但已验证的 MIGraphX/ORT 组合仍仅限 Linux |
+
+<a id="fastflowlm-xdna2"></a>
+### 1.1 FastFlowLM：原生 XDNA2 本地模型运行时
+
+本次审查的 `v1.0.1` 中，[FastFlowLM](https://fastflowlm.com/docs/) 是 AMD ROCm 托管的原生 NPU 运行时，不是 ONNX Runtime Provider。其源码默认选择 XRT，也可通过可选构建开关选择 HRX，然后加载原生模型引擎。它使用自己的已支持模型目录与 `flm pull`/`flm run` 工作流；文档并未把它定位为任意 `.onnx` 文件的通用运行器。
+
+| 工作负载或设备 | 选择 | 原因 |
+|---|---|---|
+| XDNA2 上 FastFlowLM 已支持的本地 LLM、VLM、ASR、embedding 或 MoE 模型 | FastFlowLM | 原生 NPU 引擎、CLI 与 OpenAI 兼容的本地 server；不涉及 ORT EP |
+| 通用/自定义 ONNX 图，或需要节点级分配证据 | Ryzen AI/Vitis AI + `provider_test.py` | 本指南的 ORT profile 与 Vitis 分配报告验证适用于此路径 |
+| Ryzen AI 7000/8000/200 系列 XDNA1 | 不使用 FastFlowLM | FastFlowLM 明确不支持 XDNA1；只使用单独受支持的 Vitis AI 路径，例如 §12 的 Windows PHX/HPT 路径 |
+
+FastFlowLM 当前文档列出的 XDNA2 支持范围包括 Ryzen AI Max 300（Strix Halo）、Ryzen AI 300（Strix Point 与 Kraken Point）、Ryzen AI 400（Gorgon Point），以及 Linux 上的 Z2 Extreme。这些说明仅用于判断 FastFlowLM 是否适用；它们不会扩展 Vitis AI 的 ONNX 支持矩阵。
+
+| 平台 | FastFlowLM 要求 | 就绪与运行证据 |
+|---|---|---|
+| Windows | Windows 11、XDNA2 Ryzen AI NPU，以及 `>= 32.0.203.304` 的 NPU 驱动（FastFlowLM 建议 `.311`） | 运行目录中的已支持模型，然后在 Task Manager 中检查 NPU 活动 |
+| Linux | XDNA2、带 `amdxdna` 或 `amdxdna-dkms` 的 `>= 7.0` 内核、`>= 1.1.0.0` 的 NPU 固件、XRT，以及足够的 memlock 限制 | 运行 `flm validate`，再运行 `xrt-smi examine`，最后运行目录中的已支持模型 |
+
+```bash
+# 完成 FastFlowLM 对应平台的安装后，运行其支持的模型。
+flm run llama3.2:1b
+
+# 可选：启动本地 OpenAI 兼容 server（默认：http://127.0.0.1:52625/v1）。
+flm serve llama3.2:1b
+```
+
+> [!IMPORTANT]
+> FastFlowLM 的证据属于其自身运行时，不能替代 ORT profile 证据。在 Linux 上，`flm validate` 检查内核侧准备情况，而 `flm run` 还要求 XRT 能打开 NPU；即使验证通过，`xrt-smi examine` 也必须能看到设备才可认为可以运行。FastFlowLM 模型运行成功和 NPU 活动不等于证明 ONNX 节点分配。
+
+> [!WARNING]
+> FastFlowLM 与厂商 Ryzen AI/Vitis AI 环境应视为独立锁定的 NPU 软件栈。不要只因两者都面向 XDNA 就混装其 XRT/驱动/运行时软件包。`provider_test.py` 按设计无法验证 FastFlowLM：它创建 ONNX Runtime session，只接受 ORT Execution Provider 证据。
 
 > [!IMPORTANT]
 > **从 ONNX Runtime 1.23 起，`ROCMExecutionProvider` 已被移除。** ROCm 7.0 是最后一个包含它的 AMD 发行版——新项目必须改用 `MIGraphXExecutionProvider`。
 
 > [!NOTE]
-> GPU 和 NPU 是两套独立的软件栈。ROCm/MIGraphX 或 DirectML 面向 GPU；Vitis AI/Ryzen AI 面向 XDNA NPU。装好其中一个，另一个并不会自动可用。
+> GPU 和 NPU 是两套独立的软件栈。ROCm/MIGraphX 或 DirectML 面向 GPU；Vitis AI/Ryzen AI 面向 XDNA NPU 的 ONNX 路径，FastFlowLM 则通过独立的原生模型运行时面向 XDNA2。装好其中一个，另一个并不会自动可用。
 
 ---
 
@@ -191,6 +264,7 @@ providers = [
 | 最新上游 ORT / PyPI MIGraphX 包 | 1.27.1 | 2026-07-12 发布；AMD 尚未给出匹配的 ROCm 组合，本指南仍沿用已核验方案 |
 | Ryzen AI Software 稳定版 | 1.7.1 | Windows + Ubuntu NPU；1.8.0 beta 不建议用于生产 |
 | Ryzen AI Windows NPU 最低驱动 | 32.0.203.280 | Ryzen AI EP 1.7 的兼容下限 |
+| FastFlowLM 原生 NPU 运行时 | 1.0.1 | 独立的、仅 XDNA2 的目录模型路径；其驱动/XRT/HRX 要求不属于 ORT artifact 验证器 |
 | PyPI ONNX Runtime DirectML | 1.24.4 | 当前 x64 wheel；要求 Python >= 3.11 |
 | ORT 中的 DirectML 算子库 | DirectML 1.15.2，opset 最高 20 | 持续工程维护，部分 opset 20 配置例外 |
 | Python 打包 | pip 26.1.2；NumPy 锁定 1.26.4 | AMD Radeon 7.2.1 ORT wheel 明确记录与 NumPy 2.x 不兼容 |
@@ -205,7 +279,7 @@ providers = [
 
 ### 3.2 文档版本差异
 
-ONNX Runtime 的通用 Vitis AI 页面仍把 Ryzen AI 描述为仅支持 Windows，Linux 仅限 Adaptive SoC。而 Ryzen AI Software 1.7.1 自己的产品文档已经为 STX/KRK 增加了 Ubuntu 24.04 NPU 支持。对 Ryzen AI PC，请以对应产品版本的文档为准；对 Zynq/Versal，请以 Vitis AI 目标端文档为准。
+ONNX Runtime 的通用 Vitis AI 页面仍把 Ryzen AI 描述为仅支持 Windows，Linux 仅限 Adaptive SoC。而 Ryzen AI Software 1.7.1 自己的产品文档已经为 STX/KRK 增加了 Ubuntu 24.04 NPU 支持。FastFlowLM 另外记录了一条 XDNA2 原生运行时路径，覆盖 Windows 与 Linux。这个较新的路径不会改变 Vitis AI 的 ONNX 矩阵，也不会让 FastFlowLM 变成 ORT EP：对 Ryzen AI PC 请以对应产品版本的文档为准；对 Zynq/Versal 请以 Vitis AI 目标端文档为准。
 
 ### 3.3 已核验的软件包指纹
 
@@ -1121,7 +1195,7 @@ flowchart LR
 | 证据隔离 | 每次调用都使用全新的产物/缓存目录，避免旧报告或缓存造成误判 |
 | `--unit-tests` | 无需 AMD 硬件即可运行内置的确定性安全/单元测试，然后退出 |
 | WSL | 拒绝 MIGraphX——AMD 当前 WSL 指南明确标注不支持 |
-| 适用范围 | 仅限 Ryzen AI PC NPU；拒绝 Arm Zynq/Versal Adaptive SoC，那需要开发板专用模型/选项 |
+| 适用范围 | 仅限 ONNX Runtime：Ryzen AI PC NPU；拒绝 Arm Zynq/Versal Adaptive SoC，那需要开发板专用模型/选项。它不验证 FastFlowLM。 |
 
 ### 17.1 命令表
 
@@ -1130,6 +1204,7 @@ flowchart LR
 | Windows AMD GPU，DirectML | `python AMD/provider_test.py --target dml --bootstrap --strict-all` |
 | Windows AMD GPU，Windows ML MIGraphX | `python AMD/provider_test.py --target migraphx --windows-ml --strict-all` |
 | Ubuntu AMD GPU | `python AMD/provider_test.py --target migraphx --bootstrap --strict-all`（自动检测 7.2.1、7.2.4 或有额外硬件要求的 7.14.0） |
+| Windows/Linux XDNA2 FastFlowLM 目录模型 | 为对应平台安装 FastFlowLM 后执行 `flm run llama3.2:1b`；Linux 使用 `flm validate` 和 `xrt-smi examine`，不要使用 `provider_test.py` |
 | Windows Ryzen AI NPU | `python AMD/provider_test.py --target npu --strict-all` |
 | Ubuntu Ryzen AI NPU | `python AMD/provider_test.py --target npu --strict-all` |
 | 已有自定义模型 | 添加 `--model path/to/model.onnx` |
@@ -1422,6 +1497,7 @@ flowchart TD
 | 首次 NPU 加载耗时数分钟 | 属于正常编译 | 启用缓存；分开衡量编译时间与推理时间 |
 | 更新后 NPU 缓存失效 | 缓存/驱动/EP 不兼容 | 删除或更换缓存版本；重新生成 EP Context |
 | Ubuntu 看不到 NPU | 内核 < 6.10、缺少 XRT/amdxdna，或用了不支持的 PHX/HPT | 满足精确的 1.7.1 Linux 要求；运行 `xrt-smi examine` |
+| FastFlowLM 的 `flm validate` 通过，但 `flm run` 无法打开 NPU 设备 `0` | 内核侧探测通过，但 XRT 或其 AMD XDNA 插件无法打开 NPU | 运行 `xrt-smi examine`；为该发行版安装/修复 FastFlowLM 所需的 XRT 与 XDNA 插件，确认设备后再运行目录模型 |
 | Docker 看不到 GPU | 缺少设备直通 | 添加 `--device /dev/kfd --device /dev/dri`；核实主机驱动 |
 | EP 已注册但脚本以退出码 5 结束 | 无目标 provider profile 事件，也无新生成的 Vitis NPU 证据 | 属于设计上的失败——检查不支持的节点、当次报告和日志 |
 
@@ -1490,6 +1566,9 @@ ORT 建议把 provider 共享库与匹配的 ORT 库放在一起——不要在�
 | Ryzen AI 模型部署与选项 | <https://ryzenai.docs.amd.com/en/latest/modelrun.html> |
 | Ryzen AI release notes | <https://ryzenai.docs.amd.com/en/latest/relnotes.html> |
 | Ryzen AI 支持算子 | <https://ryzenai.docs.amd.com/en/latest/ops_support.html> |
+| FastFlowLM 概览与 Windows 安装 | <https://fastflowlm.com/docs/> · <https://fastflowlm.com/docs/install_win/> |
+| FastFlowLM Linux 支持与验证 | <https://fastflowlm.com/docs/install_lin/> · <https://github.com/ROCm/FastFlowLM/blob/main/docs/linux-getting-started.md> |
+| FastFlowLM 源码与发行版 | <https://github.com/ROCm/FastFlowLM> · <https://github.com/ROCm/FastFlowLM/releases> |
 | Windows ML 概述 | <https://learn.microsoft.com/en-us/windows/ai/new-windows-ml/overview> |
 | Windows ML 安装 | <https://learn.microsoft.com/en-us/windows/ai/new-windows-ml/distributing-your-app?tabs=python> |
 | Windows ML 可用 EP | <https://learn.microsoft.com/en-us/windows/ai/new-windows-ml/supported-execution-providers> |

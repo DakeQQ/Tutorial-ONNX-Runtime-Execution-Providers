@@ -4,12 +4,12 @@
 
 | 项目 | 基线 |
 |---|---|
-| 最近核验 | `2026-07-17` |
+| 最近核验 | `2026-09-01` |
 | Android 应用 | Kotlin、`arm64-v8a`、Android API 27+ |
-| 运行时 | ONNX Runtime 1.26.0、QNN 插件 2.4.0、QNN Runtime 2.48.0 |
+| 运行时 | ONNX Runtime 1.29.0、QNN 插件 2.5.0、QNN Runtime 2.49.0 |
 | 构建 | SDK 35、AGP 8.7.3、Gradle 8.9、JDK 17–22 |
 | 运行入口 | [`build_demo.py`](build_demo.py) |
-| 验证范围 | 已完成 APK 构建与内容检查，并在 Android SM8550 真机上通过禁用 CPU 回退的 HTP 测试；该设备的 GPU 返回 `PLATFORM_NOT_SUPPORTED` |
+| 验证范围 | 当前 AAR/POM 已成功解析，并核对了发布方 Checksum 与包内容；本机缺少 JDK 和 SDK 35，因此没有构建当前 APK，也没有运行当前硬件路径。保留的 SM8550 结果已明确标记为 2.4/2.48 历史证据 |
 
 ## 目录
 
@@ -48,7 +48,7 @@
 | 构建 APK | `python build_demo.py` |
 | 构建并安装应用，然后启动 HTP 测试 | `python build_demo.py --install --backend htp` |
 | 设备厂商的软件栈支持时，尝试 GPU | `python build_demo.py --install --backend gpu` |
-| 启用并测试 QNN CPU | `python build_demo.py --qnn-sdk /path/to/QAIRT/2.48.40 --install --backend cpu` |
+| 启用并测试 QNN CPU | `python build_demo.py --qnn-sdk /path/to/QAIRT/2.49.40 --install --backend cpu` |
 
 以上命令默认从 `Qualcomm/AndroidDemo` 目录执行。如果当前位于仓库根目录，请在脚本名称前加上 `Qualcomm/AndroidDemo/`。
 
@@ -60,7 +60,7 @@
 |---|---|
 | 输出 APK 路径 / Gradle 显示 `BUILD SUCCESSFUL` | 指定版本的依赖已成功打包，但尚未在加速器上运行模型 |
 | 应用显示 `READY` | 插件已注册并检测到 QNN 设备，但尚未运行模型 |
-| 应用显示 `PASS · QNN ...` | 所选后端已在禁用 ORT CPU 回退的会话中运行冒烟模型，且输出与 CPU 参考结果一致 |
+| 应用显示 `PASS · QNN ...` | Profile 把节点归到 QNN、没有 ORT CPU 节点，且输出与 CPU 参考一致；GPU/HTP 还会硬性禁用回退 |
 
 ## 3. 构建并安装应用
 
@@ -88,15 +88,19 @@ flowchart LR
 
 首次运行需要下载 Python wheel、Gradle 和体积较大的原生 AAR，可能耗时数分钟。只有在所有依赖均已缓存后，`--offline` 模式才能正常使用。
 
-在 `2026-07-17` 的核验中，APK 仅包含 `arm64-v8a` 架构、三个锁定版本的运行时组件、QNN GPU/HTP/System/Prepare、HTP v68/v69/v73/v75/v79/v81 Stub/Skel，以及两个冒烟模型；其中不含 QNN CPU、`libcdsprpc.so`、Android `libc++` 或系统 Linker。
+当前 Maven Artifact 均已下载，并与发布的 SHA-1 Sidecar 匹配。ORT 1.29.0 包含四种 Android ABI；QNN 2.5.0 Plugin 与 QNN 2.49.0 Runtime 仅包含 `arm64-v8a`。Runtime AAR 含 19 个 QNN GPU/HTP/System/DSP 与 v68/v69/v73/v75/v79/v81 Stub/Skel 库，但不含 QNN CPU Backend。
+
+历史上的 `2026-07-17` APK 使用 ORT 1.26.0、Plugin 2.4.0 和 Runtime 2.48.0，大小为 83.4 MiB。它仅包含 `arm64-v8a`、QNN GPU/HTP/System/Prepare、HTP v68/v69/v73/v75/v79/v81 Stub/Skel 与两个冒烟模型；不含 QNN CPU、`libcdsprpc.so`、Android `libc++` 或系统 Linker。
 
 ### 版本选择依据
 
-QNN EP 2.4.0 基于 ORT 1.26.0 和 QAIRT 2.48.40 构建。其源码中的 Android 测试也采用这一版本线；当 Maven 中没有与 SDK 完全对应的版本时，则使用公开发布的 QNN Runtime 2.48.0。同一版本的公开软件包表仍列出 ORT Android 1.24.3 与 QNN Runtime 2.45.0，但在本次 SM8550 核验中，这组旧版本无法与 Plugin 2.4.0 完成 QNN Interface 协商。因此，本演示采用与源码构建一致的版本组合，并要求在每类目标设备上分别验证。
+QNN EP 2.5.0 声明兼容 ORT 1.24.1 及更高版本，并使用 ORT 1.26.0 与 QAIRT 2.49.40 编译。其 Tag 中的 Android 表验证的是 ORT 1.26.0 与 QNN Runtime 2.49.40。本项目改用仍处于声明 ABI 范围内的 ORT 1.29.0，以及 Maven Central 实际发布的最新 QNN Runtime 2.49.0；Maven Central 并不存在 `2.49.40` Runtime 坐标。因此，这是一组“最新公开包”组合，不是上游精确测试组合，仍须逐类目标设备验证。
+
+QNN 2.5.0 还修复了非受信任 Android App 的 NPU 发现：独立 Plugin 改为检查 `ro.soc.manufacturer`，不再探测会被 SELinux 阻止的 `/dev/fastrpc-cdsp*` 路径。
 
 ### 真机验证结果
 
-`2026-07-17`，HTP 路线在 Nubia NX711J 真机上多次通过测试。该设备搭载 Snapdragon 8 Gen 2（`SM8550`、HTP v73），运行 Android API 35。测试禁用了 CPU 回退，完成 20 次计时运行，测得中位延迟为 0.18–0.27 ms，与 ORT CPU 结果相比的最大误差为 0.0163526。这个小模型只用于验证执行路径，不能作为性能基准。同一设备的 GPU 检测返回 `QNN_COMMON_ERROR_PLATFORM_NOT_SUPPORTED`，因此应使用 HTP。Qualcomm 公开的 QNN GPU 文章针对 Snapdragon X Windows，上游 QNN GPU 测试也会跳过 ARM64；Android 上能否使用 QNN GPU，必须逐台设备验证。
+`2026-07-17`，使用 ORT 1.26.0、QNN Plugin 2.4.0 与 QNN Runtime 2.48.0 时，HTP 路线在 Nubia NX711J 真机上多次通过测试。该设备搭载 Snapdragon 8 Gen 2（`SM8550`、HTP v73），运行 Android API 35。测试禁用了 CPU 回退，完成 20 次计时运行，测得中位延迟为 0.18–0.27 ms，与 ORT CPU 结果相比的最大误差为 0.0163526。这个小模型只用于验证执行路径，不能作为性能基准，也不能把该结果归到当前 2.5/2.49 版本栈。同一设备的 GPU 检测返回 `QNN_COMMON_ERROR_PLATFORM_NOT_SUPPORTED`，因此应使用 HTP。Qualcomm 公开的 QNN GPU 文章针对 Snapdragon X Windows，上游 QNN GPU 测试也会跳过 ARM64；Android 上能否使用 QNN GPU，必须逐台设备验证。
 
 ## 4. 验证过程与判定依据
 
@@ -106,7 +110,7 @@ QNN EP 2.4.0 基于 ORT 1.26.0 和 QAIRT 2.48.40 构建。其源码中的 Androi
 | 2 | 通过 Java 插件 API 注册 `libonnxruntime_providers_qnn.so` |
 | 3 | 枚举 QNN `OrtEpDevice` 对象 |
 | 4 | 通过独立的 ORT CPU 会话生成参考结果 |
-| 5 | 使用 `backend_type=cpu|gpu|htp` 和 `session.disable_cpu_ep_fallback=1` 创建会话 |
+| 5 | 使用 `backend_type=cpu|gpu|htp` 创建会话；所有路线启用 Profile，GPU/HTP 硬性禁用 CPU 回退 |
 | 6 | 执行预热和正式计时 |
 | 7 | 对比 QNN 输出与 CPU 参考 |
 | 8 | 卸载插件前销毁所有 Tensor、Result 和 Session |
@@ -115,11 +119,11 @@ QNN EP 2.4.0 基于 ORT 1.26.0 和 QAIRT 2.48.40 构建。其源码中的 Androi
 |---|---|
 | HTP 模型 | 使用静态 QDQ 计算图 |
 | GPU / 可选 QNN CPU 模型 | 使用静态 FP32 计算图 |
-| 可选 QNN CPU | `--qnn-sdk` 会复制 QAIRT ARM64 版本的 `libQnnCpu.so`；未提供该参数时，应用会禁用 CPU 按钮 |
+| 可选 QNN CPU | `--qnn-sdk` 会把 QAIRT Android ARM64 版 `libQnnCpu.so` 复制到 `app/src/main/jniLibs/arm64-v8a`。后续即使不再传入 `--qnn-sdk`，构建脚本仍会复用该文件，而且无法核验其 QAIRT 版本。更换 SDK、Plugin 或 Runtime 时，请删除已复制的文件，或重新指定目标 QAIRT 2.49.40 根目录。只有该文件不存在时，CPU 按钮才会被禁用。 |
 | Android 12+ FastRPC | Manifest 通过 `required=false` 声明需要访问设备自带的 `libcdsprpc.so` |
 | APK 内容边界 | 工程不会复制 `libcdsprpc.so`、Android Framework 库或系统 Linker |
 
-部分 OEM 系统（包括本次核验使用的 SM8550）会在 `READY` 状态中列出类型为 CPU 的 **QNN EP 注册设备**。在这些系统上，必须启用该设备，插件才会提供可用的 Handle；但这不表示计算图被分配给了 CPU。实际后端由 `backend_type` 明确选择为 HTP、GPU 或 CPU，只有通过禁用 CPU 回退的 `PASS` 测试，才能证明所选后端确实完成了执行。
+部分 OEM 系统（包括本次核验使用的 SM8550）会在 `READY` 状态中列出类型为 CPU 的 **QNN EP 注册设备**。在这些系统上，必须启用该设备，插件才会提供可用的 Handle；但这不表示计算图被分配给了 CPU。实际后端由 `backend_type` 明确选择为 HTP、GPU 或 CPU。`PASS` 必须同时看到 QNN Profile 事件且没有 ORT CPU 事件；GPU/HTP 还会硬性禁用回退。QNN 2.5 加载 QNN CPU 时会拒绝硬性禁用回退选项。
 
 ## 5. 检查设备
 
@@ -131,7 +135,7 @@ QNN EP 2.4.0 基于 ORT 1.26.0 和 QAIRT 2.48.40 构建。其源码中的 Androi
 | 固件 | 使用当前 OEM 发布的版本 |
 | 安装条件 | 启用 USB 调试并完成 ADB 授权 |
 
-启动脚本会在预检查阶段打印检测到的 ABI、API 和 SoC。部分 OEM 属性中不一定会明确出现 Qualcomm 字样，因此无法确认 SoC 时，脚本只会给出警告，不会直接终止。最终仍以禁用 CPU 回退的 QNN 会话能否成功运行为准。
+启动脚本会在预检查阶段打印检测到的 ABI、API 和 SoC。部分 OEM 属性中不一定会明确出现 Qualcomm 字样，因此无法确认 SoC 时，脚本只会给出警告，不会直接终止。最终仍以目标 QNN Profile 验证能否通过为准；GPU/HTP 还必须通过禁用 CPU 回退的会话。
 
 ## 6. 文件说明
 

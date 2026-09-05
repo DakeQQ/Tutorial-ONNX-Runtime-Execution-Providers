@@ -3,7 +3,7 @@
 
 The launcher creates an isolated environment, installs the pinned plugin-QNN
 stack, generates deterministic static FP32 and QDQ models, and starts a worker
-that proves graph assignment without allowing ONNX Runtime CPU fallback.
+that proves QNN assignment and rejects profiled ONNX Runtime CPU nodes.
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ DEFAULT_ARTIFACTS = SCRIPT_DIR / ".qnn-smoke"
 REQUIREMENTS = SCRIPT_DIR / "requirements.txt"
 EXPECTED_VERSIONS = {
     "onnx": "1.22.0",
-    "onnxruntime": "1.26.0",
-    "onnxruntime-qnn": "2.4.0",
+    "onnxruntime": "1.29.0",
+    "onnxruntime-qnn": "2.5.0",
     "sympy": "1.14.0",
 }
 QNN_EP_NAME = "QNNExecutionProvider"
@@ -213,8 +213,8 @@ def _resolve_backend_path(
     extra = ""
     if backend == "cpu":
         extra = (
-            " The 2.4.0 release intentionally does not bundle the QNN CPU reference "
-            "backend. Install QAIRT 2.48.40 with Qualcomm Package Manager and pass "
+            " The 2.5.0 release intentionally does not bundle the QNN CPU reference "
+            "backend. Install QAIRT 2.49.40 with Qualcomm Package Manager and pass "
             "--qnn-sdk <SDK-root> or --backend-path <QnnCpu library>."
         )
     raise RuntimeError(
@@ -276,7 +276,12 @@ def _select_device(ort: Any, backend: str) -> tuple[Any, list[Any]]:
     return matches[0], all_devices
 
 
-def _session_options(ort: Any, profile_prefix: Path | None = None) -> Any:
+def _session_options(
+    ort: Any,
+    profile_prefix: Path | None = None,
+    *,
+    disable_cpu_fallback: bool = False,
+) -> Any:
     options = ort.SessionOptions()
     options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
@@ -284,7 +289,8 @@ def _session_options(ort: Any, profile_prefix: Path | None = None) -> Any:
     if profile_prefix is not None:
         options.enable_profiling = True
         options.profile_file_prefix = str(profile_prefix)
-        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        if disable_cpu_fallback:
+            options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
         options.add_session_config_entry("session.record_ep_graph_assignment_info", "1")
     return options
 
@@ -365,7 +371,7 @@ def _worker(args: argparse.Namespace) -> int:
     backend = BACKEND_ALIASES.get(args.backend, args.backend)
     _validate_local_execution_host(backend)
     if backend == "cpu":
-        # Plugin QNN 2.4 hides the ARM64 CPU reference device by default. This
+        # Plugin QNN 2.5 hides the ARM64 CPU reference device by default. This
         # must be set before importing/registering the plugin and creating OrtEnv.
         os.environ.setdefault("ORT_QNN_ENABLE_CPU_BACKEND", "1")
 
@@ -426,7 +432,12 @@ def _worker(args: argparse.Namespace) -> int:
             selected_device, _ = _select_device(ort, backend)
 
             profile_prefix = Path(temp_dir) / f"qnn-{backend}"
-            options = _session_options(ort, profile_prefix)
+            hard_fallback_disabled = backend != "cpu"
+            options = _session_options(
+                ort,
+                profile_prefix,
+                disable_cpu_fallback=hard_fallback_disabled,
+            )
             provider_options = {
                 "backend_path": str(backend_path),
                 # Keep graph I/O Q/DQ on QNN so strict HTP mode does not need
@@ -477,8 +488,12 @@ def _worker(args: argparse.Namespace) -> int:
             print(f"Max |QNN-reference| : {max_error:.8g} (limit {tolerance:g})")
             print(
                 f"\nPASS: QNN {backend.upper()} executed {proof_count} assigned/profiled "
-                "node event(s) with ORT CPU fallback disabled."
+                "node event(s) with no ORT CPU node in the profile."
             )
+            if hard_fallback_disabled:
+                print("ORT CPU fallback    : disabled at session creation")
+            else:
+                print("ORT CPU fallback    : profile-gated (QNN 2.5 rejects the disable flag for QNN CPU)")
             print("Note: this tiny graph validates configuration; it is not a hardware benchmark.")
             return 0
         except BaseException as exc:

@@ -21,6 +21,7 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
+import org.json.JSONArray
 
 private const val QNN_EP_REGISTRATION_NAME = "QNNExecutionProvider"
 private const val BATCH_SIZE = 32
@@ -109,9 +110,9 @@ class MainActivity : Activity() {
         }
 
         root.addView(TextView(this).apply {
-            text = "A PASS means session.disable_cpu_ep_fallback=1 was active, the " +
-                "selected QNN backend accepted the complete static graph, inference ran, " +
-                "and output matched an independent ORT CPU reference."
+            text = "A PASS means profiling attributed nodes to the selected QNN backend, " +
+                "contained no ORT CPU node, and output matched an independent ORT CPU reference. " +
+                "GPU and HTP also disable CPU fallback at session creation."
             textSize = 13f
             setTextColor(Color.rgb(68, 76, 91))
             setPadding(0, dp(8), 0, dp(12))
@@ -228,7 +229,12 @@ class MainActivity : Activity() {
 
             return OrtSession.SessionOptions().use { options ->
                 options.setIntraOpNumThreads(1)
-                options.addConfigEntry("session.disable_cpu_ep_fallback", "1")
+                val hardFallbackDisabled = backend != Backend.CPU
+                if (hardFallbackDisabled) {
+                    options.addConfigEntry("session.disable_cpu_ep_fallback", "1")
+                }
+                val profilePrefix = File(cacheDir, "ort-qnn-${backend.qnnName}")
+                options.enableProfiling(profilePrefix.absolutePath)
                 options.addExecutionProvider(qnnDevices, providerOptions)
 
                 environment.createSession(model, options).use { session ->
@@ -256,6 +262,18 @@ class MainActivity : Activity() {
                     val mean = samples.average()
                     val min = actual.minOrNull() ?: Float.NaN
                     val max = actual.maxOrNull() ?: Float.NaN
+                    val profileCounts = profileProviderCounts(session.endProfiling())
+                    val qnnProfiled = profileCounts
+                        .filterKeys { it.contains("qnn", ignoreCase = true) }
+                        .values
+                        .sum()
+                    val ortCpuProfiled = profileCounts["CPUExecutionProvider"] ?: 0
+                    check(qnnProfiled > 0) {
+                        "Profiling did not attribute a node to QNN: $profileCounts"
+                    }
+                    check(ortCpuProfiled == 0) {
+                        "ORT CPU nodes appeared in the target profile: $profileCounts"
+                    }
 
                     buildString {
                         appendLine("PASS · ${backend.title}")
@@ -263,8 +281,14 @@ class MainActivity : Activity() {
                         appendLine("backend_type=${backend.qnnName}")
                         appendLine("model=${backend.modelAsset}")
                         appendLine("shape=[$BATCH_SIZE,$INPUT_SIZE] (fully static)")
-                        appendLine("session.disable_cpu_ep_fallback=1")
+                        val fallbackProof = if (hardFallbackDisabled) {
+                            "1"
+                        } else {
+                            "profile-gated for QNN CPU"
+                        }
+                        appendLine("session.disable_cpu_ep_fallback=$fallbackProof")
                         appendLine("offload_graph_io_quantization=0")
+                        appendLine("profile providers=$profileCounts")
                         appendLine("QNN registration devices=${qnnDevices.size}")
                         appendLine("warmup=$WARMUP_RUNS, measured=$TIMED_RUNS")
                         appendLine("median=${"%.3f".format(Locale.US, median)} ms")
@@ -272,7 +296,7 @@ class MainActivity : Activity() {
                         appendLine("max |QNN−CPU|=${"%.7f".format(Locale.US, maxError)}")
                         appendLine("output range=[${"%.5f".format(Locale.US, min)}, ${"%.5f".format(Locale.US, max)}]")
                         appendLine()
-                        append("Strict session creation and execution would fail if any graph node needed ORT CPU fallback.")
+                        append("Profile proof requires QNN-attributed nodes and rejects every ORT CPU node.")
                     }
                 }
             }
@@ -292,6 +316,20 @@ class MainActivity : Activity() {
             }
             return flattened
         }
+    }
+
+    private fun profileProviderCounts(profilePath: String): Map<String, Int> {
+        val events = JSONArray(File(profilePath).readText())
+        val counts = linkedMapOf<String, Int>()
+        for (index in 0 until events.length()) {
+            val event = events.optJSONObject(index) ?: continue
+            if (event.optString("cat") != "Node") continue
+            val provider = event.optJSONObject("args")?.optString("provider").orEmpty()
+            if (provider.isNotEmpty()) {
+                counts[provider] = (counts[provider] ?: 0) + 1
+            }
+        }
+        return counts
     }
 
     private fun deterministicInput(): Array<FloatArray> =

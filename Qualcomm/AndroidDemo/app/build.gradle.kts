@@ -47,12 +47,12 @@ android {
 }
 
 dependencies {
-    // QNN EP 2.4.0 was built against ORT 1.26.0 and supports the stable plugin ABI.
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.26.0")
-    implementation("com.qualcomm.qti:onnxruntime-android-qnn:2.4.0")
+    // QNN EP 2.5.0 supports ORT >=1.24.1 through the stable plugin ABI.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.29.0")
+    implementation("com.qualcomm.qti:onnxruntime-android-qnn:2.5.0")
 
-    // Public Maven runtime matching the source build's QAIRT 2.48 line. The AAR supplies licensed QNN
+    // Public Maven runtime matching the source build's QAIRT 2.49 line. The AAR supplies licensed QNN
     // GPU/HTP/System/Prepare and HTP stub/skel libraries for arm64-v8a.
     // The optional QNN CPU reference backend must come from a matching QAIRT SDK.
-    implementation("com.qualcomm.qti:qnn-runtime:2.48.0")
+    implementation("com.qualcomm.qti:qnn-runtime:2.49.0")
 }

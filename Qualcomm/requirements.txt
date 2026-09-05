@@ -1,8 +1,8 @@
-# Current plugin-QNN baseline, verified against the 2026-07-14 QNN EP release.
+# Current plugin-QNN baseline, verified against the 2026-08-20 QNN EP release.
 # Keep ONNX Runtime core and the ABI-compatible QNN plugin pinned as a pair.
 numpy>=1.26.4,<3
 # ONNX 1.22 keeps Windows ARM64 wheels and fixes 1.21 version-converter crashes.
 onnx==1.22.0
-onnxruntime==1.26.0
-onnxruntime-qnn==2.4.0
+onnxruntime==1.29.0
+onnxruntime-qnn==2.5.0
 sympy==1.14.0

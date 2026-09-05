@@ -65,7 +65,7 @@ def _model_environment_ready(python: Path) -> bool:
     command = (
         "import importlib.metadata as m; "
         "raise SystemExit(m.version('onnx') != '1.22.0' or "
-        "m.version('onnxruntime') != '1.26.0' or "
+        "m.version('onnxruntime') != '1.29.0' or "
         "m.version('sympy') != '1.14.0')"
     )
     try:
@@ -163,7 +163,7 @@ def _prepare_qnn_cpu_backend(explicit: Path | None) -> None:
     else:
         print(
             "      QNN CPU backend: not packaged (optional reference backend). "
-            "Pass --qnn-sdk <QAIRT-2.48.40-root> to enable the CPU button."
+            "Pass --qnn-sdk <QAIRT-2.49.40-root> to enable the CPU button."
         )
 
 
@@ -487,7 +487,7 @@ def _build_and_maybe_install(args: argparse.Namespace) -> int:
     if args.install:
         if args.backend == "cpu" and not CPU_BACKEND_TARGET.is_file():
             raise RuntimeError(
-                "Cannot auto-run QNN CPU: rebuild with --qnn-sdk <QAIRT-2.48.x-root>."
+                "Cannot auto-run QNN CPU: rebuild with --qnn-sdk <QAIRT-2.49.40-root>."
             )
         adb = _adb_path(android_sdk)
         adb_command = _choose_device(adb, args.device)
@@ -515,7 +515,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--qnn-sdk",
         type=Path,
-        help="QAIRT 2.48.40 root; packages optional libQnnCpu.so for QNN CPU testing",
+        help="QAIRT 2.49.40 root; packages optional libQnnCpu.so for QNN CPU testing",
     )
     parser.add_argument("--java-home", type=Path, help="JDK/JBR 17-22 root")
     parser.add_argument("--gradle", type=Path, help="existing Gradle 8.9 executable/root")

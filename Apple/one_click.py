@@ -46,7 +46,7 @@ COMPUTE_UNITS = {
 }
 EXPECTED_VERSIONS = {
     "onnx": "1.22.0",
-    "onnxruntime": "1.27.0",
+    "onnxruntime": "1.29.0",
 }
 ORT_DISTRIBUTIONS = frozenset(
     {
@@ -85,12 +85,12 @@ def _validate_host() -> None:
         )
     if platform.machine().lower() not in {"arm64", "aarch64"}:
         raise RuntimeError(
-            "The pinned onnxruntime 1.27.0 PyPI wheel is Apple Silicon only. "
+            "The pinned onnxruntime 1.29.0 PyPI wheel is Apple Silicon only. "
             "Use a native arm64 Python process on an M-series Mac."
         )
     if _macos_version() < (14, 0):
         raise RuntimeError(
-            "The pinned onnxruntime 1.27.0 wheel targets macOS 14.0 or newer."
+            "The pinned onnxruntime 1.29.0 wheel targets macOS 14.0 or newer."
         )
     if platform.python_implementation() != "CPython":
         raise RuntimeError("Use CPython for the pinned ONNX Runtime wheel.")
@@ -103,7 +103,7 @@ def _validate_host() -> None:
 
 
 def _expected_versions() -> dict[str, str]:
-    numpy_version = "2.4.6" if sys.version_info[:2] == (3, 11) else "2.5.1"
+    numpy_version = "2.4.6" if sys.version_info[:2] == (3, 11) else "2.5.2"
     return {**EXPECTED_VERSIONS, "numpy": numpy_version}
 
 

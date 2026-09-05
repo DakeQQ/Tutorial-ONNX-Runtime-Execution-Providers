@@ -1,14 +1,19 @@
 # ONNX Runtime + NVIDIA：CUDA 与 TensorRT
 
-[English](README.md) · [仓库首页](../README.md)
+[English](README.md) · [仓库首页](../README.zh-CN.md)
 
 通过 **CUDA**、**传统 TensorRT** 或更新的 **TensorRT RTX** 插件，在 NVIDIA GPU 上运行 ONNX 模型——并且*证明* GPU 真正执行了计算图，而不只是提供程序加载成功。
 
 ```bash
-# 最快路径：在 Windows 10/11 x64 或 Ubuntu 22.04/24.04 x86-64 上验证 CUDA EP
+# 完成 §2 驱动检查和 §3.4 独立 Python 环境配置后的最快验证路径
+nvidia-smi
+python --version
 python -m pip install -r NVIDIA/requirements-cuda.txt
+python -m pip check
 python NVIDIA/provider_test.py --provider cuda
 ```
+
+依赖安装和 `pip check` 通过，只能证明锁定的软件包适合当前 Python 环境。只有验证脚本最终打印 `PASS`，才能证明冒烟图在这台主机上由目标 EP 执行。
 
 | 你的情况 | 前往 |
 |---|---|
@@ -20,16 +25,17 @@ python NVIDIA/provider_test.py --provider cuda
 
 | 项目 | 基线 |
 |---|---|
-| 资料核验日期 | `2026-07-17` |
+| 指南资料核验日期 | `2026-09-01` |
+| 硬件证据执行日期 | `2026-08-30`；保留原记录，本次资料更新未重新运行 |
 | 支持平台 | Windows 10/11 x64 · Ubuntu 22.04/24.04 x86-64 |
 | 运行方式 | `CUDAExecutionProvider` · 传统 `TensorrtExecutionProvider` · 独立 `nv_tensorrt_rtx` 插件 |
-| 锁定版本 | ORT `1.27.0`（PyPI）· CUDA `13.3 Update 1` · cuDNN `9.24.0.43` · TensorRT `10.14.1.48` · 插件 `0.3.0` |
-| 上游动态 | ORT `1.27.1` 已打上版本标签，但截至核验日期 PyPI 尚未提供其 Python 核心包 |
-| 验证脚本 | [`provider_test.py`](provider_test.py) |
+| 锁定版本 | ORT `1.29.0` · CUDA `13.3 Update 1` · cuDNN `9.25.1.1` · TensorRT `10.14.1.48.post1` · 插件 `0.4.0` |
+| 硬件实测 | Windows 11 · GeForce RTX 5060 Ti 16 GB · 计算能力 12.0 · 驱动 616.56 |
+| 入口脚本 | [`provider_test.py`](provider_test.py) · [`llm_benchmark.py`](llm_benchmark.py) |
 | 验证方式 | 与 CPU 结果的数值一致性 + 禁用回退的失败策略 + 本次运行的性能分析证据 |
 
 > [!NOTE]
-> 本次核验**没有在真实 GPU 硬件上重新跑通**更新后的 CUDA 13.3 / cuDNN 9.24 组合——当前可用主机的架构早于本指南要求的 Turing 门槛。已核对依赖解析结果和官方 ABI 兼容性声明，但只有在你自己的目标 GPU 上跑通严格验证才是最终定论。
+> 上述三种方案均已在该 RTX 5060 Ti 主机上重新执行。CUDA、传统 TensorRT 和独立 TensorRT RTX 都留下了本次运行的性能分析证据，且没有节点落到 CPU。它证明的是这台主机上的锁定版本、冒烟图和伪 LLM；生产模型仍须单独验证正确性与性能。
 
 ### 文件说明
 
@@ -38,6 +44,7 @@ python NVIDIA/provider_test.py --provider cuda
 | [`README.md`](README.md) | 英文完整指南 |
 | [`README.zh-CN.md`](README.zh-CN.md) | 本简体中文翻译 |
 | [`provider_test.py`](provider_test.py) | 三种运行方式共用的严格验证脚本 |
+| [`llm_benchmark.py`](llm_benchmark.py) | 跨环境的伪小型 LLM 基准测试 |
 | [`requirements-cuda.txt`](requirements-cuda.txt) | 锁定版本的 CUDA EP 环境依赖 |
 | [`requirements-tensorrt.txt`](requirements-tensorrt.txt) | 锁定版本的传统 TensorRT EP 环境依赖 |
 | [`requirements-tensorrt-rtx.txt`](requirements-tensorrt-rtx.txt) | 锁定版本的独立 TensorRT RTX 插件环境依赖 |
@@ -113,12 +120,12 @@ flowchart TD
 
 | 目标 | ONNX Runtime | NVIDIA 组件 | Python | GPU 门槛 | 驱动 |
 |---|---|---|---:|---|---:|
-| CUDA EP | `onnxruntime-gpu==1.27.0` | `cuda-toolkit==13.3.1` 组件 + `nvidia-cudnn-cu13==9.24.0.43` | 3.11–3.14 x64 | Turing，计算能力 7.5+ | R580+（推荐 R610+） |
-| 传统 TensorRT EP | 同一 CUDA 核心 | 以上组件 + TensorRT **10.14.1.48** | 3.11–3.13 x64 | TensorRT 支持的 Turing+ | R580+（推荐 R610+） |
-| TensorRT RTX，默认 | `onnxruntime==1.27.0` + 插件 `0.3.0` | CUDA 13 变体；内置 TensorRT RTX 1.5 运行库 | 3.11–3.14 x64 | Ampere+ RTX（通常 RTX 30 系及以上） | R580+ |
-| TensorRT RTX，CUDA 12 变体 | `onnxruntime==1.27.0` + `onnxruntime-ep-nv-tensorrt-rtx-cu12==0.3.0` | CUDA 12 变体；内置 TensorRT RTX 1.5 | 3.11–3.14 x64 | Ampere+ RTX | Ampere/Ada 555.85+；Blackwell 570.00+ |
+| CUDA EP | `onnxruntime-gpu==1.29.0` | `cuda-toolkit==13.3.1` 组件 + `nvidia-cudnn-cu13==9.25.1.1` | 3.11–3.14 x64 | Turing，计算能力 7.5+ | R580+ 仅适用于次版本兼容限制；完整 CUDA 13.3 U1/PTX 功能在 Linux 需 610.43.02+ |
+| 传统 TensorRT EP | 同一 CUDA 核心 | 以上组件 + TensorRT **10.14.1.48.post1** | 3.11–3.13 x64 | TensorRT 支持的 Turing+ | 同一 CUDA 规则；Windows 需单独安装当前驱动 |
+| TensorRT RTX，默认 | `onnxruntime==1.29.0` + 插件 `0.4.0` | CUDA 13 变体；内置 TensorRT RTX `1.6.1.120` | 3.11–3.14 x64 | Ampere+ RTX（通常 RTX 30 系及以上） | R580+ |
+| TensorRT RTX，CUDA 12 变体 | `onnxruntime==1.29.0` + `onnxruntime-ep-nv-tensorrt-rtx-cu12==0.4.0` | CUDA 12 变体；内置 TensorRT RTX 1.6 | 3.11–3.14 x64 | Ampere+ RTX | Ampere/Ada 555.85+；Blackwell 570.00+ |
 
-本指南面向原生 Windows 10/11 x64 与 Ubuntu 22.04/24.04 x86-64；Jetson 需要 JetPack 专属软件包，不在范围内。本次只重新核对了 CUDA 与传统 TensorRT 两行的兼容性资料，并未重新执行 GPU 测试。
+本指南面向原生 Windows 10/11 x64 与 Ubuntu 22.04/24.04 x86-64；Jetson 需要 JetPack 专属软件包，不在范围内。上述 CUDA 13 方案已在 Windows 11/Blackwell 上完成依赖解析和实际执行；Linux 与 CUDA 12 变体本次只核对了元数据，未做实机执行。
 
 ### 2.2 GPU 架构门槛
 
@@ -142,25 +149,38 @@ CUDA 13 已经从编译器和关键库中移除了 Turing 之前架构的设备�
 > [!TIP]
 > 给独立插件单独准备一个虚拟环境。传统 TensorRT 可以在 CUDA 验证通过后复用同一个 CUDA 环境。
 
-### 2.4 一个要避开的包索引陷阱
+### 2.4 CUDA 13 wheel 目录与 ORT 升级
 
-> [!WARNING]
-> 不要用 `onnxruntime-gpu[cuda,cudnn]==1.27.0` 替换仓库锁定版本的依赖文件。ORT 1.27 的元数据仍然指向已经废弃的 `nvidia-*-cu13` 包名；NVIDIA 已经把这些组件迁移到不带后缀的新包名，旧包名如今只是空的 `0.0.1` 占位包，因此截至核验日期，这个 extra 根本无法正常安装。本仓库改用 NVIDIA 当前的 `cuda-toolkit==13.3.1` 元包。
+ORT 1.29 的 `onnxruntime-gpu[cuda,cudnn]` 元数据已经可以解析 NVIDIA 当前不带后缀的 CUDA 13 组件包，`ort.preload_dlls(directory="")` 也认识整合后的 `site-packages/nvidia/cu13/bin/<arch>` 目录。本仓库仍显式锁定 `cuda-toolkit==13.3.1` 与 cuDNN，以保证可复现完整实测环境。
 
-无论包名如何变化，`ort.preload_dlls(directory="")` 都能找到 wheel 自带的 `site-packages/nvidia/...` 目录结构。在包名迁移期间，`ort.print_debug_info()` 仍可能把旧包名标记为"缺失"——请以原生库能否真正加载、以及严格验证测试的结果为准，而不是这条日志。
+ORT 1.27 对这次迁移处理不完整：extra 仍引用旧包名，Windows 预加载器也会搜索旧的分组件目录，而当前 wheel 把 DLL 放在 `nvidia/cu13/bin/x86_64`。正确做法是升级 ORT，不要复制 DLL 或长期修改 `PATH`。如果 pip 报 Windows 错误 32，说明另一个 Python/pip 进程占用了包文件；先结束该进程再重试，不要在 Conda 环境中改用 `--user`。
 
 ### 2.5 为什么锁定这些版本
 
 | 锁定项 | 原因 |
 |---|---|
-| ORT `1.27.0`，而非 `1.27.1` | `1.27.1` 已在上游打上标签，但截至核验日期，`onnxruntime` 和 `onnxruntime-gpu` 均未在 PyPI 发布 1.27.1 |
+| ORT `1.29.0` | 核验日期时 PyPI 最新的 CPU 与 CUDA 13 主机包；包含整合式 CUDA 13 wheel 目录修复 |
 | `cuda-toolkit==13.3.1` | 以 NVIDIA 新的无后缀包名提供当前的 CUDA 13.3 Update 1 组件；CUDA 13 在各次版本间保持二进制兼容 |
-| `nvidia-cudnn-cu13==9.24.0.43` | 与 ORT 1.27.0 wheel 构建时所用的 cuDNN 9.14.0.64 保持二进制向后兼容；其支持矩阵覆盖 CUDA 13.0–13.3 |
-| 驱动 R580+，推荐 R610+ | R580 是 CUDA 13 次版本兼容模式的门槛；CUDA 13.3 生成的 PTX 或新特性可能需要 R610+ |
-| TensorRT `10.14.1.48` | 与 ORT 1.27 传统 provider 构建时所用的 TensorRT 主版本 10 ABI 匹配；不锁定版本的 `tensorrt-cu13`（11.1.0.106）是不兼容的主版本 |
+| `nvidia-cudnn-cu13==9.25.1.1` | 核验日期时最新的 CUDA 13 cuDNN 9 wheel；已在目标主机上与 ORT 1.29 实测通过 |
+| 驱动 R580+ 兼容门槛；Linux 完整 toolkit 线 610.43.02+ | R580 是 CUDA 13.x 次版本兼容门槛，但功能受限且不保证更新 PTX；CUDA 13.3 U1 列出 Linux 驱动 610.43.02，Windows 不再附带驱动 |
+| TensorRT `10.14.1.48.post1` | 匹配 ORT 1.29 x86-64 CUDA 13 构建使用的 TensorRT 10.14.1.48 ABI；独立 `tensorrt-cu13` 最新 11.2.1.2（2026-07-31）属于不同主版本，不能假定兼容 |
 | TensorRT wheel：CPython ≤ 3.13 | TensorRT 10.14 的 x86-64 绑定没有发布 3.14 版本的 wheel |
-| 插件 `0.3.0` | 默认使用 CUDA 13，内置 TensorRT RTX 1.5 运行库，并建议注册名 `nv_tensorrt_rtx` |
-| `onnx==1.22.0` | 仅用于生成冒烟模型，明确保存为 IR 10 / opset 17，对应 ORT 1.27 面向的 ONNX 1.21 规范 |
+| 插件 `0.4.0` | 默认使用 CUDA 13，内置 TensorRT RTX `1.6.1.120`，新增 allocator/profiling 选项，并建议注册名 `nv_tensorrt_rtx` |
+| `onnx==1.22.0` | 核验日期时 PyPI 最新的模型生成包；冒烟图明确保存为兼容范围较广的 IR 10 / opset 17 |
+
+### 2.6 已验证的 Windows 11 / RTX 5060 Ti 实测经验
+
+下列配置已在 GeForce RTX 5060 Ti 16 GB（Blackwell，计算能力 12.0）、驱动 616.56、Windows 11 x64 上实际执行：
+
+| 环境 | Python | ORT 核心 | NVIDIA 方案 | 严格验证结果 |
+|---|---:|---:|---|---|
+| `python_313` | 3.13.14 | `onnxruntime-gpu==1.29.0` | CUDA 13.3.1 + cuDNN 9.25.1.1 | 69 个 CUDA 冒烟事件，PASS |
+| `python_313` | 3.13.14 | 同上 | TensorRT 10.14.1.48.post1 | 23 个 TensorRT 冒烟事件，PASS |
+| `python_313_trt_rtx` | 3.13.15 | `onnxruntime==1.29.0` | TensorRT RTX 插件 0.4.0 | 23 个插件冒烟事件，PASS |
+
+独立插件必须使用单独环境。如果其他包的依赖元数据不承认 `onnxruntime-gpu` 与普通 `onnxruntime` 提供同一模块，`pip check` 可能仍会报缺少普通 ORT；不要为消除该提示而把两个 ORT 核心装进同一环境，否则会覆盖 GPU 模块。
+
+PowerShell 只有在初始化 Conda shell hook 后才能可靠执行 `conda activate`。如果当前 shell 无法激活环境，直接使用该环境下 `python.exe` 的完整路径最明确。独立 TensorRT RTX 插件注册之前不会出现在 `get_available_providers()` 中；应先调用 `register_execution_provider_library()`，再通过 `get_ep_devices()` 发现设备。
 
 ## 3. 准备主机
 
@@ -219,7 +239,7 @@ nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
 
 ### 3.4 安装 Python 并创建虚拟环境
 
-请使用 64 位 Python 3.12 或 3.13。Ubuntu 22.04 自带的 Python 3.10 版本太旧——请单独安装 3.11+（或使用 Conda），不要替换系统自带的 Python。
+请使用 64 位 Python 3.12 或 3.13。不要替换 Ubuntu 的系统 Python：Ubuntu 24.04 自带 Python 3.12，而 Ubuntu 22.04 的 `python3` 是 3.10，无法安装锁定的 ORT 1.29 软件包。请使用下面与系统匹配的步骤。
 
 ```powershell
 # Windows PowerShell
@@ -231,12 +251,45 @@ python -m pip install --upgrade pip
 
 如果激活脚本被阻止，先执行一次 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`，重新打开 PowerShell 后再试。
 
+**实测 Windows 主机使用的 Conda 方案**
+
+```powershell
+conda init powershell
+# 完成一次性初始化后重新打开 PowerShell。
+conda create -n python_313 python=3.13 pip -y
+conda activate python_313
+(Get-Command python).Source
+python --version
+```
+
+独立插件必须新建第二个环境，不要替换 `python_313` 中的 CUDA 核心：
+
+```powershell
+conda create -n python_313_trt_rtx python=3.13 pip -y
+conda activate python_313_trt_rtx
+(Get-Command python).Source
+```
+
+输出的解释器路径必须位于所选环境内。如果当前 shell 无法初始化 Conda，请直接运行 `<conda-root>\envs\<environment>\python.exe`；`conda` 命令本身执行成功，并不能证明当前 PowerShell 进程已经切换解释器。
+
+**Ubuntu 24.04（系统 Python 3.12）：**
+
 ```bash
-# Ubuntu
 cd /path/to/Tutorial-ONNX-Runtime-Execution-Providers
 sudo apt install -y python3-venv zlib1g
 python3 -m venv .venv-cuda
 source .venv-cuda/bin/activate
+python --version
+python -m pip install --upgrade pip
+```
+
+**Ubuntu 22.04（系统 Python 3.10 太旧）：** 按照 Miniconda 的[官方 Linux 安装说明](https://www.anaconda.com/docs/getting-started/miniconda/install/linux-install)完成安装，重新打开 shell，然后创建受支持的环境；不要修改 `/usr/bin/python3`：
+
+```bash
+cd /path/to/Tutorial-ONNX-Runtime-Execution-Providers
+conda create -n ort-cuda python=3.12 pip -y
+conda activate ort-cuda
+python --version
 python -m pip install --upgrade pip
 ```
 
@@ -255,9 +308,9 @@ python -m pip check
 
 | 包 | 锁定版本 | 用途 |
 |---|---:|---|
-| `onnxruntime-gpu` | `1.27.0` | ORT CUDA 13 核心，内置 CUDA 和传统 TensorRT provider |
+| `onnxruntime-gpu` | `1.29.0` | ORT CUDA 13 核心，内置 CUDA 和传统 TensorRT provider |
 | `cuda-toolkit` 组件 | `13.3.1` | 二进制兼容的 cuBLAS、runtime、cuFFT、cuRAND、nvJitLink、NVRTC |
-| `nvidia-cudnn-cu13` | `9.24.0.43` | 面向 CUDA 13.3、向后兼容的 cuDNN 9 运行库 |
+| `nvidia-cudnn-cu13` | `9.25.1.1` | 已与 CUDA 13.3 实测通过的 cuDNN 9 运行库 |
 | `onnx` | `1.22.0` | 仅用于生成冒烟模型 |
 
 ### 4.2 验证并运行严格验证
@@ -386,7 +439,7 @@ Windows 用户请从 [CUDA Toolkit Archive](https://developer.nvidia.com/cuda-to
 |---|---|---|
 | `nvidia-smi` 缺失或报错 | 驱动缺失、内核模块未加载，或被 Secure Boot 拒绝 | 先修好驱动，再排查 Python |
 | 驱动低于 R580 分支 | CUDA 13 运行库比驱动系列更新 | 升级驱动，或有意选用受支持的 CUDA 12 组合 |
-| R580 驱动在 NVRTC/PTX 路径报错 | CUDA 13.3 生成的 PTX 或新特性超出了次版本兼容范围 | 升级到 R610+，或回退到 CUDA 13.0 后重新验证 |
+| R580–R609 驱动在 NVRTC/PTX 路径报错 | 次版本兼容不保证更新 PTX 或依赖驱动的新功能 | Linux 使用 CUDA 13.3 U1 对应的 610.43.02+；Windows 安装当前生产驱动，然后重新验证 |
 | 只出现 CPU 提供程序 | 核心包装错、原生库加载失败，或 GPU 架构早于 Turing | 重建虚拟环境、重装锁定依赖、确认 `sm_75+`、查看 debug info |
 | 缺少 `libcudnn.so.9` / `cudnn64_9.dll` | cuDNN wheel 缺失或无法被发现 | 重装依赖，并调用 `preload_dlls(directory="")` |
 | 缺少 `libcublas.so.13` / CUDA DLL | 运行库 wheel 缺失，或旧路径优先级更高 | 重装锁定依赖，清理本进程中冲突的路径 |
@@ -412,13 +465,13 @@ python -m pip check
 ```
 
 > [!WARNING]
-> 切勿在此环境中执行不限定版本的 TensorRT 升级。ORT 1.27 加载的是 TensorRT 主版本 10 的库，TensorRT 11 与该 ABI 不兼容。
+> 切勿在此环境中执行不限定版本的 TensorRT 升级。ORT 1.29 的 Windows wheel 加载的是 TensorRT 主版本 10 的库，TensorRT 11 与该 ABI 不兼容。
 
 ```bash
 python -c "import tensorrt as trt; import onnxruntime as ort; ort.preload_dlls(directory=''); print('TensorRT:', trt.__version__); print('ORT:', ort.__version__); print(ort.get_available_providers())"
 ```
 
-预期看到 TensorRT `10.14.1.48`、ORT `1.27.0`，以及 `TensorrtExecutionProvider` 和 `CUDAExecutionProvider` 同时出现。
+预期看到 TensorRT `10.14.1.48.post1`、ORT `1.29.0`，以及 `TensorrtExecutionProvider` 和 `CUDAExecutionProvider` 同时出现。
 
 ### 5.2 运行严格验证
 
@@ -485,7 +538,7 @@ TensorRT 未接受的子图仍会交给 CUDA 执行，这依然是 NVIDIA 硬件
 
 本表涵盖上游 [`TensorrtExecutionProviderInfo`](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/providers/tensorrt/tensorrt_execution_provider_info.h) / [`OrtTensorRTProviderOptionsV2`](https://github.com/microsoft/onnxruntime/tree/main/include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h) 暴露的每一个选项。
 
-| 选项 | ORT 1.27 默认值 | 起始建议 | 说明 |
+| 选项 | ORT 1.29 默认值 | 起始建议 | 说明 |
 |---|---:|---:|---|
 | `device_id` | `0` | 目标 GPU 索引 | CUDA 设备从 0 开始编号 |
 | `has_user_compute_stream` / `user_compute_stream` | `0` / 未设置 | 保持未设置 | 高级互操作场景；复用已有原生 CUDA stream 而不是让 ORT 自建 |
@@ -603,7 +656,7 @@ Windows 用户请把匹配的 TensorRT 10.14.1 CUDA 13 压缩包解压到带版�
 |---|---|---|
 | CUDA 通过，但 TensorRT EP 不存在 | TensorRT 10 库缺失或无法被发现 | 安装准确的锁定版本；在 ORT 之前 `import tensorrt`；检查加载路径 |
 | 缺少 `libnvinfer.so.10` / `nvinfer_10.dll` | 运行库版本错误或不完整 | 重装 10.14.1；切勿通过改名把 TensorRT 11 的库冒充进去 |
-| `tensorrt.__version__` 显示 11.x | 不限版本的升级替换了主版本 10 | 用 `10.14.1.48.post1` 重建或修复环境 |
+| `tensorrt.__version__` 显示 11.x | 不限版本的升级选中了当前 11.2.1.2，而不是 ORT 构建时的主版本 10 | 用 `10.14.1.48.post1` 重建或修复环境；不要重命名或替换为 11.x 库 |
 | 首次建立会话耗时数分钟 | 属于正常的 tactic 分析和引擎构建过程 | 保留应用专属的引擎/计时缓存 |
 | 每个进程都要重新构建 | 缓存不可写，或模型/选项/profile/shape 发生了变化 | 修复权限；固定模型、选项和 profile |
 | 性能分析记录里只有 CUDA | TensorRT 拒绝了整张图，或没有找到可支持的子图 | 打开 info 日志和临时子图导出；用 `trtexec` 检查 |
@@ -618,7 +671,7 @@ Windows 用户请把匹配的 TensorRT 10.14.1 CUDA 13 压缩包解压到带版�
 面向现代 RTX 客户端应用。它使用**另一套**核心包、注册 API、设备发现机制、选项集合、context 格式和 runtime cache——名称相近的内置 `NvTensorRTRTXExecutionProvider` 已经被弃用。
 
 > [!WARNING]
-> 插件 `0.3.0` 在 PyPI 上标记为 Alpha。请锁定版本、用生产模型验证，并在新环境证明可用之前保留旧的可用环境。
+> 插件 `0.4.0` 在 PyPI 上标记为 Alpha。请锁定版本、用生产模型验证，并在新环境证明可用之前保留旧的可用环境。
 
 ### 6.1 创建独立环境并安装
 
@@ -630,9 +683,16 @@ python -m pip install --upgrade pip
 ```
 
 ```bash
-# Ubuntu
+# Ubuntu 24.04；先退出其他方案使用的环境
 python3 -m venv .venv-trt-rtx
 source .venv-trt-rtx/bin/activate
+python -m pip install --upgrade pip
+```
+
+```bash
+# Ubuntu 22.04；使用 §3.4 安装的 Miniconda
+conda create -n ort-trt-rtx python=3.12 pip -y
+conda activate ort-trt-rtx
 python -m pip install --upgrade pip
 ```
 
@@ -647,11 +707,11 @@ python -m pip check
 
 ```bash
 # 可选的 CUDA 12 变体——切勿与 CUDA 13 变体同时安装
-python -m pip install "onnxruntime==1.27.0" "onnxruntime-ep-nv-tensorrt-rtx-cu12==0.3.0" "onnx==1.22.0"
+python -m pip install "onnxruntime==1.29.0" "onnxruntime-ep-nv-tensorrt-rtx-cu12==0.4.0" "onnx==1.22.0"
 ```
 
 > [!WARNING]
-> `-cu12` 是包名的一部分，不是版本号。CUDA 12 通用的驱动门槛是 525，但插件 `0.3.0` 在 Ampere/Ada 上需要 555.85+，在 Blackwell 上需要 570.00+——请使用当前的生产级驱动。
+> `-cu12` 是包名的一部分，不是版本号。CUDA 12 通用的驱动门槛是 525，但该插件在 Ampere/Ada 上需要 555.85+，在 Blackwell 上需要 570.00+——请使用当前的生产级驱动。
 
 ### 6.2 注册插件并发现设备
 
@@ -773,7 +833,7 @@ Provider 选项的值都是字符串；布尔值可以写成 `0`/`1`、`false`/`
 | `device_id` | 通过发现得到的 EP 设备 | 用发现结果选择，不要凭空猜测序号 |
 | `has_user_compute_stream` / `user_compute_stream` | `0` / 不设置 | 高级互操作场景；取值是原生 CUDA stream 地址 |
 | `user_aux_stream_array` | 不设置 | 高级选项：TensorRT 辅助 stream 使用的原生 CUDA stream 地址数组；与 `nv_length_aux_stream_array` 搭配使用 |
-| `nv_length_aux_stream_array` | `-1`（启发式） | 每条推理 stream 允许使用的 TensorRT 辅助 stream 数量，同时也是设置了 `user_aux_stream_array` 时该数组的长度；`0` 可将显存占用降到最低 |
+| `nv_length_aux_stream_array` | 省略，使用 provider 策略 | 设置 `user_aux_stream_array` 时必须填入其准确的非负数组长度；显式设置 `0` 会禁用辅助 stream |
 | `enable_cuda_graph` | 验证阶段设为 `0` | 只有输入形状/地址稳定且会重复执行时才开启 |
 | `nv_max_workspace_size` | `0`（自动） | 只有在实测出真实需求后才设置上限 |
 | `nv_dump_subgraphs` | `0` | 临时的 parser/切分诊断 |
@@ -787,10 +847,14 @@ Provider 选项的值都是字符串；布尔值可以写成 `0`/`1`、`false`/`
 | `nv_weight_streaming_budget` | `0`（关闭） | 见下方说明 |
 | `nv_max_shared_mem_size` | `0`（自动） | 只有确认了真实约束后才设置上限 |
 | `nv_op_types_to_exclude` | 空 | 逗号分隔，留给其他 EP 处理的 ONNX 算子类型 |
+| `nv_enable_profiling` / `nv_profiling_output_file` | `0` / 自动路径 | TensorRT RTX 逐层 profiling；启用后会关闭 CUDA Graph |
+| `nv_use_sync_gpu_allocator` | `0` | 默认异步 allocator 更快；仅在图形互操作或 CUDA 异步内存池异常时改用同步 arena |
+| `nv_multi_rotary_cache_concat_offset` | `0` | LongRoPE 专用的 cache 切换偏移；普通模型保持零 |
+| `nv_weight_stripped_engine_enable_experimental` | `0` | 实验性 EP-context 打包选项，不是稳定推理阶段的加速开关 |
 
 > `nv_weight_streaming_budget`：单独的 `0` 表示关闭；`0B`/`0%` 会开启最低显存模式；`1M` 表示 $2^{20}$ 常驻字节。请先保持关闭，实测显存占用、构建时间和稳定运行延迟后再调整。
 >
-> EP context 的输出使用 ORT 通用的 session 配置项——`ep.context_enable`、`ep.context_file_path`、`ep.context_embed_mode`——而不是自造的 `nv_*` 选项。插件 `0.3.0` 会拒绝无法识别的 provider 选项。
+> EP context 的输出使用 ORT 通用的 session 配置项——`ep.context_enable`、`ep.context_file_path`、`ep.context_embed_mode`——而不是自造的 `nv_*` 选项。插件 `0.4.0` 会拒绝无法识别的 provider 选项。
 >
 > `user_aux_stream_array` 和 `nv_length_aux_stream_array` 对应传统 TensorRT EP 的辅助 stream 控制项。这两项是从仓库内（已废弃的）`NvTensorRTRTXExecutionProvider` 源码中核实得到的——该实现与本指南实际使用的独立插件共用同一套 `nv_*` 命名习惯；对于本指南尚未通过 `provider_test.py` 验证过的选项，生产环境使用前请自行确认。
 
@@ -843,7 +907,7 @@ compiler.compile_to_file("model_ctx.onnx")
 | 无法导入插件辅助模块 | 当前环境未安装插件 | 检查 `python -m pip show`；必要时重建虚拟环境 |
 | 注册时报缺少 DLL/SO | wheel 不完整、文件被拦截、缺少 VC++ 运行库，或加载冲突 | 干净地重装；Windows 上装好 VC++ 运行库；检查加载错误详情 |
 | 没有兼容的 EP 设备 | GPU 早于 Ampere、驱动过旧、系统/架构不支持，或选错了 CUDA 变体 | 核对 RTX 型号、驱动版本、x64 系统，以及 cu13/cu12 的选择 |
-| 已安装 `onnxruntime-gpu` | 给独立插件用错了核心包 | 卸载它，改装普通的 `onnxruntime==1.27.0` |
+| 已安装 `onnxruntime-gpu` | 给独立插件用错了核心包 | 使用独立环境并安装普通的 `onnxruntime==1.29.0` |
 | 没有插件节点被分析到 | 计算图被拒绝，或插件根本没分到任何工作 | 打开详细日志/子图导出；从静态 FP32 模型开始排查 |
 | 首次建立会话很慢 | 属于正常的 JIT/context 编译过程 | 配置应用专属的 runtime cache；在干净进程中重新测试 |
 | 输入变化时 CUDA Graph 报错 | 捕获时的地址或形状发生了变化 | 关闭 CUDA Graph，或改用地址稳定的 I/O Binding |
@@ -893,6 +957,34 @@ flowchart LR
 
 本仓库的验证脚本强制检查第三层：使用独立的 NumPy 结果作为基准、关闭 ORT 的自动回退、关闭 CPU 图回退，并拒绝任何非预期的 provider。传统 TensorRT 只允许把 CUDA 作为唯一的备用 EP。
 
+### 7.1 伪小型 LLM 基准测试
+
+[`llm_benchmark.py`](llm_benchmark.py) 会生成一个确定性的静态 FP32 图，包含 token embedding、因果多头注意力、SwiGLU MLP、残差、LayerNormalization 和共享权重的末 token LM head。默认模型有 632 万参数、128 token 输入，每次约 0.57 GMAC。它用于比较 provider，不是文本生成器，也不能替代生产模型与 KV cache 形状的实测。
+
+控制进程在 `onnxruntime-gpu` 环境中启动 CUDA 与传统 TensorRT worker，再用独立的普通 `onnxruntime` 环境启动 TensorRT RTX worker：
+
+```powershell
+python NVIDIA/llm_benchmark.py `
+    --gpu-python C:\path\to\cuda-env\python.exe `
+    --rtx-python C:\path\to\trt-rtx-env\python.exe `
+    --clear-cache `
+    --json-output benchmark.json
+```
+
+每个 worker 都先建立禁用 CPU 回退的 profiling 会话，验证节点归属并与 CPU 输出比较，再用不启用 profiling 的会话计时。`--clear-cache` 用于计入引擎/JIT 构建；省略它可测缓存复用。缓存路径同时按模型摘要与性能选项摘要隔离，避免复用不兼容引擎。
+
+在已验证主机上，20 次预热、200 次测量的缓存结果如下。这是一组可复现的实机结果，不代表所有模型的固定排名：
+
+| Provider | 性能分析证据 | 中位延迟 | P90 | Prefill 吞吐量 | 相对 CUDA |
+|---|---:|---:|---:|---:|---:|
+| CUDA | 131 个 CUDA 事件 | 0.826 ms | 1.354 ms | 155,020 token/s | 1.00x |
+| 传统 TensorRT | 1 个引擎事件 | 0.418 ms | 0.522 ms | 306,074 token/s | 1.97x |
+| TensorRT RTX | 1 个引擎事件 | 0.211 ms | 0.224 ms | 605,344 token/s | 3.90x |
+
+实测选出的默认项是 CUDA 统一 stream 且关闭 TunableOp、传统 TensorRT builder level 5，以及开启 TensorRT RTX CUDA Graph。CUDA TunableOp 为 0.851 ms，关闭后为 0.816 ms，且首次运行增加约 359 ms；传统 TensorRT level 5 为 0.413 ms，level 3 为 0.918 ms；TensorRT RTX CUDA Graph 把此前未捕获时约 0.499 ms 降到约 0.211 ms。
+
+基准脚本显式提供 TF32、统一 stream、TunableOp、SDPA、workspace、精度、builder level、辅助 stream、构建启发式、稀疏、硬件兼容、weight streaming、allocator 和 CUDA Graph 等性能选项。CUDA 与传统 TensorRT 的 CUDA Graph 默认关闭，因为本基准使用 host-to-host `session.run`，不满足稳定设备地址要求；TensorRT RTX 插件能管理此路径，因此默认开启。原始 stream/allocator 指针、INT8 校准、外部插件库和动态 profile 需要应用专属资源或模型契约，不能由通用静态基准安全设置。
+
 ## 8. 安全升级
 
 ```mermaid
@@ -921,10 +1013,9 @@ flowchart LR
 
 ## 9. 参考资料
 
-- [ONNX Runtime 1.27.0 Python 发布](https://github.com/microsoft/onnxruntime/releases/tag/v1.27.0)
-- [ONNX Runtime 1.27.1 上游补丁发布](https://github.com/microsoft/onnxruntime/releases/tag/v1.27.1)
-- [ONNX Runtime 1.27.0 PyPI 元数据](https://pypi.org/pypi/onnxruntime-gpu/1.27.0/json)
-- [ORT 1.27 GPU 构建变量](https://github.com/microsoft/onnxruntime/blob/v1.27.0/tools/ci_build/github/azure-pipelines/templates/common-variables.yml)
+- [ONNX Runtime 1.29.0 发布](https://github.com/microsoft/onnxruntime/releases/tag/v1.29.0)
+- [ONNX Runtime 1.29.0 PyPI 元数据](https://pypi.org/pypi/onnxruntime-gpu/1.29.0/json)
+- [ORT 1.29 GPU 构建变量](https://github.com/microsoft/onnxruntime/blob/v1.29.0/tools/ci_build/github/azure-pipelines/templates/common-variables.yml)
 - [ONNX Runtime 安装文档](https://onnxruntime.ai/docs/install/)
 - [ORT 模型兼容性](https://onnxruntime.ai/docs/reference/compatibility.html)
 - [CUDA EP 文档](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)
@@ -935,14 +1026,15 @@ flowchart LR
 - [ONNX Runtime 仓库内 NvTensorRTRTX EP 源码（`onnxruntime/core/providers/nv_tensorrt_rtx`，已废弃的内置实现，仅作命名参考）](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/providers/nv_tensorrt_rtx)
 - [ONNX Runtime 插件 EP 库](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/)
 - [独立 TensorRT RTX EP ABI 仓库](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI)
-- [插件 0.3.0 发布说明](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/releases/tag/v0.3.0)
-- [插件 0.3.0 CUDA 13 wheel 元数据](https://pypi.org/pypi/onnxruntime-ep-nv-tensorrt-rtx-cu13/0.3.0/json)
+- [插件 0.4.0 发布说明](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/releases/tag/v0.4.0)
+- [插件 0.4.0 CUDA 13 wheel 元数据](https://pypi.org/pypi/onnxruntime-ep-nv-tensorrt-rtx-cu13/0.4.0/json)
 - [CUDA Toolkit 13.3.1 Python 元数据](https://pypi.org/pypi/cuda-toolkit/13.3.1/json)
 - [CUDA Toolkit 13.3 发布说明](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/)
-- [cuDNN CUDA 13 9.24.0.43 元数据](https://pypi.org/pypi/nvidia-cudnn-cu13/9.24.0.43/json)
+- [cuDNN CUDA 13 9.25.1.1 元数据](https://pypi.org/pypi/nvidia-cudnn-cu13/9.25.1.1/json)
 - [cuDNN 支持矩阵](https://docs.nvidia.com/deeplearning/cudnn/backend/latest/reference/support-matrix.html)
 - [cuDNN API 兼容性](https://docs.nvidia.com/deeplearning/cudnn/backend/latest/developer/forward-compatibility.html)
 - [TensorRT CUDA 13 10.14.1.48.post1 元数据](https://pypi.org/pypi/tensorrt-cu13/10.14.1.48.post1/json)
+- [当前 TensorRT CUDA 13 元数据（核验时为 11.2.1.2）](https://pypi.org/pypi/tensorrt-cu13/json)
 - [NVIDIA CUDA GPU 列表](https://developer.nvidia.com/cuda-gpus)
 - [NVIDIA CUDA 兼容性](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html)
 - [Windows 版 CUDA 安装指南](https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/)

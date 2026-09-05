@@ -2,10 +2,11 @@
 
 [English](README.md) | [仓库首页](../README.zh-CN.md) | [一键严格验证脚本](one_click.py)
 
-**CoreML** 是 Apple 的设备端推理引擎。ONNX Runtime 的 **CoreML Execution Provider（EP）** 会把 ONNX 模型中受支持的部分转换成 Apple 格式，让它能在 **CPU、GPU 或神经网络引擎（ANE）** 上运行。本目录用于在真实 Mac 上*证明*这一转换确实发生，而不仅仅是某个 Provider *能够*加载。
+**CoreML** 是 Apple 的设备端推理引擎。ONNX Runtime 的 **CoreML Execution Provider（EP）** 会把 ONNX 模型中受支持的部分转换成 Apple 格式，让它能在 **CPU、GPU 或神经网络引擎（ANE）** 上运行。附带的严格测试在匹配的 Mac 上成功完成后，可以证明这次交接确实发生；下方的验证范围会说明仓库审查实际执行和未执行的内容。
 
 ```bash
-# Apple Silicon Mac、macOS 14+  ->  60 秒完成验证
+# 在 macOS 14+ 的 Apple Silicon Mac 上，从仓库根目录运行
+# 首次运行会创建虚拟环境并下载锁定版本的依赖。
 python3 Apple/one_click.py
 ```
 
@@ -27,7 +28,7 @@ flowchart LR
     class F bad;
 ```
 
-**最近一次核验：** `2026-07-17`，对照已发布的 [`v1.27.0`](https://github.com/microsoft/onnxruntime/tree/v1.27.0) 与源码 [`main@bf6aa006`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml)。完整的版本与哈希核验见 [§14](#14-查阅源码)。
+**最近一次核验：** `2026-09-01`，对照已发布的 [`v1.29.0`](https://github.com/microsoft/onnxruntime/tree/v1.29.0) 及其不可变源码提交 [`2e2543f`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml)。完整的版本与哈希核验见 [§14](#14-查阅源码)。
 
 | 你的情况 | 从这里开始 |
 |---|---|
@@ -161,13 +162,13 @@ flowchart TD
 | 软件层 | 已核验下限 | 含义 |
 |---|---|---|
 | CoreML EP 官方页面 | iOS 13 / macOS 10.15 | 页面保留的 Core ML 3 / NeuralNetwork 历史说明 |
-| Provider 构造函数（v1.27 + `main`） | **Core ML 5：iOS 15 / macOS 12** | 源码真正的门槛：`MINIMUM_COREML_VERSION == 5` |
+| Provider 构造函数（v1.29.0） | **Core ML 5：iOS 15 / macOS 12** | 源码真正的门槛：`MINIMUM_COREML_VERSION == 5` |
 | MLProgram | Core ML 5：iOS 15 / macOS 12 | 该表示形式的最低版本 |
-| `onnxruntime==1.27.0` wheel | macOS 14、arm64、CPython 3.11–3.14 | 本目录验证所需下限；**没有 Intel macOS 文件** |
+| `onnxruntime==1.29.0` wheel | macOS 14、arm64、CPython 3.11–3.14 | 本目录验证所需下限；**没有 Intel macOS 文件** |
 | `MLComputePlan` | macOS 14.4 / iOS 17.4 + SDK header | 记录每个操作的首选设备 + 估算开销 |
 | `FastPrediction` hint | Core ML 8：macOS 15 / iOS 18 + SDK header | 加载期的 specialization hint |
 
-> [`host_utils.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/model/host_utils.h) 仍保留 Core ML 3 的注释，但 [`CoreMLExecutionProvider`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/coreml_execution_provider.cc) 会拒绝低于 Core ML 5 的运行时。**以构造函数为真正的门槛。**
+> [`host_utils.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/model/host_utils.h) 仍保留 Core ML 3 的注释，但 [`CoreMLExecutionProvider`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/coreml_execution_provider.cc) 会拒绝低于 Core ML 5 的运行时。**以构造函数为真正的门槛。**
 
 **Python 主机检查：**
 
@@ -445,9 +446,9 @@ trivial 标记（只有分区中还有实际计算时才保留；全 trivial 的
 | 动态空输入 | 编译期零维被拒绝；运行时解析为零元素也被拒绝 |
 
 先用生成的支持表初筛，再到构建器 + verbose 日志中确认：
-[NeuralNetwork 支持表](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/tools/ci_build/github/apple/coreml_supported_neuralnetwork_ops.md) ·
-[MLProgram 支持表](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/tools/ci_build/github/apple/coreml_supported_mlprogram_ops.md) ·
-[Builder 实现](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/builders/impl)
+[NeuralNetwork 支持表](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/tools/ci_build/github/apple/coreml_supported_neuralnetwork_ops.md) ·
+[MLProgram 支持表](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/tools/ci_build/github/apple/coreml_supported_mlprogram_ops.md) ·
+[Builder 实现](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/builders/impl)
 
 ## 9. 安全使用缓存
 
@@ -616,7 +617,7 @@ flowchart TD
 | 现象 | 可能原因 | 处理 |
 |---|---|---|
 | 脚本拒绝 Linux/Windows | 缺少 Core ML 框架 | 在 Mac 上运行 |
-| 脚本拒绝 `x86_64` | Intel/Rosetta；ORT 1.27 无 Intel macOS wheel | 使用原生 Apple Silicon Python |
+| 脚本拒绝 `x86_64` | Intel/Rosetta；ORT 1.29.0 无 Intel macOS wheel | 使用原生 Apple Silicon Python |
 | 找不到匹配 wheel | OS/Python/架构/free-threaded 不对 | 对照主机检查 |
 | 无 CoreML Provider | ORT 发行版错误或混装 | 使用隔离的固定 venv |
 | 严格会话失败 | 不支持的节点或全 trivial 图 | 读 verbose；查构建器 |
@@ -633,10 +634,10 @@ flowchart TD
 
 | 核验依据 | 版本或环境 | 适用范围 |
 |---|---|---|
-| 可运行版本 | ONNX Runtime [`v1.27.0`](https://github.com/microsoft/onnxruntime/tree/v1.27.0) + [PyPI 文件](https://pypi.org/project/onnxruntime/1.27.0/) | 启动脚本 + 该版本已发布的 CoreML 行为 |
-| 源码快照 | `main` @ [`bf6aa006`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml) | 架构、构建器、配置项、测试 |
-| 固定环境 | `onnxruntime==1.27.0`、`onnx==1.22.0`；NumPy `2.4.6`（3.11）/ `2.5.1`（3.12–3.14） | 可复现的桌面端环境 |
-| 核验日期 | `2026-07-17` | 链接、软件包、源码、CLI |
+| 可运行版本 | ONNX Runtime [`v1.29.0`](https://github.com/microsoft/onnxruntime/tree/v1.29.0) + [PyPI 文件](https://pypi.org/project/onnxruntime/1.29.0/) | 启动脚本 + 该版本已发布的 CoreML 行为 |
+| 发布版源码 | `v1.29.0` @ [`2e2543f`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml) | 架构、构建器、配置项、测试 |
+| 固定环境 | `onnxruntime==1.29.0`、`onnx==1.22.0`；NumPy `2.4.6`（3.11）/ `2.5.2`（3.12–3.14） | 可复现的桌面端环境 |
+| 核验日期 | `2026-09-01` | 链接、软件包、源码、CLI |
 | 硬件验证范围 | 源码/软件包已在 Linux 上检查；**未**实际运行 Core ML | CPU/GPU/ANE 的最终验证仍需 Apple 设备 |
 
 ```mermaid
@@ -660,21 +661,21 @@ flowchart TD
 
 | 源码 | 涵盖内容 |
 |---|---|
-| [`coreml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/coreml/coreml_provider_factory.h) | 公开 flag、选项名、缓存约定 |
-| [`coreml_options.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/coreml_options.cc) | 可用值 + 解析行为 |
-| [`coreml_options.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/coreml_options.h) | 选项存储 + 访问器，含 `ProfileComputePlan` 的仅 MLProgram 与运算门控 |
-| [`coreml_execution_provider.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/coreml_execution_provider.cc) | 版本门槛、缓存 key、分区、回调 |
-| [`helper.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/builders/helper.cc) | 输入/rank/shape 检查 + ANE 检测 |
-| [`op_builder_factory.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/builders/op_builder_factory.cc) | 算子到构建器的注册表 |
-| [`base_op_builder.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/builders/impl/base_op_builder.cc) | 通用格式/opset/输入检查 |
-| [`model_builder.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/builders/model_builder.cc) | 转换、命名、序列化、缓存路径 |
-| [`model.mm`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/model/model.mm) | 编译/加载、选项、profiling、预测 |
-| [`host_utils.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/model/host_utils.h) | OS/Core ML 映射 + 最低版本 |
-| [`onnxruntime_providers_coreml.cmake`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/cmake/onnxruntime_providers_coreml.cmake) | 框架、stub、minimal-build 规则 |
-| [`py-macos.yml`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/tools/ci_build/github/azure-pipelines/templates/py-macos.yml) | wheel 使用 `--use_coreml`；deployment target 14 |
-| [`coreml_basic_test.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/test/providers/coreml/coreml_basic_test.cc) | 格式、算子、分区、缓存测试 |
-| [`dynamic_input_test.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/test/providers/coreml/dynamic_input_test.cc) | 动态 + 空输入测试 |
-| [`ort_coreml_execution_provider.mm`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/objectivec/ort_coreml_execution_provider.mm) | Objective-C legacy + V2 桥接 |
+| [`coreml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/include/onnxruntime/core/providers/coreml/coreml_provider_factory.h) | 公开 flag、选项名、缓存约定 |
+| [`coreml_options.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/coreml_options.cc) | 可用值 + 解析行为 |
+| [`coreml_options.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/coreml_options.h) | 选项存储 + 访问器，含 `ProfileComputePlan` 的仅 MLProgram 与运算门控 |
+| [`coreml_execution_provider.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/coreml_execution_provider.cc) | 版本门槛、缓存 key、分区、回调 |
+| [`helper.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/builders/helper.cc) | 输入/rank/shape 检查 + ANE 检测 |
+| [`op_builder_factory.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/builders/op_builder_factory.cc) | 算子到构建器的注册表 |
+| [`base_op_builder.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/builders/impl/base_op_builder.cc) | 通用格式/opset/输入检查 |
+| [`model_builder.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/builders/model_builder.cc) | 转换、命名、序列化、缓存路径 |
+| [`model.mm`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/model/model.mm) | 编译/加载、选项、profiling、预测 |
+| [`host_utils.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/model/host_utils.h) | OS/Core ML 映射 + 最低版本 |
+| [`onnxruntime_providers_coreml.cmake`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/cmake/onnxruntime_providers_coreml.cmake) | 框架、stub、minimal-build 规则 |
+| [`py-macos.yml`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/tools/ci_build/github/azure-pipelines/templates/py-macos.yml) | wheel 使用 `--use_coreml`；deployment target 14 |
+| [`coreml_basic_test.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/test/providers/coreml/coreml_basic_test.cc) | 格式、算子、分区、缓存测试 |
+| [`dynamic_input_test.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/test/providers/coreml/dynamic_input_test.cc) | 动态 + 空输入测试 |
+| [`ort_coreml_execution_provider.mm`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/objectivec/ort_coreml_execution_provider.mm) | Objective-C legacy + V2 桥接 |
 
 **官方参考：**
 [CoreML EP](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html) ·

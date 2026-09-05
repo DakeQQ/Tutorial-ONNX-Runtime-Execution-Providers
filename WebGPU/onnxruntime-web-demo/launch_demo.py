@@ -18,8 +18,24 @@ import webbrowser
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-NATIVE_VENV_DIR = SCRIPT_DIR / ".venv-webgpu"
 NATIVE_REQUIREMENTS = SCRIPT_DIR / "requirements-native-webgpu.txt"
+ORT_WEB_VERSION = "1.29.0"
+NATIVE_ORT_VERSION = "1.29.0"
+NATIVE_WEBGPU_VERSION = "0.3.0"
+
+
+def _native_venv_dir() -> Path:
+    override = os.environ.get("ORT_WEBGPU_VENV")
+    if override:
+        return Path(override).expanduser().resolve()
+    if platform.system() == "Windows":
+        root = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir()))
+        runtime = f"py{sys.version_info.major}{sys.version_info.minor}-{platform.machine().lower()}"
+        return root / "ort-webgpu-demo" / runtime
+    return SCRIPT_DIR / ".venv-webgpu"
+
+
+NATIVE_VENV_DIR = _native_venv_dir()
 
 
 class DemoRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -273,9 +289,15 @@ def _validate_native_host() -> bool:
             file=sys.stderr,
         )
         return False
-    if system in {"Windows", "Linux"} and machine not in {"amd64", "x86_64"}:
+    if system == "Windows" and machine not in {"amd64", "x86_64", "arm64", "aarch64"}:
         print(
-            f"ERROR: plugin 0.1.0 has no public {system} wheel for {machine}.",
+            f"ERROR: plugin {NATIVE_WEBGPU_VERSION} has no public Windows wheel for {machine}.",
+            file=sys.stderr,
+        )
+        return False
+    if system == "Linux" and machine not in {"amd64", "x86_64"}:
+        print(
+            f"ERROR: plugin {NATIVE_WEBGPU_VERSION} has no public Linux wheel for {machine}.",
             file=sys.stderr,
         )
         return False
@@ -283,14 +305,17 @@ def _validate_native_host() -> bool:
         if machine != "arm64":
             print(
                 "ERROR: the plugin wheel is universal2, but the separately "
-                "required onnxruntime 1.27.0 wheel is macOS arm64 only. "
+                f"required onnxruntime {NATIVE_ORT_VERSION} wheel is macOS arm64 only. "
                 f"The pinned native demo cannot install on macOS {machine}.",
                 file=sys.stderr,
             )
             return False
         mac_version = platform.mac_ver()[0]
         if mac_version and _version_tuple(mac_version) < (14,):
-            print("ERROR: plugin 0.1.0 requires macOS 14 or newer.", file=sys.stderr)
+            print(
+                f"ERROR: plugin {NATIVE_WEBGPU_VERSION} requires macOS 14 or newer.",
+                file=sys.stderr,
+            )
             return False
     elif system == "Linux":
         libc_name, libc_version = platform.libc_ver()
@@ -301,11 +326,14 @@ def _validate_native_host() -> bool:
                 file=sys.stderr,
             )
             return False
-        if libc_version and _version_tuple(libc_version) < (2, 27):
-            print("ERROR: the public Linux wheel requires glibc 2.27+.", file=sys.stderr)
+        if libc_version and _version_tuple(libc_version) < (2, 28):
+            print("ERROR: the public Linux wheel requires glibc 2.28+.", file=sys.stderr)
             return False
     elif system != "Windows":
-        print(f"ERROR: no public plugin 0.1.0 wheel for {system}.", file=sys.stderr)
+        print(
+            f"ERROR: no public plugin {NATIVE_WEBGPU_VERSION} wheel for {system}.",
+            file=sys.stderr,
+        )
         return False
     return True
 
@@ -341,8 +369,8 @@ def _native_environment_ready(executable: Path) -> bool:
         "assert (3, 11) <= sys.version_info[:2] < (3, 15); "
         "assert sys.maxsize > 2**32; "
         "assert int(numpy.__version__.split('.')[0]) < 3; "
-        "assert version('onnxruntime') == '1.27.0'; "
-        "assert version('onnxruntime-ep-webgpu') == '0.1.0'"
+        f"assert version('onnxruntime') == '{NATIVE_ORT_VERSION}'; "
+        f"assert version('onnxruntime-ep-webgpu') == '{NATIVE_WEBGPU_VERSION}'"
     )
     try:
         result = subprocess.run(
@@ -366,7 +394,7 @@ def _ensure_native_environment() -> Path | None:
 
     executable = _native_venv_python()
     if executable.is_file() and not _native_python_supported(executable):
-        print("[Native 1/3] Replacing an incompatible .venv-webgpu...")
+        print(f"[Native 1/3] Replacing incompatible environment: {NATIVE_VENV_DIR}")
         try:
             shutil.rmtree(NATIVE_VENV_DIR)
         except OSError as error:
@@ -376,7 +404,7 @@ def _ensure_native_environment() -> Path | None:
             )
             return None
     if not executable.is_file():
-        print("[Native 1/3] Creating isolated .venv-webgpu...")
+        print(f"[Native 1/3] Creating isolated environment: {NATIVE_VENV_DIR}")
         try:
             subprocess.run(
                 [sys.executable, "-m", "venv", str(NATIVE_VENV_DIR)],
@@ -384,13 +412,13 @@ def _ensure_native_environment() -> Path | None:
             )
         except (OSError, subprocess.CalledProcessError) as error:
             print(
-                "ERROR: could not create .venv-webgpu. On Ubuntu, install "
+                "ERROR: could not create the native environment. On Ubuntu, install "
                 f"the matching python3-venv package. ({error})",
                 file=sys.stderr,
             )
             return None
     else:
-        print("[Native 1/3] Reusing isolated .venv-webgpu.")
+        print(f"[Native 1/3] Reusing isolated environment: {NATIVE_VENV_DIR}")
 
     if not _native_environment_ready(executable):
         print("[Native 2/3] Installing pinned ONNX Runtime WebGPU packages...")
@@ -496,7 +524,11 @@ def _serve(args: argparse.Namespace) -> int:
     print(f"WASM fallback:    {fallback_status}")
     print(
         "ORT Web assets:   "
-        + ("local npm package" if asset_policy == "local" else "jsDelivr CDN (pinned 1.27.0)")
+        + (
+            "local npm package"
+            if asset_policy == "local"
+            else f"jsDelivr CDN (pinned {ORT_WEB_VERSION})"
+        )
     )
     print(f"Document root:    {SCRIPT_DIR}")
     print(f"URL:              {url}")

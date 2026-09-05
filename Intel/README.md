@@ -2,14 +2,16 @@
 
 [简体中文](README.zh-CN.md) · [Repository index](../README.md) · [Audited EP 5.9 source](https://github.com/intel/onnxruntime/tree/v5.9/onnxruntime/core/providers/openvino)
 
-**OpenVINO** is Intel's inference toolkit. ONNX Runtime's **OpenVINO Execution Provider (EP)** compiles the supported parts of an ONNX model for **Intel CPU, GPU, or NPU**. This folder *proves* that compilation and execution really happen — not just that the provider loads.
+**OpenVINO** is Intel's inference toolkit. ONNX Runtime's **OpenVINO Execution Provider (EP)** compiles the supported parts of an ONNX model for **Intel CPU, GPU, or NPU**. The included strict test can prove that compilation and execution happen when it completes on a matching host. The baseline below separates preserved hardware records from checks performed during the current audit.
 
 ```bash
-# Ubuntu — 60-second CPU proof
+# Ubuntu -> one-command CPU proof
+# The first run creates a virtual environment and installs pinned packages.
 ./Intel/run_demo.sh --device CPU
 ```
 ```bat
-:: Windows — 60-second CPU proof
+:: Windows -> one-command CPU proof
+:: The first run creates a virtual environment and installs pinned packages.
 Intel\run_demo.bat --device CPU
 ```
 
@@ -24,14 +26,14 @@ Intel\run_demo.bat --device CPU
 
 | Item | Baseline |
 |---|---|
-| Last verified | `2026-07-17`, against official release pages and published PyPI files |
+| Guidance last verified | `2026-09-01`, against official release pages, published package files, and ORT 1.24.1 source |
 | Hosts | Windows 11 and Ubuntu x86-64 |
 | Pinned runtime | `onnxruntime-openvino==1.24.1` + OpenVINO `2025.4.1` (EP 5.9) |
-| Upstream status | EP 5.9 is the latest ORT integration; standalone OpenVINO `2026.2.1` is newer and **not** a compatible replacement |
+| Upstream status | EP 5.9 is the latest ORT integration; standalone OpenVINO `2026.3.1` is newer and **not** a compatible replacement |
 | Targets | Intel CPU, integrated/discrete GPU, integrated NPU, explicit meta-devices |
 | Entry points | `run_demo.bat` · `run_demo.sh` · [`provider_test.py`](provider_test.py) |
-| Validated on hardware | Ubuntu `CPU`, `GPU`, `GPU.0`, `GPU.1` |
-| Checked, not hardware-run | Windows (static audit); NPU (source-verified only) |
+| Recorded hardware evidence | Existing Ubuntu `CPU`, `GPU`, `GPU.0`, `GPU.1` results are preserved; they were not rerun in this audit |
+| This audit | Windows resolver, source, syntax, and static checks; no Intel accelerator hardware was rerun |
 
 > [!IMPORTANT]
 > `onnxruntime.get_device()` does **not** reliably report the real Intel target. Always set `device_type` explicitly, read this folder's own device list, and inspect the graph-assignment result. `openvino.Core().available_devices` is fine on Windows or in a **separate** Linux diagnostic venv — never install standalone `openvino` into this Linux EP environment.
@@ -137,7 +139,7 @@ mindmap
 
 ### Does this PC even have an NPU?
 
-Search your exact CPU model on [Intel ARK](https://ark.intel.com/) and open **NPU Specifications**.
+Search your exact CPU model on [Intel Product Specifications (ARK)](https://www.intel.com/content/www/us/en/ark.html) and open **NPU Specifications**.
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
@@ -223,7 +225,7 @@ Verify: **Device Manager → Display adapters** shows the Intel GPU with **no wa
 5. Check **Device Manager** and **Task Manager → Performance → NPU** for warning icons.
 
 > [!WARNING]
-> Intel's generic Windows NPU download ([link](https://www.intel.com/content/www/us/en/download/794734/intel-npu-driver-windows.html)) is currently `32.0.100.4778` and advertises **OpenVINO 2026.2** — not this guide's pinned **2025.4.1**. Backward compatibility is undocumented, so this pairing is **not validated here**. Use an OEM driver whose notes cover OpenVINO 2025.4, or upgrade the whole ORT/OpenVINO stack together. Never upgrade only the driver and assume NPU success.
+> Intel's generic Windows NPU download ([link](https://www.intel.com/content/www/us/en/download/794734/intel-npu-driver-windows.html)) is currently `32.0.100.5540` (2026-08-28) and includes support for **OpenVINO 2026.3.1.0** — not this guide's pinned **2025.4.1**. Backward compatibility is undocumented, so this pairing is **not validated here**. Use an OEM driver whose notes cover OpenVINO 2025.4, or upgrade the whole ORT/OpenVINO stack together. Never upgrade only the driver and assume NPU success.
 
 **Python:**
 
@@ -312,16 +314,16 @@ mindmap
       level-zero package
     One release line only
       v1.28.0 matches OpenVINO 2025.4
-      v1.33.0 matches OpenVINO 2026.2 only
+      v1.35.0 matches OpenVINO 2026.2 only
 ```
 
 | This tutorial's runtime | Matching NPU release | Ubuntu | Why |
 |---|---|---|---|
 | OpenVINO 2025.4.1 | **v1.28.0** | 24.04 only | Closest documented generation match |
-| Latest Linux NPU driver | Check its own release table | Usually 24.04 | May target OpenVINO 2026.x — upgrade the whole stack together |
+| Latest Linux NPU driver | **v1.35.0** | 24.04 | Validated with kernel 6.17.0-40, OpenVINO 2026.2, and Level Zero 1.28.2; not this guide's runtime generation |
 | Ubuntu 22.04 | v1.26.0 (last line mentioning 22.04) | Legacy | Prefer 24.04 for a fresh NPU setup |
 
-As of this audit, the newest Linux NPU release is **v1.33.0** (validated with OpenVINO 2026.2 + Level Zero 1.27.0) — it is **not** a drop-in replacement for the pinned v1.28.0 here.
+As of 2026-08-31, the newest Linux NPU release is **v1.35.0** (commit `fd49947`, validated with OpenVINO 2026.2 + Level Zero 1.28.2) — it is **not** a drop-in replacement for the pinned v1.28.0 here. Standalone Level Zero stable is 1.32.0 (1.33.1 is pre-release); neither supersedes the loader version recorded in a specific NPU bundle's verified configuration.
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
@@ -424,8 +426,14 @@ Expect permissions like `crw-rw---- root render`. If not, use the release's udev
 
 ## 6. Install the Python stack
 
+The commands in §§6–7 are relative to this provider folder. From the repository root, enter it once before continuing:
+
+```bash
+cd Intel
+```
+
 > [!IMPORTANT]
-> `onnxruntime-openvino 1.24.1` (EP 5.9) is still the newest release, paired with OpenVINO **2025.4.1**. The standalone `openvino` project has moved on to 2026.2.1, but Intel has not shipped a matching `onnxruntime-openvino`. Installing `openvino==2026.2.1` or running `pip install -U openvino` here is **not** an upgrade path — wait for a new EP release that names its ORT/OpenVINO pair.
+> `onnxruntime-openvino 1.24.1` (EP 5.9) is still the newest release, paired with OpenVINO **2025.4.1**. The standalone `openvino` project has moved on to 2026.3.1, but Intel has not shipped a matching `onnxruntime-openvino`. Installing `openvino==2026.3.1` or running `pip install -U openvino` here is **not** an upgrade path — wait for a new EP release that names its ORT/OpenVINO pair.
 
 | Component | Pinned | Why |
 |---|---:|---|
@@ -433,7 +441,7 @@ Expect permissions like `crw-rw---- root render`. If not, use the release's udev
 | OpenVINO | 2025.4.1 | Runtime EP 5.9 was built against; bundled on Linux, separate install on Windows |
 | Python | CPython 3.11–3.13 (3.12 recommended) | Only versions actually published |
 | `onnx` | 1.22.0 | Builds/checks the offline demo graph |
-| `numpy` | 2.4.6 (Py 3.11) / 2.5.1 (Py 3.12–3.13) | Newest line compatible with each Python; NumPy 2.5 dropped 3.11 |
+| `numpy` | Windows: 2.3.5; Linux: 2.4.6 (Py 3.11) / 2.5.2 (Py 3.12–3.13) | Windows `openvino==2025.4.1` requires NumPy <2.4; Linux does not install that separate wheel |
 
 These are exact top-level pins, not a hash-locked lockfile — transitive dependencies resolve normally, and both launchers run `pip check` first.
 
@@ -601,7 +609,7 @@ Only disable CPU fallback once you expect full device support. After qualifying,
 
 Every key below comes straight from the audited v5.9 source ([`contexts.h`](https://github.com/intel/onnxruntime/blob/v5.9/onnxruntime/core/providers/openvino/contexts.h)'s `ProviderInfo::valid_provider_keys`, cross-checked against `ParseProviderInfo` in [`openvino_provider_factory.cc`](https://github.com/intel/onnxruntime/blob/v5.9/onnxruntime/core/providers/openvino/openvino_provider_factory.cc)). Passing any other key throws `Invalid provider_option key` when the session is created. Copy the block below and uncomment only what you need — every line is independently optional.
 
-Independently re-verified 2026-07-18 against the live [microsoft/onnxruntime `main` branch](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/providers/openvino): the same 16 keys, defaults, and enforcement rules are unchanged from EP 5.9 — including the `num_streams` meta-device restriction (`EnableStreams` in `basic_backend.cc`, throws under `AUTO`/`MULTI`/`HETERO` if not `1`, silently ignored on `NPU`) and the `disable_dynamic_shapes`/`enable_causallm` NPU interaction (`ParseProviderInfo` in `openvino_provider_factory.cc`).
+Re-verified on 2026-08-31 against immutable [ONNX Runtime 1.24.1 source](https://github.com/microsoft/onnxruntime/tree/470ae16099a74fe05e31f2530489332c0525edb5/onnxruntime/core/providers/openvino): the 16 keys, defaults, and enforcement rules below are the EP 5.9 implementation — including the `num_streams` meta-device restriction (`EnableStreams` in `basic_backend.cc`, throws under `AUTO`/`MULTI`/`HETERO` if not `1`, silently ignored on `NPU`) and the `disable_dynamic_shapes`/`enable_causallm` NPU interaction (`ParseProviderInfo` in `openvino_provider_factory.cc`).
 
 ```python
 import json
@@ -776,7 +784,7 @@ Check the profile JSON's `provider` fields. OpenVINO may legitimately use host C
 | `/dev/accel/accel0` missing | No NPU, disabled BIOS switch, missing module/firmware | Check SKU/BIOS, kernel, `intel_vpu`, driver release |
 | NPU device present, OpenVINO omits it | UMD/compiler/Level Zero mismatch or permissions | Check `ls -lah`, `groups`, packages, `dmesg` |
 | NPU compile fails | Driver/runtime mismatch, or dynamic/unsupported model | Run the static demo first; align versions; export static shapes |
-| Windows NPU fails after Intel's current generic driver | That driver targets OpenVINO 2026.2, not this guide's 2025.4.1 | Use an OEM driver documented for 2025.4, or upgrade the whole stack together |
+| Windows NPU fails after Intel's current generic driver | Driver 32.0.100.5540 targets OpenVINO 2026.3.1, not this guide's 2025.4.1 | Use an OEM driver documented for 2025.4, or upgrade the whole stack together |
 | Bare `AUTO` rejected | Can't qualify a physical target; reproduced falling back to CPU | Qualify `GPU`/`NPU` explicitly, then use `AUTO:GPU,CPU`-style lists |
 | Non-strict app runs, only CPU busy | `AUTO` picked CPU, or ORT fell back | Request `GPU`/`NPU` explicitly; enable strict mode + profiling |
 | `GPU.1` fails | Enumeration order differs from assumption | Read the demo's device list; never assume dGPU index |
@@ -847,7 +855,7 @@ Strip usernames/paths before sharing logs.
 |---|---|
 | ORT OpenVINO EP install/options/devices | [ONNX Runtime OpenVINO EP documentation](https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html) |
 | Audited EP implementation | [Intel ONNX Runtime v5.9 OpenVINO provider source](https://github.com/intel/onnxruntime/tree/v5.9/onnxruntime/core/providers/openvino) |
-| Canonical upstream source (re-verified 2026-07-18, identical option set to EP 5.9) | [microsoft/onnxruntime OpenVINO EP source (`main` branch)](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/providers/openvino) |
+| Canonical EP 5.9 source (re-verified 2026-08-31) | [microsoft/onnxruntime OpenVINO EP at ORT 1.24.1 commit `470ae160`](https://github.com/microsoft/onnxruntime/tree/470ae16099a74fe05e31f2530489332c0525edb5/onnxruntime/core/providers/openvino) |
 | Binary version pair + Windows DLL setup | [Intel ONNX Runtime OpenVINO EP releases](https://github.com/intel/onnxruntime/releases) |
 | Actual 1.24.1 wheel files | [PyPI JSON file inventory](https://pypi.org/pypi/onnxruntime-openvino/1.24.1/json) |
 | Newer standalone OpenVINO release (not the EP pin) | [OpenVINO releases](https://github.com/openvinotoolkit/openvino/releases) |

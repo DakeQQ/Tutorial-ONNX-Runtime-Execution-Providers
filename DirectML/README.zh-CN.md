@@ -2,7 +2,7 @@
 
 [English](README.md) · [仓库首页](../README.zh-CN.md) · [DirectML EP 官方指南](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html)
 
-**DirectML** 是微软面向 Windows 的 GPU 计算库。ONNX Runtime 的 DirectML EP 借助它，把你的模型跑在任意一块 DirectX 12 GPU 上。**Windows ML** 更进一步：它是 Windows 官方支持的 ORT 发行版，还会替你*自动发现并挑选*最合适的厂商 EP —— GPU、NPU 或 CPU。本目录用来*证明*这两条路线真的跑在了真实硬件上，而不只是"加载成功"。
+**DirectML** 是微软面向 Windows 的 GPU 计算库。ONNX Runtime 的 DirectML EP 借助它，把你的模型跑在任意一块 DirectX 12 GPU 上。**Windows ML** 更进一步：它是 Windows 官方支持的 ORT 发行版，还会替你*自动发现并挑选*最合适的厂商 EP —— GPU、NPU 或 CPU。附带的一键测试在匹配的 Windows 目标设备上成功完成后，可以证明对应路线确实执行了模型；下方验证范围会说明仓库审查实际执行和未执行的内容。
 
 > [!IMPORTANT]
 > **不存在 `WinMLExecutionProvider`。**
@@ -21,10 +21,10 @@
 
 | 基线 | 取值 |
 |---|---|
-| 最近核验 | `2026-07-18`，已核对官方文档、PyPI 和 ONNX Runtime 源码 |
-| 核验源码 | ONNX Runtime [`bf6aa006`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a)（`main` HEAD） |
+| 最近核验 | `2026-09-01`，已核对官方文档、PyPI 和已发布的 ONNX Runtime 源码 |
+| 核验源码 | ONNX Runtime [`v1.29.0`、提交 `2e2543f`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710) |
 | 独立方案 | `onnxruntime-directml==1.24.4` · `DmlExecutionProvider` · DirectX 12 GPU · x64 |
-| Windows ML 方案 | Windows App SDK `2.1.3` + `onnxruntime-windowsml==1.24.6.202605042033` · x64 或 ARM64 |
+| Windows ML 方案 | Windows App SDK 投影包 `2.3.0` + App Runtime `2.3.1` + `onnxruntime-windowsml==1.25.2.202605110140` · x64 或 ARM64 |
 | 入口 | [`one_click.py`](one_click.py) |
 | 验证方式 | 与 CPU 结果一致 + 图分配记录 + 当前运行 profile + 禁用默认 CPU EP 回退 |
 | 验证范围 | 在 Linux 上准备；DirectML/目录 Provider 的最终执行仍需匹配的 Windows 设备 |
@@ -159,7 +159,7 @@ flowchart LR
     class CATALOG,REG,AUTO,LEGACY,ADAPTER note;
 ```
 
-源码目录也对应这些层次：[`providers/dml`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml) 才是真正的 DirectML EP；[`providers/winml`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/winml) 只导出 `OrtGetWinMLAdapter` 桥接，并声明它**不是真正的 EP**；[`winml`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml) 才是旧版 `LearningModel` 的实现。
+源码目录也对应这些层次：[`providers/dml`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/dml) 才是真正的 DirectML EP；[`providers/winml`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/winml) 只导出 `OrtGetWinMLAdapter` 桥接，并声明它**不是真正的 EP**；[`winml`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/winml) 才是旧版 `LearningModel` 的实现。
 
 ---
 
@@ -185,19 +185,18 @@ flowchart LR
 | 系统（本方案） | Windows 11 24H2，build 26100+ | 启动脚本会验证动态获取硬件 EP 的流程 |
 | 架构 | x64 或 ARM64 | Windows ML 同时发布两种架构 |
 | Python | CPython 3.12 | 本指南统一核验的 wheel ABI |
-| Windows App Runtime | `2.1.3` | 必须与两个 `wasdk-*` 投影包一致 |
-| ML 投影包 | `wasdk-Microsoft.Windows.AI.MachineLearning[all]==2.1.3` | 向 Python 提供 `ExecutionProviderCatalog` |
-| Bootstrap 投影包 | `wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.1.3` | 为未打包的 Python 激活 App Runtime |
-| ORT 发行版 | `onnxruntime-windowsml==1.24.6.202605042033` | 2.1.3 ML 投影包的精确依赖 |
-| 附加固定版本 | `numpy==2.4.6`、`onnx==1.22.0` | 对应 [`requirements-winml.txt`](requirements-winml.txt)；NumPy 在 x64 与 ARM64 均有 CPython 3.12 wheel |
+| Windows App Runtime | `2.3.1` | 2.3 发布线最新受支持的维护版本；Microsoft 要求使用当前补丁才能获得支持 |
+| ML 投影包 | `wasdk-Microsoft.Windows.AI.MachineLearning[all]==2.3.0` | 向 Python 提供 `ExecutionProviderCatalog` |
+| Bootstrap 投影包 | `wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.3.0` | 为未打包的 Python 激活 App Runtime |
+| ORT 发行版 | `onnxruntime-windowsml==1.25.2.202605110140` | 2.3.0 ML 投影包在元数据中精确声明的依赖 |
+| 附加固定版本 | `numpy==2.5.2`、`onnx==1.22.0` | 对应 [`requirements-winml.txt`](requirements-winml.txt)；两者都提供 x64 与 ARM64 的 CPython 3.12 wheel |
 
-**保持整套版本一致。** 投影包会固定一个精确的 ORT build，已安装的 App Runtime 也必须来自同一发布系列。
+**保持整套版本一致。** 投影包会固定一个精确的 ORT build；App Runtime 应使用同一 2.3 发布线的最新维护版本。
 
 | 包发布线 | 依赖的 ORT | 含义 |
 |---|---|---|
-| `wasdk-*==2.1.3`（本指南） | `onnxruntime-windowsml==1.24.6.202605042033` | 经过核验的组合 |
-| `wasdk-*==2.3.0` | `onnxruntime-windowsml==1.25.2.202605110140` | 另一套完整组合 |
-| 最新独立 wheel | `onnxruntime-windowsml==1.27.1.202607110137` | 比上述两者都新；不要混入 |
+| `wasdk-*==2.3.0`（本指南） | `onnxruntime-windowsml==1.25.2.202605110140` | 官方 PyPI 元数据精确声明的依赖 |
+| 最新独立 wheel | `onnxruntime-windowsml==1.28.0.202607272323` | 更新的独立发行版；不要替换到投影包组合中 |
 
 ### 3.3 每个环境只能有一个 ORT 发行版
 
@@ -225,6 +224,8 @@ py -3.12 -c "import platform, struct; print(platform.machine(), struct.calcsize(
 
 ### 4.2 独立 DirectML
 
+在仓库根目录中，继续使用上面准备好的 PowerShell 窗口：
+
 ```powershell
 py -3.12 DirectML\one_click.py directml                # 默认适配器
 py -3.12 DirectML\one_click.py directml --device-id 1  # 另一个 GPU
@@ -234,11 +235,11 @@ py -3.12 DirectML\one_click.py directml --device-id 1  # 另一个 GPU
 
 ### 4.3 Windows ML
 
-先安装微软签名的 2.1.3 App Runtime，并在运行前验证签名：
+先安装微软签名的 2.3.1 App Runtime，并在运行前验证签名：
 
 ```powershell
-$installer = "$env:TEMP\windowsappruntimeinstall-2.1.3-x64.exe"
-Invoke-WebRequest https://aka.ms/windowsappsdk/2.1/2.1.3/windowsappruntimeinstall-x64.exe -OutFile $installer
+$installer = "$env:TEMP\windowsappruntimeinstall-2.3.1-x64.exe"
+Invoke-WebRequest https://aka.ms/windowsappsdk/2.3/2.3.1/windowsappruntimeinstall-x64.exe -OutFile $installer
 $sig = Get-AuthenticodeSignature -LiteralPath $installer
 if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
   Remove-Item $installer -Force -ErrorAction SilentlyContinue
@@ -387,7 +388,7 @@ flowchart LR
 
 一键 DirectML 方案只用 `device_id`——这是 1.24.4 已发布的稳定接口。DXGI 路径会拒绝软件适配器，先以 feature level 11.0 创建 D3D12 设备，再通过 `DMLCreateDevice1`（DML FL 5.0）创建 `IDMLDevice`。当最高 feature level `≤ D3D_FEATURE_LEVEL_1_0_CORE` 时选 `COMPUTE` 队列，否则选 `DIRECT`。
 
-DML 还会从 `SessionOptions.add_session_config_entry(key, value)` 读取五个专属配置键（来源：[`dml_session_options_config_keys.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_session_options_config_keys.h)）。这些是会话级设置而非按 Provider 设置，请在**追加 DML EP 之前**设置到 `SessionOptions` 上——Provider 工厂会在那一刻读取它们，之后再改就不起作用了。
+DML 还会从 `SessionOptions.add_session_config_entry(key, value)` 读取五个专属配置键（来源：[`dml_session_options_config_keys.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/dml/dml_session_options_config_keys.h)）。这些是会话级设置而非按 Provider 设置，请在**追加 DML EP 之前**设置到 `SessionOptions` 上——Provider 工厂会在那一刻读取它们，之后再改就不起作用了。
 
 | 会话配置键 | 取值 | 默认值 | 行为 |
 |---|---|---|---|
@@ -465,7 +466,7 @@ flowchart LR
 
 ### 7.1 为什么 `core/providers/winml` 几乎是空的
 
-其头文件声明这个"provider factory"**不是真正的 EP**，[`symbols.txt`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/winml/symbols.txt) 只导出 `OrtGetWinMLAdapter`。这个目录只是通往私有 adapter API 的桥梁。
+其头文件声明这个"provider factory"**不是真正的 EP**，[`symbols.txt`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/winml/symbols.txt) 只导出 `OrtGetWinMLAdapter`。这个目录只是通往私有 adapter API 的桥梁。
 
 ### 7.2 旧版 `LearningModel` 路径
 
@@ -676,7 +677,7 @@ flowchart TD
 | DXGI 索引不存在 | `--device-id` 超出枚举 | 用启动脚本打印的索引 |
 | 创建 D3D12 设备失败 | 适配器/驱动无可用 DX12，或选中软件适配器 | 更新驱动；选择硬件适配器 |
 | 会话提示已禁用 CPU 回退 | 部分冒烟计算未被 EP 接受 | 修复 runtime/驱动；自定义模型则检查不支持的算子/类型/形状 |
-| App Runtime 初始化失败 | Runtime 缺失/不匹配 | 安装与两个 `wasdk-*` 匹配且已签名的 2.1.3 |
+| App Runtime 初始化失败 | Runtime 缺失/不匹配 | 安装投影包所属 2.3 发布线中已签名的 2.3.1 Runtime |
 | Windows ML 目录为空 | 系统 build、Windows Update、目录服务或策略 | 确认 build 26100+、更新、Store/目录访问、管理员策略 |
 | Provider 为 `NotPresent` | 有兼容项但包未安装 | 策略允许时加 `--allow-download` |
 | `ensure_ready_async` 失败 | 驱动/硬件/包要求不满足 | 阅读其诊断；更新精确 OEM/厂商驱动 |
@@ -702,28 +703,28 @@ py -3.12 DirectML\one_click.py windowsml --provider DmlExecutionProvider --allow
 | 结论 | 主要依据 | 结果 |
 |---|---|---|
 | DirectML 处于持续工程维护；已发布信息为 DirectML 1.15.2、支持到 opset 20 | [DirectML EP 官方指南](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html) | 已确认 |
-| `device_id` 是 DXGI 顺序；DML 需要顺序执行且关闭内存模式 | [`dml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/dml/dml_provider_factory.h) + [`inference_session.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/inference_session.cc) | 已确认 |
-| DML 恰好有 4 个 Provider 选项（`device_id`、`performance_preference`、`device_filter`、`disable_metacommands`）外加 5 个 `ep.dml.*` 会话配置键——不存在其他选项 | [`dml_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_provider_factory.cc) + [`dml_session_options_config_keys.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_session_options_config_keys.h) | 已确认 |
-| 能力取决于内核注册、support query、设备数据类型和 CPU-preferred 分析 | [`ExecutionProvider.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) | 已确认 |
-| 不存在真正的 `WinMLExecutionProvider` | [`winml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/winml/winml_provider_factory.h) + [`symbols.txt`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/winml/symbols.txt) | 已确认 |
+| `device_id` 是 DXGI 顺序；DML 需要顺序执行且关闭内存模式 | [`dml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/include/onnxruntime/core/providers/dml/dml_provider_factory.h) + [`inference_session.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/inference_session.cc) | 已确认 |
+| DML 恰好有 4 个 Provider 选项（`device_id`、`performance_preference`、`device_filter`、`disable_metacommands`）外加 5 个 `ep.dml.*` 会话配置键——不存在其他选项 | [`dml_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/dml/dml_provider_factory.cc) + [`dml_session_options_config_keys.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/dml/dml_session_options_config_keys.h) | 已确认 |
+| 能力取决于内核注册、support query、设备数据类型和 CPU-preferred 分析 | [`ExecutionProvider.cpp`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) | 已确认 |
+| 不存在真正的 `WinMLExecutionProvider` | [`winml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/include/onnxruntime/core/providers/winml/winml_provider_factory.h) + [`symbols.txt`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/winml/symbols.txt) | 已确认 |
 | Python 必须逐个注册目录 `library_path` | [安装 EP](https://learn.microsoft.com/windows/ai/new-windows-ml/initialize-execution-providers) + [注册 EP](https://learn.microsoft.com/windows/ai/new-windows-ml/register-execution-providers) | 已确认 |
-| 内置策略映射到 CPU/NPU/GPU 选择器并带 CPU 回退 | [`provider_policy_context.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/provider_policy_context.cc) | 已确认 |
-| 固定的版本/架构确实存在 | [DirectML PyPI](https://pypi.org/project/onnxruntime-directml/1.24.4/) + [Windows ML 投影包 PyPI](https://pypi.org/project/wasdk-Microsoft.Windows.AI.MachineLearning/2.1.3/) | 已确认 |
+| 内置策略映射到 CPU/NPU/GPU 选择器并带 CPU 回退 | [`provider_policy_context.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/provider_policy_context.cc) | 已确认 |
+| 固定的版本/架构确实存在 | [DirectML PyPI](https://pypi.org/project/onnxruntime-directml/1.24.4/) + [Windows ML 投影包 PyPI](https://pypi.org/project/wasdk-Microsoft.Windows.AI.MachineLearning/2.3.0/) + [Windows App SDK 下载页](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads) | 已确认 |
 
 ### ONNX Runtime 源码（核验提交）
 
 | 区域 | 文件 |
 |---|---|
-| DML 公开 C API 与选项 | [`dml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/dml/dml_provider_factory.h) |
-| 适配器枚举、D3D/DML 创建 | [`dml_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_provider_factory.cc) |
-| DML 专属会话配置键 | [`dml_session_options_config_keys.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/dml_session_options_config_keys.h) |
-| 能力、分配器、run 生命周期 | [`ExecutionProvider.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) |
-| 图分区合并 | [`GraphPartitioner.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/GraphPartitioner.cpp) |
-| 命令记录与提交 | [`DmlCommandRecorder.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/DmlCommandRecorder.cpp) |
-| 队列与 fence 生命周期 | [`CommandQueue.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/CommandQueue.cpp) |
-| 自动 EP 策略 | [`provider_policy_context.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/provider_policy_context.cc) |
-| WinML 导出不是真正 EP | [`winml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/winml/winml_provider_factory.h) |
-| 旧版 DML session builder | [`OnnxruntimeDmlSessionBuilder.cpp`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/winml/lib/Api.Ort/OnnxruntimeDmlSessionBuilder.cpp) |
+| DML 公开 C API 与选项 | [`dml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/include/onnxruntime/core/providers/dml/dml_provider_factory.h) |
+| 适配器枚举、D3D/DML 创建 | [`dml_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/dml/dml_provider_factory.cc) |
+| DML 专属会话配置键 | [`dml_session_options_config_keys.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/dml/dml_session_options_config_keys.h) |
+| 能力、分配器、run 生命周期 | [`ExecutionProvider.cpp`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.cpp) |
+| 图分区合并 | [`GraphPartitioner.cpp`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/dml/DmlExecutionProvider/src/GraphPartitioner.cpp) |
+| 命令记录与提交 | [`DmlCommandRecorder.cpp`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/dml/DmlExecutionProvider/src/DmlCommandRecorder.cpp) |
+| 队列与 fence 生命周期 | [`CommandQueue.cpp`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/dml/DmlExecutionProvider/src/CommandQueue.cpp) |
+| 自动 EP 策略 | [`provider_policy_context.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/provider_policy_context.cc) |
+| WinML 导出不是真正 EP | [`winml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/include/onnxruntime/core/providers/winml/winml_provider_factory.h) |
+| 旧版 DML session builder | [`OnnxruntimeDmlSessionBuilder.cpp`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/winml/lib/Api.Ort/OnnxruntimeDmlSessionBuilder.cpp) |
 
 ### 官方文档
 

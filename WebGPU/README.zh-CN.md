@@ -1,13 +1,13 @@
 # ONNX Runtime + WebGPU：WASM、WebGPU、WebNN 与原生 Python
 
-[English](README.md) · [仓库首页](../README.md) · [可运行演示](onnxruntime-web-demo/README.md)
+ [English](README.md) · [仓库首页](../README.zh-CN.md) · [可运行演示](onnxruntime-web-demo/README.zh-CN.md)
 
 | 项目 | 基线 |
 |---|---|
-| 最近验证 | `2026-07-17` |
+| 最近验证 | `2026-09-01` |
 | 支持平台 | 浏览器方式取决于 Windows/Linux/macOS 上的浏览器支持；原生插件支持面更窄 |
 | 运行方式 | 浏览器 WASM、浏览器 WebGPU、浏览器 WebNN、原生 Python WebGPU |
-| 运行时 | `onnxruntime-web==1.27.0`、`onnxruntime==1.27.0`、`onnxruntime-ep-webgpu==0.1.0` |
+| 运行时 | `onnxruntime-web==1.29.0`、`onnxruntime==1.29.0`、`onnxruntime-ep-webgpu==0.3.0` |
 | 运行入口 | `onnxruntime-web-demo/run_demo.bat`、`run_demo.sh` |
 | 验证范围 | 独立数学参考、跨 EP 结果一致性、严格回退策略、原生性能分析事件 |
 
@@ -26,11 +26,11 @@
 
 | 组件 | 可安装的最新稳定版 | 本教程 | 上游信号 |
 |---|---:|---:|---|
-| ONNX Runtime Web（npm） | `1.27.0` | `1.27.0` | npm 上还有带日期的 `dev` 构建，本教程不使用 |
-| ONNX Runtime 核心（PyPI） | `1.27.0` | `1.27.0` | 应跟随下一个正式标签版本，不要单独搭配 nightly |
-| 原生 WebGPU 插件（PyPI） | `0.1.0` | `0.1.0` | 源码树 `VERSION_NUMBER` 已是 `0.3.0`，但尚未发布到 PyPI |
+| ONNX Runtime Web（npm） | `1.29.0` | `1.29.0` | 已验证 registry tarball 完整性以及本地/CDN 执行 |
+| ONNX Runtime 核心（PyPI） | `1.29.0` | `1.29.0` | 与正式标签 `v1.29.0` 一致 |
+| 原生 WebGPU 插件（PyPI） | `0.3.0` | `0.3.0` | 已验证公开 wheel；该插件有意不通过 `Requires-Dist` 硬性依赖 ORT 核心 |
 
-本教程采用最新的**已发布稳定版**，而不是源码树里尚未发布的最高版本号。
+这份带日期的快照采用 2026-09-01 核实过的最新**已发布稳定版**，不使用 nightly 或开发构建。
 
 ```bash
 npm view onnxruntime-web version
@@ -179,11 +179,11 @@ flowchart TD
 | 操作系统 | 浏览器 WASM | 浏览器 WebGPU | 浏览器 WebNN | 原生 Python WebGPU |
 |---|---:|---:|---:|---:|
 | Windows 10/11 x64 | ✅ | ✅ Chrome/Edge | 🧪 Canary/开关；Windows 11 24H2+ 效果最好 | ✅ `win_amd64` wheel |
-| Windows ARM64 | ✅ | 🧪 需要 Chromium 开关 | 🧪 | ❌ 插件 0.1.0 无 ARM64 wheel |
-| Ubuntu/Linux x86-64 | ✅ | 🧪 取决于 Chromium/GPU 组合（见下） | 🧪 不在 ORT 已验证矩阵内 | ✅ manylinux glibc 2.27/2.28 x86-64 wheel |
-| Linux ARM64 | ✅ | 🧪 依赖浏览器和设备 | 🧪 | ❌ 插件 0.1.0 无 aarch64 wheel |
+| Windows ARM64 | ✅ | 🧪 需要 Chromium 开关 | 🧪 | ✅ `win_arm64` wheel |
+| Ubuntu/Linux x86-64 | ✅ | 🧪 取决于 Chromium/GPU 组合（见下） | 🧪 不在 ORT 已验证矩阵内 | ✅ manylinux glibc 2.28+ x86-64 wheel |
+| Linux ARM64 | ✅ | 🧪 依赖浏览器和设备 | 🧪 | ❌ 插件 0.3.0 无 aarch64 wheel |
 | macOS 14+ Apple Silicon | ✅ | ✅ Chrome/Edge；Safari 26 有 WebGPU，但不在 ORT Web 矩阵内 | 🧪 Canary/开关/Core ML，ORT 未验证 | ✅ 插件 universal2 + ORT 核心 arm64 |
-| macOS Intel | ✅ | ✅ 取决于浏览器是否仍支持当前 macOS 版本 | 🧪 依赖浏览器与设备 | ❌ ORT 1.27.0 核心无 macOS x86-64 wheel |
+| macOS Intel | ✅ | ✅ 取决于浏览器是否仍支持当前 macOS 版本 | 🧪 依赖浏览器与设备 | ❌ ORT 1.29.0 核心无 macOS x86-64 wheel |
 
 ### 3.2 浏览器支持与 ORT 支持的区别
 
@@ -194,7 +194,7 @@ flowchart TD
 | Web API 层 | `navigator.gpu` 或 `navigator.ml` 存在，并能创建设备/上下文 |
 | ORT 层 | 该浏览器上的 ORT EP 已实现模型用到的算子和数据类型 |
 
-`onnxruntime-web 1.27.0` 自带的兼容性表相当保守：
+`onnxruntime-web 1.29.0` 自带的兼容性表相当保守：
 
 | EP | ORT Web 文档中的浏览器支持 |
 |---|---|
@@ -209,19 +209,20 @@ flowchart TD
 - Safari 26 在 macOS/iOS/iPadOS/visionOS 26 上提供 WebGPU，但这不等于 ORT Web 官方保证支持。
 - WebNN 仍处于预稳定/开关阶段。其官方文档列出 Windows ML、LiteRT、Core ML 三种后端，而 ORT 目前只验证了 Windows Chromium。
 
-### 3.3 原生插件 wheel（0.1.0 版）
+### 3.3 原生插件 wheel（0.3.0 版）
 
 | Wheel | 平台要求 | 架构 |
 |---|---|---|
-| `onnxruntime_ep_webgpu-0.1.0-py3-none-win_amd64.whl` | 64 位 Windows | x86-64 |
-| `...manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl` | 兼容 glibc 2.27/2.28 的 Linux | x86-64 |
-| `...macosx_14_0_universal2.whl` | macOS 14+ | Intel + Apple Silicon |
+| `onnxruntime_ep_webgpu-0.3.0-py3-none-win_amd64.whl` | 64 位 Windows | x86-64 |
+| `onnxruntime_ep_webgpu-0.3.0-py3-none-win_arm64.whl` | 64 位 Windows | ARM64 |
+| `onnxruntime_ep_webgpu-0.3.0-py3-none-manylinux_2_28_x86_64.whl` | glibc 2.28+ Linux | x86-64 |
+| `onnxruntime_ep_webgpu-0.3.0-py3-none-macosx_14_0_universal2.whl` | macOS 14+ | Intel + Apple Silicon |
 
 | 事实 | 说明 |
 |---|---|
 | 插件 wheel 要求 | Python 3.11+；没有通过 `Requires-Dist` 强制依赖某个 ONNX Runtime 核心包 |
 | 官方最低核心版本 | `onnxruntime` 1.24.4，在注册时才会检查 |
-| 本教程锁定版本 | `onnxruntime==1.27.0`——经过测试的组合，而不只是满足下限 |
+| 本教程锁定版本 | `onnxruntime==1.29.0`——经过测试的组合，而不只是满足下限 |
 | 核心 wheel 覆盖范围 | CPython 3.11–3.14；**macOS wheel 仅支持 arm64** |
 | 实际结果 | 完整原生方案只支持 Apple Silicon，不支持 Intel Mac——即使插件 wheel 本身是 universal2 |
 
@@ -239,7 +240,7 @@ flowchart TD
 | 模型 | 合法的 ONNX 模型 | 先用附带的 `execution_provider_demo.onnx` |
 
 > [!WARNING]
-> 不要双击 HTML 文件。`file://` 不是安全上下文，无法正确使用 WebGPU/WebNN。启动器提供的是 `http://127.0.0.1`，浏览器会将其视为可信来源。
+> 不要双击 HTML 文件。本演示需要通过 HTTP 获取模型/WASM 文件，并通过 COOP/COEP 响应头启用多线程 WASM。请使用启动器提供的 `http://127.0.0.1`（浏览器将环回地址视为潜在可信来源），或部署到 HTTPS。
 
 ### 4.2 打开演示目录
 
@@ -296,10 +297,10 @@ flowchart LR
 | 设备 | 参数 | 说明 |
 |---|---|---|
 | GPU | `--device gpu` | 建议优先测试 |
-| CPU | `--device cpu` | 始终可用的参考项 |
+| CPU | `--device cpu` | 请求 WebNN CPU；仍要求 WebNN 及其 CPU 后端可用。通用 CPU 参考应使用浏览器 WASM |
 | NPU | `--device npu` | 先通过 WebNN Report 或 Chromium 直方图确认存在支持 NPU 的后端/EP |
 
-原生命令会创建 `.venv-webgpu`、安装锁定版本的软件包、查找 WebGPU 设备、默认禁用 CPU 回退、与 CPU EP 对比结果，并检查 ORT 性能分析中是否有真实的 `WebGpuExecutionProvider` 计算事件。
+原生命令会创建隔离环境（Windows 使用 `%LOCALAPPDATA%\ort-webgpu-demo\...`，Linux/macOS 使用 `.venv-webgpu`）、安装锁定版本的软件包、查找运行时公开的 WebGPU EP 设备、默认禁用 CPU 回退、与 CPU EP 对比结果，并检查 ORT 性能分析中是否有真实的 `WebGpuExecutionProvider` 计算事件。
 
 > [!NOTE]
 > 只有在诊断场景下，且 `--model` 仍保持自带冒烟模型的输入约定时，才使用 `--allow-cpu-fallback`；该验证脚本不负责适配任意模型。
@@ -312,9 +313,11 @@ flowchart LR
 | 浏览器 WebGPU | `py -3 launch_demo.py webgpu` | `python3 launch_demo.py webgpu` |
 | 浏览器 WebNN GPU | `py -3 launch_demo.py webnn --device gpu` | `python3 launch_demo.py webnn --device gpu` |
 | 允许不支持的节点使用 WASM | `py -3 launch_demo.py webgpu --allow-wasm-fallback` | `python3 launch_demo.py webgpu --allow-wasm-fallback` |
-| 原生 WebGPU（自动创建 `.venv-webgpu`） | `py -3.12 launch_demo.py native-webgpu` | `python3.12 launch_demo.py native-webgpu` |
+| 原生 WebGPU（自动管理隔离环境） | `py -3.12 launch_demo.py native-webgpu` | `python3.12 launch_demo.py native-webgpu` |
 
 浏览器服务器会持续运行，按 `Ctrl+C` 停止。如果自动发现失败，把终端打印的地址粘贴进 Chrome/Edge，或用 `--browser` 指定可执行文件路径。原生方案可把 `3.12` 换成已安装的 `3.11`/`3.13`/`3.14`——脚本会自动识别受支持的解释器。
+
+Windows 启动器有意把环境放在 `%LOCALAPPDATA%` 下按 Python 版本/架构区分的短路径中，避免旧式 `MAX_PATH` 导致软件包元数据安装失败。可把 `ORT_WEBGPU_VENV` 设为绝对路径来覆盖环境位置。
 
 `--allow-wasm-fallback` 是 WebGPU/WebNN **已经初始化之后**的**节点级**回退，不会把没有适配器或没有 `navigator.ml` 的机器伪装成通过加速器测试。
 
@@ -341,7 +344,7 @@ PASS: WEBGPU local inference and output validation completed.
 ```text
 PASS ... max_abs_diff=...
 PASS: ... event(s), including ... unique compute node(s), ran on WebGpuExecutionProvider.
-PASS: native WebGPU plugin inference is working.
+PASS: strict native WebGPU inference used zero CPU profile events.
 ```
 
 > [!NOTE]
@@ -349,8 +352,16 @@ PASS: native WebGPU plugin inference is working.
 
 ### 4.6 验证记录
 
+2026-08-31 的记录验证当前 1.29.0/0.3.0 基线；7 月记录按原样保留，只是其明确写出的 1.27.0/0.1.0 软件栈的历史证据，不能用于证明当前软件包。
+
 | 日期 | 检查内容 | 结果 |
-|---|---|---|| 2026-07-18 | 对照 `main` 分支最新源码逐项核对 WebGPU(`webgpu_provider_options.h`、`webgpu_execution_provider.h`、`webgpu_context.h`)与 WebNN(`webnn_provider_factory.cc`、`webnn_execution_provider.h`/`.cc`、ORT Web `inference-session.ts`)的每一个 provider 选项 | 通过——全部 22 个原生 WebGPU 键及每种 WebNN 选项写法均与本文档一致;修正了一处说明(原生 WebNN EP 固定使用 `NCHW`,`deviceType` 并不影响布局) || 2026-07-17 | 稳定版仓库、wheel 元数据、已安装的 npm 包、带版本标签的插件源码 | 通过——最新稳定版仍是 ORT Web/核心 1.27.0 + 插件 0.1.0；插件源码中更高的版本号尚未发布到 PyPI |
+|---|---|---|
+| 2026-08-31 | npm registry 完整性、重新生成 lock 文件，并使用 Node 24.20.0/npm 11.19.0 执行干净的 `npm ci` | 通过——`onnxruntime-web` 与 `onnxruntime-common` 均锁定到 1.29.0；Web tarball 匹配 `sha512-LuQlpX6MFLJZu756erwUeb1mNfoJGbs1kzDwJGNlf5RvfYMdqhcY3vNpDPK40CUV2HoWTkIj+uS0o36GFHjeYw==`；npm 报告 0 个已知漏洞 |
+| 2026-08-31 | 浏览器 WebGPU、ORT Web 1.29.0、本地 npm 与固定 jsDelivr 文件、VS Code 1.135.0 集成浏览器（Chromium 148）、Intel Xe-LPG | 两种文件来源均通过——独立 JS 参考与 WASM 数值对比均通过；记录到 15 个 WebGPU 内核事件、3 个程序 |
+| 2026-08-31 | 原生 1.29.0/0.3.0、Windows x64、CPython 3.14.7、Intel Graphics 与 NVIDIA GeForce RTX 5060 Ti | 两个运行时公开的设备条目均通过——每次运行的 `MatMul`/`Add`/`Relu` 产生 15 个 WebGPU 事件、0 个 CPU 性能事件，并与 CPU 结果完全一致 |
+| 2026-08-31 | 在 CPython 3.14 下解析 Windows x64/ARM64、Linux x64、macOS ARM64 原生 wheel | 通过——固定组合可分别解析 `win_amd64`、`win_arm64`、`manylinux_2_28_x86_64`、`macosx_14_0_arm64`；非 Windows 目标仍只是元数据检查 |
+| 2026-07-18 | 对照 `main` 分支最新源码逐项核对 WebGPU（`webgpu_provider_options.h`、`webgpu_execution_provider.h`、`webgpu_context.h`）与 WebNN（`webnn_provider_factory.cc`、`webnn_execution_provider.h`/`.cc`、ORT Web `inference-session.ts`）的每一个 provider 选项 | 通过——全部 22 个原生 WebGPU 键及每种 WebNN 选项写法均与本文档一致；修正了一处说明（原生 WebNN EP 固定使用 `NCHW`，`deviceType` 并不影响布局） |
+| 2026-07-17 | 稳定版仓库、wheel 元数据、已安装的 npm 包、带版本标签的插件源码 | 通过——最新稳定版仍是 ORT Web/核心 1.27.0 + 插件 0.1.0；插件源码中更高的版本号尚未发布到 PyPI |
 | 2026-07-16 | 本地浏览器 WASM、ORT Web 1.27.0、COOP/COEP、4 线程 | 使用本地 npm 文件测试通过 |
 | 2026-07-16 | 直接运行 `launch_demo.py native-webgpu`，Linux x86-64，Python 3.13.14 | 通过——插件成功发现 NVIDIA 和 Intel 适配器 |
 | 2026-07-16 | 在两个已发现的适配器上运行原生严格测试 | 两者均通过——`MatMul`/`Add`/`Relu` 均由 `WebGpuExecutionProvider` 完成，CPU 节点事件为 0，CPU 数值对比通过 |
@@ -374,7 +385,7 @@ PASS: native WebGPU plugin inference is working.
 | 6 | 运行 `run_demo.bat webgpu` |
 
 > [!NOTE]
-> 双 GPU 笔记本可能默认选用集成显卡。可在**设置 → 系统 → 显示 → 图形**中把浏览器设为**高性能**，或尝试 `chrome://flags/#force-high-performance-gpu`。Windows ARM64 上的 Chromium WebGPU 仍需 `chrome://flags/#enable-unsafe-webgpu`；原生插件没有 ARM64 wheel。
+> 双 GPU 笔记本可能默认选用集成显卡。可在**设置 → 系统 → 显示 → 图形**中把浏览器设为**高性能**，或尝试 `chrome://flags/#force-high-performance-gpu`。Windows ARM64 上的 Chromium WebGPU 可能仍需 `chrome://flags/#enable-unsafe-webgpu`；原生 0.3.0 软件栈已有匹配的 Windows ARM64 插件与核心 wheel。
 
 **浏览器 WebNN**
 
@@ -384,13 +395,13 @@ PASS: native WebGPU plugin inference is working.
 | 2 | 安装最新的 Chrome Canary 或 Edge Canary |
 | 3 | 运行 `run_demo.bat webnn --device gpu`（或 `npu`）——隔离配置中已自动带上所需开关 |
 | 4 | 24H2+ 首次启动时保持联网，等待 Chromium 安装 Windows App Runtime 和相应 EP，失败后重试 |
-| 5 | 查看 <https://webnnreport.org/> 和 `chrome://histograms/`（搜索 `WebNN`）——`WebNN.ORT.WinAppRuntimeInstallState` 为 `2` 或 `9` 表示成功 |
+| 5 | 查看 <https://webnnreport.org/>。在 `chrome://histograms/` 中，`WebNN.ORT.WinAppRuntimeInstallState` 为 `2` 或 `9` **只表示** Windows App Runtime 安装完成或已经存在。声称某个厂商 EP 或设备已启用前，还要在 `chrome://webnn-internals/` 中确认 **Runtime Backend** 与 **Execution Providers**，并检查对应的 `WebNN.ORT.<EP>.Status` 直方图。 |
 
 若不使用脚本而是手动启动：在 `chrome://flags` 或 `edge://flags` 启用 **Enables WebNN API** 后重启。`--webnn-backend` 各取值的含义见 [§4.4](#4-快速上手)。成功创建 `MLContext` 只能说明 API 可用，不能证明每个节点都跑在了 NPU 上。
 
 **原生 Python WebGPU**
 
-- 公开 wheel 仅支持 Windows x64，通过 Dawn 使用 D3D12/Vulkan，不涉及浏览器 API。
+- 公开 wheel 支持 Windows x64 与 ARM64，通过 Dawn 使用 D3D12/Vulkan，不涉及浏览器 API。
 - 直接运行原生一键命令即可。
 - 若发现设备数为 0，先更新 GPU 驱动，并确认当前桌面/会话能访问该 GPU（远程或虚拟化会话可能会隐藏它）。
 
@@ -428,9 +439,9 @@ bash run_demo.sh webgpu \
 > [!WARNING]
 > 这些开关会绕过浏览器的安全判断，仅适合开发环境。务必检查 `chrome://gpu`；**Software only** 绝不能算作硬件加速成功。
 
-**Linux 上的 WebNN**——ORT Web 1.27.0 自带的兼容表尚未列出 Linux，尽管 WebNN 官方文档把 Linux 映射到了 LiteRT。一键命令会在隔离配置中启用该 API；只有在有意强制测试时才加上 `--webnn-backend litert`。请将其视为实验功能，并保留 WASM 回退。
+**Linux 上的 WebNN**——ORT Web 1.29.0 自带的兼容表尚未列出 Linux，尽管 1.29 的 WebNN 算子文档提到了更广泛的带开关 API 可用性。一键命令会在隔离配置中启用该 API；只有在有意强制测试时才加上 `--webnn-backend litert`。请将其视为实验功能，并保留 WASM 回退。
 
-**Linux 原生插件**——仅支持 x86-64，需要兼容 manylinux 2.27/2.28 的 glibc，通过 Dawn 使用 Vulkan。WSL、精简容器、aarch64 和旧发行版可能需要从源码构建。
+**Linux 原生插件**——仅支持 x86-64，需要 glibc 2.28+ 与系统 Vulkan loader，以便使用 `manylinux_2_28` wheel 并通过 Dawn 调用 Vulkan。WSL、精简容器、aarch64 和旧发行版可能需要从源码构建。
 
 ### 5.3 macOS
 
@@ -440,7 +451,7 @@ bash run_demo.sh webgpu \
 | 2 | Chrome/Edge WebGPU 是 ORT Web 里最保守可靠的选择 |
 | 3 | 运行 `bash run_demo.sh webgpu` |
 | 4 | WebNN 需使用 Canary/Dev 并启用 **Enables WebNN API**；应把 Core ML 路由视为预览功能 |
-| 5 | 原生 Python 需要 macOS 14+ 的 Apple Silicon；Intel Mac 仍可使用全部浏览器方式 |
+| 5 | 原生 Python 需要 macOS 14+ 的 Apple Silicon；Intel Mac 可在 Chrome/Edge 仍支持对应系统/设备时使用 WASM 与浏览器 WebGPU，WebNN 仍属实验功能，必须在具体机器上验证 |
 
 > [!NOTE]
 > Safari 26 在整体上实现了 WebGPU，但 ONNX Runtime Web 目前的兼容表仍把 Safari WebGPU 标为不支持。个别版本可能可用，但在完成自己的测试之前不应宣称已支持生产环境。
@@ -450,7 +461,7 @@ bash run_demo.sh webgpu \
 ### 安装并选择合适的构建
 
 ```bash
-npm install --save-exact onnxruntime-web@1.27.0
+npm install --save-exact onnxruntime-web@1.29.0
 ```
 
 | 需求 | 导入方式 | Script 文件 |
@@ -459,10 +470,10 @@ npm install --save-exact onnxruntime-web@1.27.0
 | 仅 WebGPU | `onnxruntime-web/webgpu` | `ort.webgpu.min.js` |
 | 一个构建同时支持 WASM/WebGPU/WebNN | `onnxruntime-web/all` | `ort.all.min.js` |
 
-已发布的 1.27.0 导出映射只有 `./all`，没有 `./experimental`（部分通用 ORT 文档仍提到后者）——本演示使用 `onnxruntime-web/all` / `ort.all.min.js`。
+已发布的 1.29.0 导出映射只有 `./all`，没有 `./experimental`——本演示使用 `onnxruntime-web/all` / `ort.all.min.js`。
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/ort.all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.all.min.js"></script>
 ```
 
 必须在创建首个会话**之前**设置环境参数：
@@ -519,7 +530,7 @@ const session = await ort.InferenceSession.create('./model.onnx', {
 });
 ```
 
-以上每个字段都是可选的；这里列出了 ORT Web 1.27.0 的 [`inference-session.ts`](https://github.com/microsoft/onnxruntime/blob/main/js/common/lib/inference-session.ts) 中 `WebGpuExecutionProviderOption` 接受的每一个键——不需要的可以省略，会保留其默认值。`ort.env.webgpu.adapter`/`powerPreference` 在 1.27.0 中仍可用，但已被标记为弃用；当前做法是在 EP 选项里直接传入 `GPUDevice`。若要显式允许不支持算子回退：
+以上每个字段都是可选的；这里列出了 ORT Web 1.29.0 的 [`inference-session.ts`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/js/common/lib/inference-session.ts) 中 `WebGpuExecutionProviderOption` 接受的每一个键——不需要的可以省略，会保留其默认值。`ort.env.webgpu.adapter`/`powerPreference` 在 1.29.0 中仍可用，但已被标记为弃用；当前做法是在 EP 选项里直接传入 `GPUDevice`。若要显式允许不支持算子回退：
 
 ```js
 executionProviders: [{name: 'webgpu', device, validationMode: 'basic'}, 'wasm']
@@ -530,7 +541,7 @@ executionProviders: [{name: 'webgpu', device, validationMode: 'basic'}, 'wasm']
 
 ### WebNN 会话
 
-WebNN 的选项有三种互斥的写法——参见 [`inference-session.ts`](https://github.com/microsoft/onnxruntime/blob/main/js/common/lib/inference-session.ts) 中的 `WebNNExecutionProviderOption` 联合类型：
+WebNN 的选项有三种互斥的写法——参见 [`inference-session.ts`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/js/common/lib/inference-session.ts) 中的 `WebNNExecutionProviderOption` 联合类型：
 
 | 写法 | 字段 | 适用场景 |
 |---|---|---|
@@ -549,7 +560,7 @@ const session = await ort.InferenceSession.create('./model.onnx', {
 });
 ```
 
-跨会话共享 `MLTensor` 需要预先创建上下文。ORT Web 1.27 的 TypeScript 声明规定，即使提供了 `context`，仍必须同时提供 `deviceType`：
+跨会话共享 `MLTensor` 需要预先创建上下文。ORT Web 1.29 的 TypeScript 声明规定，即使提供了 `context`，仍必须同时提供 `deviceType`：
 
 ```js
 if (!navigator.ml) throw new Error('WebNN is unavailable');
@@ -572,7 +583,7 @@ const session = await ort.InferenceSession.create('./model.onnx', {
 ```
 
 > [!NOTE]
-> 这些 JS 层字段只用于配置浏览器的 `navigator.ml.createContext()` 调用。编译后的 WebNN EP 本身([`webnn_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webnn/webnn_provider_factory.cc))只接收一个原生参数——`deviceType`——通过 `provider_options.at("deviceType")` 传入，并在创建 provider 时读取一次，用来选择受支持的算子集合（[`webnn_execution_provider.cc`](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webnn/webnn_execution_provider.cc) 中的 `WebnnDeviceType`）。与 WebGPU EP 可配置的 `preferredLayout` 不同，原生 WebNN EP 始终固定使用 `NCHW` 作为首选布局（[`webnn_execution_provider.h`](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webnn/webnn_execution_provider.h) 中 `GetPreferredLayout()` 无条件返回 `DataLayout::NCHW`）——没有任何 provider 选项可以改变这一点。其余字段都只是浏览器侧的配置。
+> 这些 JS 层字段只用于配置浏览器的 `navigator.ml.createContext()` 调用。编译后的 WebNN EP 本身([`webnn_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/webnn/webnn_provider_factory.cc))只接收一个原生参数——`deviceType`——通过 `provider_options.at("deviceType")` 传入，并在创建 provider 时读取一次，用来选择受支持的算子集合（[`webnn_execution_provider.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/webnn/webnn_execution_provider.cc) 中的 `WebnnDeviceType`）。与 WebGPU EP 可配置的 `preferredLayout` 不同，原生 WebNN EP 始终固定使用 `NCHW` 作为首选布局（[`webnn_execution_provider.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/webnn/webnn_execution_provider.h) 中 `GetPreferredLayout()` 无条件返回 `DataLayout::NCHW`）——没有任何 provider 选项可以改变这一点。其余字段都只是浏览器侧的配置。
 
 ### 运行与清理资源
 
@@ -622,15 +633,16 @@ sequenceDiagram
 
 ### 手动创建隔离环境
 
-需要 64 位 CPython 3.11–3.14。支持 Windows x64、Linux x86-64（glibc 2.27+）以及 Apple Silicon 上的 macOS 14+——不支持 Intel Mac 的原生 Python。
+需要 64 位 CPython 3.11–3.14。支持 Windows x64/ARM64、Linux x86-64（glibc 2.28+）以及 Apple Silicon 上的 macOS 14+——不支持 Intel Mac 的原生 Python。
 
 Windows PowerShell：
 
 ```powershell
-py -3.12 -m venv .venv-webgpu
-.\.venv-webgpu\Scripts\python.exe -m pip install --upgrade pip
-.\.venv-webgpu\Scripts\python.exe -m pip install -r requirements-native-webgpu.txt
-.\.venv-webgpu\Scripts\python.exe native_webgpu_validator.py
+$venv = "$env:LOCALAPPDATA\ort-webgpu-demo\manual-py312"
+py -3.12 -m venv $venv
+& "$venv\Scripts\python.exe" -m pip install --upgrade pip
+& "$venv\Scripts\python.exe" -m pip install -r requirements-native-webgpu.txt
+& "$venv\Scripts\python.exe" native_webgpu_validator.py
 ```
 
 Ubuntu/macOS：
@@ -642,7 +654,7 @@ python3.12 -m venv .venv-webgpu
 .venv-webgpu/bin/python native_webgpu_validator.py
 ```
 
-启动器和两个一键脚本都会自动完成以上步骤，并在确认锁定版本无误后复用已有环境。
+启动器和两个一键脚本都会自动完成以上步骤，并在确认锁定版本无误后复用已有环境。Windows 上的短路径可避免旧式路径长度限制；`ORT_WEBGPU_VENV` 可覆盖该位置。
 
 ### 最小插件 API 模式
 
@@ -691,7 +703,7 @@ finally:
 | 参数 | 可选值/默认值 | 含义 |
 |---|---|---|
 | `--model` | `execution_provider_demo.onnx` | 仅当替换模型仍保留 `left`/`right` float32 `[1,4,128,128]` 输入时才可更换 |
-| `--device-index` | `0` | 选择一个已发现的 WebGPU 设备 |
+| `--device-index` | `0` | 选择该插件通过 `ort.get_ep_devices()` 公开的一个条目；枚举方式可能随平台/构建而异 |
 | `--layout` | `NCHW` / `NHWC` | 布局敏感内核的首选布局 |
 | `--power-preference` | `high-performance` / `low-power` | Dawn 适配器提示 |
 | `--validation-mode` | `disabled`、`wgpuOnly`、`basic`、`full` | 验证模式与对应的诊断开销 |
@@ -702,7 +714,7 @@ finally:
 
 ### 全部原生 WebGPU 提供程序参数（来自源码）
 
-上面演示脚本的命令行参数只覆盖了常见场景。插件 EP 本身接受 ONNX Runtime [`webgpu_provider_options.h`](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webgpu/webgpu_provider_options.h) 中定义的每一个键，在传给 `add_provider_for_devices(devices, {...})` 的字典里使用其短名称（不带 `ep.webgpuexecutionprovider.` 前缀）。下表默认值取自 [`webgpu_execution_provider.h`](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webgpu/webgpu_execution_provider.h) 和 [`webgpu_context.h`](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webgpu/webgpu_context.h) 里的原生 C++ 默认值——部分与第 6 节浏览器 JS 的默认值不同。
+上面演示脚本的命令行参数只覆盖了常见场景。插件 EP 本身接受 ONNX Runtime [`webgpu_provider_options.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/webgpu/webgpu_provider_options.h) 中定义的每一个键，在传给 `add_provider_for_devices(devices, {...})` 的字典里使用其短名称（不带 `ep.webgpuexecutionprovider.` 前缀）。下表默认值取自 ORT 1.29.0 的 [`webgpu_execution_provider.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/webgpu/webgpu_execution_provider.h) 和 [`webgpu_context.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/webgpu/webgpu_context.h) 里的原生 C++ 默认值——部分与第 6 节浏览器 JS 的默认值不同。
 
 | 键 | 默认值（原生） | 可选值 | 作用 |
 |---|---|---|---|
@@ -772,7 +784,7 @@ options.add_provider_for_devices([devices[0]], provider_options)
 ```
 
 > [!NOTE]
-> `deviceId`（`WebGpuContext` 的缓存键）和演示脚本的 `--device-index` 命令行参数（从 `ort.get_ep_devices()` 中选择条目）没有关系——不要混淆两者。每次只调整一个参数，方便定位问题。`webgpuInstance`/`webgpuDevice`/`dawnProcTable` 需要十进制原生指针，而不是浏览器对象，只有在把 ORT 嵌入到已经拥有 Dawn instance/device 的宿主程序中时才用得到。
+> `deviceId`（`WebGpuContext` 的缓存键）和演示脚本的 `--device-index` 命令行参数（从 `ort.get_ep_devices()` 公开的条目中选择）没有关系——不要混淆两者。本次测试的 0.3.0 Windows wheel 分别公开了 Intel 与 NVIDIA 条目，但插件实现也可能只公开一个抽象 EP 设备并在内部选择物理适配器；可移植代码必须兼容两种形式。每次只调整一个参数，方便定位问题。`webgpuInstance`/`webgpuDevice`/`dawnProcTable` 需要十进制原生指针，而不是浏览器对象，只有在把 ORT 嵌入到已经拥有 Dawn instance/device 的宿主程序中时才用得到。
 
 验证脚本默认 `validationMode=basic` 且始终开启性能分析，目标是验证与诊断，而非追求峰值速度。应先获得一次严格模式下的 `PASS`；`--validation-mode disabled` 只用来单独排查验证开销，正式测试性能应使用另一个不开启性能分析的程序。输出的耗时是端到端 `session.run()` 时间（含上传/读取），并非纯 GPU 内核时间。
 
@@ -843,7 +855,7 @@ ort.env.debug = true;
 
 ## 10. 本地或离线部署
 
-演示加载器依次尝试：（1）`node_modules/onnxruntime-web/dist/ort.all.min.js`，（2）锁定版本 `1.27.0` 的 jsDelivr 资源。
+演示加载器依次尝试：（1）`node_modules/onnxruntime-web/dist/ort.all.min.js`，（2）锁定版本 `1.29.0` 的 jsDelivr 资源。
 
 ```bash
 npm ci
@@ -855,7 +867,7 @@ python3 launch_demo.py webgpu
 本演示使用的 `all` 构建会让**每条**路径（包括 WASM 基线）都加载 JSEP WebAssembly 文件（`ort-wasm-simd-threaded.jsep.wasm` 及其加载器）——单独从 `onnxruntime-web/wasm` 导入则使用非 JSEP 文件。切勿混用不同 ORT 版本的 JS 构建与 `.wasm`/`.mjs` 文件：
 
 ```js
-ort.env.wasm.wasmPaths = '/assets/ort-1.27.0/';
+ort.env.wasm.wasmPaths = '/assets/ort-1.29.0/';
 ```
 
 **生产环境检查项：**
@@ -946,16 +958,17 @@ python tools/ci_build/build.py \
 - [ORT Web 环境/会话参数](https://onnxruntime.ai/docs/tutorials/web/env-flags-and-session-options.html)
 - [ORT Web 部署指南](https://onnxruntime.ai/docs/tutorials/web/deploy.html)
 - [ORT Web 性能诊断](https://onnxruntime.ai/docs/tutorials/web/performance-diagnosis.html)
-- [WebGPU 提供程序源码](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/providers/webgpu)
-- [WebNN 提供程序源码](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/providers/webnn)
-- [WebGPU 插件包源码](https://github.com/microsoft/onnxruntime/tree/main/plugin-ep-webgpu)
-- [WebGPU 全部提供程序参数键](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webgpu/webgpu_provider_options.h)
-- [WebGPU execution provider 配置与默认值](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webgpu/webgpu_execution_provider.h)
-- [WebGPU context 配置与默认值](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webgpu/webgpu_context.h)
-- [WebNN execution provider（原生，Emscripten）](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/webnn/webnn_execution_provider.cc)
-- [ORT Web TypeScript 执行提供程序参数类型](https://github.com/microsoft/onnxruntime/blob/main/js/common/lib/inference-session.ts)
-- [当前 WebGPU 算子表](https://github.com/microsoft/onnxruntime/blob/main/js/web/docs/webgpu-operators.md)
-- [当前 WebNN 算子表](https://github.com/microsoft/onnxruntime/blob/main/js/web/docs/webnn-operators.md)
+- [ORT 1.29.0 WebGPU 提供程序源码](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/webgpu)
+- [ORT 1.29.0 WebNN 提供程序源码](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/webnn)
+- [0.3.0 WebGPU 插件包源码](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/plugin-ep-webgpu)
+- [WebGPU 全部提供程序参数键（ORT 1.29.0）](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/webgpu/webgpu_provider_options.h)
+- [WebGPU execution provider 配置与默认值（ORT 1.29.0）](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/webgpu/webgpu_execution_provider.h)
+- [WebGPU context 配置与默认值（ORT 1.29.0）](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/webgpu/webgpu_context.h)
+- [WebNN execution provider（ORT 1.29.0，Emscripten）](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/webnn/webnn_execution_provider.cc)
+- [ORT Web 1.29.0 TypeScript 执行提供程序参数类型](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/js/common/lib/inference-session.ts)
+- [ORT Web 1.29.0 浏览器兼容性表](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/js/web/README.md#compatibility)
+- [ORT Web 1.29.0 WebGPU 算子表](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/js/web/docs/webgpu-operators.md)
+- [ORT Web 1.29.0 WebNN 算子表](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/js/web/docs/webnn-operators.md)
 
 **软件包记录**
 

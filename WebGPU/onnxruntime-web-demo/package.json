@@ -5,6 +5,6 @@
   "description": "Bilingual ONNX Runtime WASM, WebGPU, WebNN, and native WebGPU plugin tutorial demos",
   "license": "Apache-2.0",
   "dependencies": {
-    "onnxruntime-web": "1.27.0"
+    "onnxruntime-web": "1.29.0"
   }
 }

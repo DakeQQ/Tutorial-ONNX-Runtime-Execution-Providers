@@ -1,8 +1,8 @@
 # ONNX Runtime Plugin EP: A Beginner's Guide (Source-Audited)
 
-**A Plugin EP is a *doorway*, not a *destination*.** It is ONNX Runtime's public C ABI for **loading, discovering, selecting, and packaging** execution providers (EPs). It is not a GPU or NPU, and there is no generic compute backend called `PluginExecutionProvider`.
+**A Plugin EP is a *doorway*, not a *destination*.** It is ONNX Runtime's public C application binary interface (**ABI**) for **loading, discovering, selecting, and packaging** execution providers (EPs). The Plugin EP mechanism is not a GPU, NPU, or generic compute backend named `PluginExecutionProvider`. The concrete `OrtEp` loaded through that mechanism compiles or executes the model operations it supports.
 
-> **One-line answer:** Plugin EP exposes a brand-new EP, or modernizes how an existing one ships. It delivers — it never computes.
+> **One-line answer:** Plugin EP defines how a concrete EP reaches ONNX Runtime; that loaded EP, not the loading mechanism, supplies the computation.
 
 ### How to read this guide
 
@@ -25,14 +25,14 @@ flowchart LR
     classDef leaf fill:#eceff1,stroke:#90a4ae,color:#20242b
 ```
 
-**Audit baseline:** ONNX Runtime `main` at commit [`bf6aa00`](https://github.com/microsoft/onnxruntime/commit/bf6aa0063d1c178c4a4d33ed6770425834147e2a), checked on 2026-07-17. That tree reports `ORT_VERSION=1.29.0` and `ORT_API_VERSION=29`; it is a development snapshot, not a released-package contract. Runnable guides elsewhere in this repository stay pinned to their tested package versions.
+**Audit baseline:** released ONNX Runtime [`v1.29.0` at `2e2543f`](https://github.com/microsoft/onnxruntime/commit/2e2543fbe9fae542f921d47a72d21d5a4ef0b710), with source and documentation checked on 2026-09-01. The concrete package route below was executed on 2026-08-30 with plain `onnxruntime==1.29.0` and NVIDIA's standalone TensorRT RTX EP `0.4.0` on Windows 11 and an RTX 5060 Ti; that hardware record was preserved, not rerun during the documentation refresh. Source contracts and package behavior are identified separately.
 
 Every claim below is tagged so you know how much to trust it:
 
 | Tag | What it means for you |
 |---|---|
 | **Contract** | Guaranteed by a public header or the official Plugin EP docs — safe to rely on |
-| **Source snapshot** | True at the pinned commit, but an implementation detail that can change |
+| **Source snapshot** | True in the pinned `v1.29.0` release source, but still an implementation detail that can change in later releases |
 | **Repository route** | Package-specific behavior this tutorial actually tested |
 
 [简体中文](README.zh-CN.md) · [Official Plugin EP documentation](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/)
@@ -134,11 +134,11 @@ flowchart TD
     classDef green fill:#2e7d32,stroke:#a5d6a7,color:#ffffff
 ```
 
-| Path | Recognized by | Session creates EP via | Examples (pinned source) | Best fit |
+| Path | Recognized by | Session creates EP via | Examples (pinned source/packages) | Best fit |
 |---|---|---|---|---|
 | **Internal** | Registered by ORT itself | Direct internal factory | CPU; DML (`USE_DML`); WebGPU (`USE_WEBGPU && !ORT_USE_EP_API_ADAPTERS`) | ORT core builds |
-| **Provider bridge** | Library exports `GetProvider` + the two factory symbols | Legacy `Provider::CreateIExecutionProvider()` | CUDA, OpenVINO, QNN, MIGraphX, Vitis AI, TensorRT RTX | Modernizing an existing EP |
-| **Pure plugin** | Library exports the two factory symbols, no `GetProvider` | `OrtEpFactory::CreateEp()`, wrapped as `OrtEp` | Native WebGPU, standalone CUDA plugin, sample plugins | New or fully decoupled EP |
+| **Provider bridge** | Library exports `GetProvider` + the two factory symbols | Legacy `Provider::CreateIExecutionProvider()` | CUDA, OpenVINO, QNN, MIGraphX, Vitis AI | Modernizing an existing EP |
+| **Pure plugin** | Library exports the two factory symbols, no `GetProvider` | `OrtEpFactory::CreateEp()`, wrapped as `OrtEp` | TensorRT RTX 0.4, native WebGPU, standalone CUDA plugin, sample plugins | New or fully decoupled EP |
 
 The loader probes for `GetProvider` — your application never chooses a path flag. CUDA appears in both rows above because those are two distinct delivery routes for the same EP identity.
 
@@ -394,15 +394,15 @@ flowchart LR
 
 The pure CUDA and WebGPU plugins call `ApiInit(ort_api_base, ORT_PLUGIN_EP_MIN_ORT_VERSION)`; CUDA also gates optional callbacks by the negotiated runtime version. `ort_version_supported` alone does not perform that negotiation.
 
-### Version map at the pinned snapshot
+### Version map at the pinned release
 
 Each release only **adds** surface — it never rewrites what came before.
 
 ```mermaid
 flowchart LR
-    V22["1.22<br/>Register + discover"] --> V23["1.23<br/>Compiling EP"] --> V24["1.24<br/>Kernel registry"] --> V25["1.25<br/>Profiler + Sync"] --> V26["1.26<br/>Graph capture/replay"] --> V27["1.27<br/>Session-init hooks"] --> V28["1.28<br/>SelectBestModelCandidate"]
+    V22["1.22<br/>Register + discover"] --> V23["1.23<br/>Compiling EP"] --> V24["1.24<br/>Kernel registry"] --> V25["1.25<br/>Profiler + Sync"] --> V26["1.26<br/>Graph capture/replay"] --> V27["1.27<br/>Session-init hooks"] --> V28["1.28<br/>SelectBestModelCandidate"] --> V29["1.29<br/>Weightless support"]
 
-    class V22,V25,V26,V27,V28 leaf
+    class V22,V25,V26,V27,V28,V29 leaf
     class V23 blue
     class V24 green
     classDef leaf fill:#eceff1,stroke:#90a4ae,color:#20242b
@@ -415,13 +415,13 @@ flowchart LR
 | 1.22 | Library register/unregister; hardware/EP-device discovery and selection; base factory/EP fields | Foundation |
 | 1.23 | Graph inspection, `GetCapability`, `Compile`, `OrtNodeComputeInfo`, allocators, transfer, streams, layout, run hooks, compiled-model compatibility | Compiling EP path |
 | 1.24 | Kernel registry, If/Loop/Scan helpers, virtual devices, external resources, custom-op domains, incompatibility details | `Compile` becomes optional for registry-only EPs |
-| 1.25 | EP profiler and events, operator-schema queries, `OrtEp::Sync`, graphics interop | Last append to `OrtEpApi` in this snapshot |
+| 1.25 | EP profiler and events, operator-schema queries, `OrtEp::Sync`, graphics interop | Profiling and synchronization surface |
 | 1.26 | Resource budgets, graph capture/replay callbacks | Added to `OrtEp`, not `OrtEpApi` |
-| 1.27 | Session-init completion, default memory device, captured-graph release | Latest `OrtEp` callbacks here |
-| 1.28 | `OrtEpFactory::SelectBestModelCandidate`; core API adds `KernelContext_GetSyncStream` | Latest `OrtEpFactory` callback here |
-| 1.29 dev tree | API reports 29; no finalized `OrtApi`/`OrtEpApi`/`OrtEp`/`OrtEpFactory` additions yet | Don't infer a released contract from `main` |
+| 1.27 | Session-init completion, default memory device, captured-graph release | Session and graph-capture lifecycle additions |
+| 1.28 | `OrtEpFactory::SelectBestModelCandidate`; core API adds `KernelContext_GetSyncStream` | Model-package candidate selection |
+| 1.29 | `OrtEpApi::SessionOptionsGetWeightlessSourceModelBuffer`, `OrtWeightlessSupport`, `OrtEp::GetWeightlessSupport` | Finalized weightless-model support |
 
-`OrtEpApi` itself ends at a version-25 slot assertion in this source, so "Plugin EP API version" is not one single table — later capability also rides on callback structs and the core `OrtApi`.
+"Plugin EP API version" is not one function table. ORT 1.29 capability is distributed across the core `OrtApi`, `OrtEpApi`, and versioned factory/EP/callback structs. Set every implemented struct's `ort_version_supported` correctly and gate calls against the runtime API actually negotiated.
 
 > [!IMPORTANT]
 > The `main` header, a released ORT package, and a vendor plugin package are three separately versioned things. Compiling successfully proves nothing about runtime compatibility.
@@ -438,7 +438,12 @@ import vendor_plugin_ep
 
 registration_name = "my_plugin_registration"
 library_path = vendor_plugin_ep.get_library_path()
-ep_names = vendor_plugin_ep.get_ep_names()
+if hasattr(vendor_plugin_ep, "get_ep_names"):
+  ep_names = vendor_plugin_ep.get_ep_names()
+elif hasattr(vendor_plugin_ep, "get_ep_name"):
+  ep_names = [vendor_plugin_ep.get_ep_name()]
+else:
+  raise RuntimeError("The plugin package has no EP-name helper")
 if not ep_names:
     raise RuntimeError("The plugin package did not report an EP name")
 ep_name = ep_names[0]
@@ -461,7 +466,7 @@ finally:
     ort.unregister_execution_provider_library(registration_name)
 ```
 
-This follows the official Python example's API names and teardown order.
+This follows the Plugin EP registration, discovery, selection, and teardown flow. Python package helper names are packaging conventions, not part of the ORT C ABI; support the helper shape documented by the package you install.
 
 | Common trap | Do this instead |
 |---|---|
@@ -534,7 +539,7 @@ flowchart LR
 | Model tests | Strict no-fallback run; check output and assignment | Official guidance favors model tests |
 | Version CI | Gate minimum supported and target runtime versions | CUDA/WebGPU `ApiInit` pattern |
 | Package contents | Plugin library and its dependencies only — no bundled ORT core library | Official packaging guidance |
-| Package helpers | `get_library_path()`, `get_ep_names()`, optionally `get_ep_name()` | Official PyPI guidance |
+| Package helpers | `get_library_path()` plus `get_ep_names()` or single-EP `get_ep_name()` | Packaging convention; helper names are not ORT ABI |
 | Package dependency | Document and validate the compatible ORT version range | Official packaging guidance |
 
 ---
@@ -547,26 +552,82 @@ flowchart LR
 |---|---|---|---|
 | AMD Windows ML MIGraphX | Provider bridge | Existing MIGraphX backend, now via factory/device discovery | [AMD/provider_test.py](../AMD/provider_test.py) |
 | Qualcomm QNN 2.x | Provider bridge | QNN CPU/GPU/HTP backends decoupled from one ORT package | [Qualcomm/one_click.py](../Qualcomm/one_click.py) |
-| NVIDIA TensorRT RTX | Provider bridge | Distinct product from the classic TensorRT EP; same loading model | [NVIDIA/provider_test.py](../NVIDIA/provider_test.py) |
+| NVIDIA TensorRT RTX 0.4 | Pure plugin | Standalone EP ABI product, distinct from classic TensorRT; exports no `GetProvider` | [NVIDIA/provider_test.py](../NVIDIA/provider_test.py) |
 | Native WebGPU | Pure plugin | Native ORT host and package; not the browser `onnxruntime-web` API | [native_webgpu_validator.py](../WebGPU/onnxruntime-web-demo/native_webgpu_validator.py) |
 
 > Upstream also ships a standalone CUDA Plugin EP. That does not replace this repository's built-in `CUDAExecutionProvider` route — keep package, dependency, and validation claims separate.
 
-### Pinned source ledger
+### Verified TensorRT RTX 0.4 package route
 
-All links below point to the audited commit, not moving `main`.
+The standalone package was exercised on Windows 11 with an RTX 5060 Ti (Blackwell, compute capability 12.0), driver 616.56. Its DLL exports exactly `CreateEpFactories` and `ReleaseEpFactory`, so ORT 1.29 loads it through `EpLibraryPlugin`, not `EpLibraryProviderBridge`.
+
+Keep it in an environment containing plain ORT, never beside `onnxruntime-gpu`:
+
+```powershell
+conda create -n python_313_trt_rtx python=3.13 pip -y
+D:\Anaconda\envs\python_313_trt_rtx\python.exe -m pip install `
+  "onnxruntime==1.29.0" `
+  "onnxruntime-ep-nv-tensorrt-rtx==0.4.0" `
+  "onnx==1.22.0"
+```
+
+```python
+import gc
+from pathlib import Path
+
+import onnxruntime as ort
+import onnxruntime_ep_nv_tensorrt_rtx as trt_ep
+
+registration_name = trt_ep.get_ep_name()
+ort.register_execution_provider_library(
+  registration_name, trt_ep.get_library_path()
+)
+session = None
+try:
+  devices = [
+    device
+    for device in ort.get_ep_devices()
+    if device.ep_name == registration_name
+  ]
+  if not devices:
+    raise RuntimeError("No compatible TensorRT RTX device")
+
+  cache = Path.home() / ".cache" / "my_app" / "trt_rtx"
+  cache.mkdir(parents=True, exist_ok=True)
+  options = ort.SessionOptions()
+  options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+  options.add_provider_for_devices(
+    [devices[0]],
+    {"enable_cuda_graph": "0", "nv_runtime_cache_path": str(cache)},
+  )
+  session = ort.InferenceSession(
+    "model.onnx", sess_options=options, enable_fallback=False
+  )
+  outputs = session.run(None, feeds)
+finally:
+  del session
+  gc.collect()
+  ort.unregister_execution_provider_library(registration_name)
+```
+
+`get_available_providers()` is not the discovery API for a dynamically registered plugin; before registration it is expected to show only the host's built-in providers. From the repository root, the strict command `python NVIDIA/provider_test.py --provider nv_tensorrt_rtx` produced 23 plugin-profiled smoke events with no CPU node execution. The repository's pseudo-LLM benchmark compiled the full graph into one plugin event and, with TensorRT RTX CUDA Graph enabled, measured a 0.211 ms cached median over 200 runs on that host. See the [NVIDIA guide](../NVIDIA/README.md#71-benchmark-a-pseudo-small-llm) for methodology and limits.
+
+### Pinned release source ledger
+
+All ORT links below point to the immutable `v1.29.0` release commit, not moving `main`.
 
 | Source | Claim verified |
 |---|---|
-| [`onnxruntime_ep_c_api.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/session/onnxruntime_ep_c_api.h) | Public structs, ownership notes, callback versions, 4/8 capacities, 1.28 factory tail |
-| [`onnxruntime_c_api.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/session/onnxruntime_c_api.h) / [`.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/onnxruntime_c_api.cc) | Registration contract, core API version, append-only slot assertions, minimal-build stubs |
-| [`utils.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/utils.cc) | Relative path base, `GetProvider` probe, same-name + same-factory selection |
-| [`ep_library_plugin.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/plugin_ep/ep_library_plugin.cc) | Required symbols, factory creation/release, dynamic unload |
-| [`environment.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/environment.cc) | Duplicate names, devices, virtual mode, allocators/transfers, unregister order |
-| [`ep_library_internal.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/plugin_ep/ep_library_internal.cc) / [`ep_library_provider_bridge.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/plugin_ep/ep_library_provider_bridge.cc) | Internal provider list, legacy bridge adaptation |
-| [`ep_plugin_provider_interfaces.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/plugin_ep/ep_plugin_provider_interfaces.cc) | Pure-plugin adapter, sanity checks, capability, compile, release ordering |
-| [`ep_kernel_registration.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/plugin_ep/ep_kernel_registration.cc) / [`ep_api.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/plugin_ep/ep_api.cc) | Registry copy, control-flow helpers, `OrtEpApi` version slots |
-| [`example_plugin_ep`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/test/autoep/library/example_plugin_ep) / [`example_plugin_ep_kernel_registry`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/test/autoep/library/example_plugin_ep_kernel_registry) | Reference compile and kernel-registry implementations |
-| [`cuda/plugin`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/cuda/plugin) / [`webgpu/ep/api.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/webgpu/ep/api.cc) | Pure plugin entry points and runtime-version negotiation |
+| [`onnxruntime_ep_c_api.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/include/onnxruntime/core/session/onnxruntime_ep_c_api.h) | Public structs, ownership, callback versions, 4/8 capacities, and finalized 1.29 weightless support |
+| [`onnxruntime_c_api.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/include/onnxruntime/core/session/onnxruntime_c_api.h) / [`.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/onnxruntime_c_api.cc) | Registration contract, API version, append-only slots, minimal-build stubs |
+| [`utils.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/utils.cc) | Relative path base, `GetProvider` probe, same-name + same-factory selection |
+| [`ep_library_plugin.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/plugin_ep/ep_library_plugin.cc) | Required exports, failed-load cleanup, factory release, dynamic unload |
+| [`environment.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/environment.cc) | Duplicate names, devices, virtual mode, allocators/transfers, unregister order |
+| [`ep_library_internal.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/plugin_ep/ep_library_internal.cc) / [`ep_library_provider_bridge.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/plugin_ep/ep_library_provider_bridge.cc) | Internal provider list and legacy bridge adaptation |
+| [`ep_plugin_provider_interfaces.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/plugin_ep/ep_plugin_provider_interfaces.cc) | Pure-plugin adapter, sanity checks, capability, compile, release ordering |
+| [`ep_kernel_registration.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/plugin_ep/ep_kernel_registration.cc) / [`ep_api.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/plugin_ep/ep_api.cc) | Registry copy, control-flow helpers, `OrtEpApi` version slots |
+| [`example_plugin_ep`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/test/autoep/library/example_plugin_ep) / [`example_plugin_ep_kernel_registry`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/test/autoep/library/example_plugin_ep_kernel_registry) | Reference compile and kernel-registry implementations |
+| [`cuda/plugin`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/cuda/plugin) / [`webgpu/ep/api.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/webgpu/ep/api.cc) | Pure-plugin entry points and runtime-version negotiation |
+| [TensorRT RTX 0.4 exports](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/blob/v0.4.0/src/tensorrt_rtx_execution_provider.def) / [Python helpers](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/blob/v0.4.0/python/onnxruntime_ep_nv_tensorrt_rtx/__init__.py) | Pure-plugin classification, packaged library path, singular/plural EP-name helpers |
 
 Official references: [Usage](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/usage.html) · [Development](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/development.html) · [Testing](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/testing.html) · [Packaging](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/packaging.html)

@@ -45,11 +45,11 @@ EXPECTED_STACKS = {
         "onnxruntime-directml": "1.24.4",
     },
     "windowsml": {
-        "numpy": "2.4.6",
+        "numpy": "2.5.2",
         "onnx": "1.22.0",
-        "onnxruntime-windowsml": "1.24.6.202605042033",
-        "wasdk-microsoft-windows-ai-machinelearning": "2.1.3",
-        "wasdk-microsoft-windows-applicationmodel-dynamicdependency-bootstrap": "2.1.3",
+        "onnxruntime-windowsml": "1.25.2.202605110140",
+        "wasdk-microsoft-windows-ai-machinelearning": "2.3.0",
+        "wasdk-microsoft-windows-applicationmodel-dynamicdependency-bootstrap": "2.3.0",
     },
 }
 KNOWN_ORT_DISTRIBUTIONS = {
@@ -341,7 +341,7 @@ def ensure_environment(route: str, refresh: bool) -> Path:
 
     print(f"[2/3] Installing the pinned {route} stack...")
     subprocess.run(
-        [str(python), "-m", "pip", "install", "--upgrade", "pip==26.1.2"],
+        [str(python), "-m", "pip", "install", "--upgrade", "pip==26.2.1"],
         check=True,
     )
     subprocess.run(

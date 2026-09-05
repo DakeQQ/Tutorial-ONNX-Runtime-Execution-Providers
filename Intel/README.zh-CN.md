@@ -2,14 +2,16 @@
 
 [English](README.md) · [仓库首页](../README.zh-CN.md) · [已审计 EP 5.9 源码](https://github.com/intel/onnxruntime/tree/v5.9/onnxruntime/core/providers/openvino)
 
-**OpenVINO** 是 Intel 的推理工具套件。ONNX Runtime 的 **OpenVINO 执行提供程序（EP）** 会把 ONNX 模型中受支持的部分编译到 **Intel CPU、GPU 或 NPU** 上执行。本目录用来*证明*编译和执行确实发生——而不仅仅是 Provider 能够加载。
+**OpenVINO** 是 Intel 的推理工具套件。ONNX Runtime 的 **OpenVINO 执行提供程序（EP）** 会把 ONNX 模型中受支持的部分编译到 **Intel CPU、GPU 或 NPU** 上执行。附带的严格测试在匹配的主机上成功完成后，可以证明编译和执行确实发生。下方基线会区分保留的硬件记录与本次审查实际执行的检查。
 
 ```bash
-# Ubuntu —— 60 秒完成 CPU 验证
+# Ubuntu -> 一条命令完成 CPU 验证
+# 首次运行会创建虚拟环境并安装锁定版本的依赖。
 ./Intel/run_demo.sh --device CPU
 ```
 ```bat
-:: Windows —— 60 秒完成 CPU 验证
+:: Windows -> 一条命令完成 CPU 验证
+:: 首次运行会创建虚拟环境并安装锁定版本的依赖。
 Intel\run_demo.bat --device CPU
 ```
 
@@ -24,14 +26,14 @@ Intel\run_demo.bat --device CPU
 
 | 项目 | 基线 |
 |---|---|
-| 最近验证 | `2026-07-17`，已核对官方发布页和已发布的 PyPI 文件 |
+| 指南最近验证 | `2026-09-01`，已核对官方发布页、已发布软件包文件与 ORT 1.24.1 源码 |
 | 支持平台 | Windows 11 与 Ubuntu x86-64 |
 | 锁定运行时 | `onnxruntime-openvino==1.24.1` + OpenVINO `2025.4.1`（EP 5.9） |
-| 上游状态 | EP 5.9 仍是最新的 ORT 集成版本；独立的 OpenVINO `2026.2.1` 更新，但**不能**作为兼容替代品 |
+| 上游状态 | EP 5.9 仍是最新的 ORT 集成版本；独立的 OpenVINO `2026.3.1` 更新，但**不能**作为兼容替代品 |
 | 目标设备 | Intel CPU、集成/独立 GPU、集成 NPU，以及显式指定的元设备 |
 | 运行入口 | `run_demo.bat` · `run_demo.sh` · [`provider_test.py`](provider_test.py) |
-| 已在真机验证 | Ubuntu 上的 `CPU`、`GPU`、`GPU.0`、`GPU.1` |
-| 仅完成核查，未在真机运行 | Windows（静态核查）；NPU（仅完成源码核验） |
+| 已记录的硬件证据 | 保留现有 Ubuntu `CPU`、`GPU`、`GPU.0`、`GPU.1` 结果；本次审查未重新运行 |
+| 本次审查 | Windows resolver、源码、语法与静态检查；未重新运行 Intel 加速器硬件 |
 
 > [!IMPORTANT]
 > `onnxruntime.get_device()` **不能**可靠反映实际使用的 Intel 目标设备。请始终显式设置 `device_type`，查看本目录演示打印的设备列表，并检查计算图分配结果。`openvino.Core().available_devices` 在 Windows 上，或在**独立**的 Linux 诊断虚拟环境中都可以使用；切勿把独立的 `openvino` 安装进本 Linux EP 环境。
@@ -137,7 +139,7 @@ mindmap
 
 ### 这台电脑到底有没有 NPU？
 
-在 [Intel ARK](https://ark.intel.com/) 上搜索你的准确处理器型号，打开 **NPU Specifications（NPU 规格）**。
+在 [Intel Product Specifications（ARK）](https://www.intel.com/content/www/us/en/ark.html)中搜索你的准确处理器型号，打开 **NPU Specifications（NPU 规格）**。
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
@@ -223,7 +225,7 @@ flowchart TD
 5. 检查**设备管理器**和**任务管理器 → 性能 → NPU**，确保没有警告图标。
 
 > [!WARNING]
-> Intel 的通用 Windows NPU 下载页（[链接](https://www.intel.com/content/www/us/en/download/794734/intel-npu-driver-windows.html)）目前提供 `32.0.100.4778`，并宣传搭配 **OpenVINO 2026.2**——而不是本文锁定的 **2025.4.1**。官方没有说明是否向后兼容，因此本文**不会**把这一组合视为已验证。请使用发布说明明确覆盖 OpenVINO 2025.4 的 OEM 驱动，或者把整个 ORT/OpenVINO 技术栈一起升级。切勿只升级驱动就假定 NPU 一定能用。
+> Intel 的通用 Windows NPU 下载页（[链接](https://www.intel.com/content/www/us/en/download/794734/intel-npu-driver-windows.html)）目前提供 `32.0.100.5540`（2026-08-28），并支持 **OpenVINO 2026.3.1.0**——而不是本文锁定的 **2025.4.1**。官方没有说明是否向后兼容，因此本文**不会**把这一组合视为已验证。请使用发布说明明确覆盖 OpenVINO 2025.4 的 OEM 驱动，或者把整个 ORT/OpenVINO 技术栈一起升级。切勿只升级驱动就假定 NPU 一定能用。
 
 **Python：**
 
@@ -312,16 +314,16 @@ mindmap
       level-zero 软件包
     只认一条发布线
       v1.28.0 匹配 OpenVINO 2025.4
-      v1.33.0 只匹配 OpenVINO 2026.2
+      v1.35.0 只匹配 OpenVINO 2026.2
 ```
 
 | 本教程的运行时 | 匹配的 NPU 发布版本 | Ubuntu | 原因 |
 |---|---|---|---|
 | OpenVINO 2025.4.1 | **v1.28.0** | 仅 24.04 | 官方文档中最接近的世代匹配 |
-| 最新 Linux NPU 驱动 | 查看它自己的发布版本表 | 通常 24.04 | 可能面向 OpenVINO 2026.x——要整套一起升级 |
+| 最新 Linux NPU 驱动 | **v1.35.0** | 24.04 | 已与 kernel 6.17.0-40、OpenVINO 2026.2、Level Zero 1.28.2 验证；不是本指南的 runtime 世代 |
 | Ubuntu 22.04 | v1.26.0（最后一个提到 22.04 的发布线） | 已过时 | 全新安装建议用 24.04 |
 
-截至本次核验，最新的 Linux NPU 发布版本是 **v1.33.0**（与 OpenVINO 2026.2 + Level Zero 1.27.0 搭配验证）——它**不能**直接替代本文锁定的 v1.28.0。
+截至 2026-08-31，最新 Linux NPU 发布版本是 **v1.35.0**（commit `fd49947`，与 OpenVINO 2026.2 + Level Zero 1.28.2 搭配验证）——它**不能**直接替代本文锁定的 v1.28.0。独立 Level Zero 最新稳定版是 1.32.0（1.33.1 为预发布）；两者都不能取代特定 NPU bundle 的 verified configuration 所记录的 loader 版本。
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
@@ -424,8 +426,14 @@ sudo dmesg | grep -Ei 'intel_vpu|ivpu|firmware' | tail -n 50
 
 ## 6. 安装 Python 环境
 
+第 6–7 节的命令都以本 Provider 目录为当前目录。从仓库根目录继续前，请先进入该目录：
+
+```bash
+cd Intel
+```
+
 > [!IMPORTANT]
-> `onnxruntime-openvino 1.24.1`（EP 5.9）仍是目前最新的发布版本，搭配 OpenVINO **2025.4.1**。独立的 `openvino` 项目已经推进到 2026.2.1，但 Intel 尚未发布与之匹配的 `onnxruntime-openvino`。在这里安装 `openvino==2026.2.1` 或运行 `pip install -U openvino` **不是**升级路径——请等待 Intel 发布明确指定新 ORT/OpenVINO 组合的 EP 版本。
+> `onnxruntime-openvino 1.24.1`（EP 5.9）仍是目前最新的发布版本，搭配 OpenVINO **2025.4.1**。独立的 `openvino` 项目已经推进到 2026.3.1，但 Intel 尚未发布与之匹配的 `onnxruntime-openvino`。在这里安装 `openvino==2026.3.1` 或运行 `pip install -U openvino` **不是**升级路径——请等待 Intel 发布明确指定新 ORT/OpenVINO 组合的 EP 版本。
 
 | 组件 | 锁定版本 | 原因 |
 |---|---:|---|
@@ -433,7 +441,7 @@ sudo dmesg | grep -Ei 'intel_vpu|ivpu|firmware' | tail -n 50
 | OpenVINO | 2025.4.1 | EP 5.9 编译所依据的运行时；Linux 已内置，Windows 需单独安装 |
 | Python | CPython 3.11–3.13（推荐 3.12） | 实际发布的版本只有这些 |
 | `onnx` | 1.22.0 | 用于生成/检查离线演示计算图 |
-| `numpy` | Python 3.11 用 2.4.6；Python 3.12–3.13 用 2.5.1 | 各 Python 版本能用的最新稳定分支；NumPy 2.5 已不支持 3.11 |
+| `numpy` | Windows：2.3.5；Linux：Python 3.11 用 2.4.6，Python 3.12–3.13 用 2.5.2 | Windows 的 `openvino==2025.4.1` 要求 NumPy <2.4；Linux 不安装该独立 wheel |
 
 这些是精确的顶层版本锁定，不是带哈希的锁定文件——间接依赖按正常方式解析，两个启动脚本都会先运行 `pip check`。
 
@@ -601,7 +609,7 @@ for assignment in session.get_provider_graph_assignment_info():
 
 下面每一个键都直接取自经过审计的 v5.9 源码（[`contexts.h`](https://github.com/intel/onnxruntime/blob/v5.9/onnxruntime/core/providers/openvino/contexts.h) 中的 `ProviderInfo::valid_provider_keys`，并已对照 [`openvino_provider_factory.cc`](https://github.com/intel/onnxruntime/blob/v5.9/onnxruntime/core/providers/openvino/openvino_provider_factory.cc) 里的 `ParseProviderInfo` 核实过）。传入清单之外的键会在创建会话时直接抛出 `Invalid provider_option key`。复制下面这段代码，只取消注释你需要的部分即可——每一行都是独立可选的。
 
-已于 2026-07-18 独立对照实时的 [microsoft/onnxruntime `main` 分支](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/providers/openvino) 重新核实:同样的 16 个键、默认值与强制规则与 EP 5.9 完全一致——包括 `num_streams` 的元设备限制(`basic_backend.cc` 中的 `EnableStreams`:在 `AUTO`/`MULTI`/`HETERO` 下非 `1` 会抛出异常,在 `NPU` 上则静默忽略)以及 `disable_dynamic_shapes`/`enable_causallm` 在 NPU 上的交互规则(`openvino_provider_factory.cc` 中的 `ParseProviderInfo`)。
+已于 2026-08-31 对照不可变的 [ONNX Runtime 1.24.1 源码](https://github.com/microsoft/onnxruntime/tree/470ae16099a74fe05e31f2530489332c0525edb5/onnxruntime/core/providers/openvino) 重新核实：下列 16 个键、默认值与强制规则就是 EP 5.9 的实现——包括 `num_streams` 的元设备限制（`basic_backend.cc` 中的 `EnableStreams`：在 `AUTO`/`MULTI`/`HETERO` 下非 `1` 会抛出异常，在 `NPU` 上则静默忽略）以及 `disable_dynamic_shapes`/`enable_causallm` 在 NPU 上的交互规则（`openvino_provider_factory.cc` 中的 `ParseProviderInfo`）。
 
 ```python
 import json
@@ -776,7 +784,7 @@ print(session.end_profiling())
 | 没有 `/dev/accel/accel0` | 无 NPU、BIOS 未启用、模块/固件缺失 | 核对 SKU/BIOS、内核、`intel_vpu` 和所选驱动发布版本 |
 | NPU 设备存在，但 OpenVINO 不列出它 | UMD/编译器/Level Zero 不匹配，或权限问题 | 检查 `ls -lah`、`groups`、软件包和 `dmesg` |
 | NPU 编译失败 | 驱动/运行时不匹配，或模型是动态/不支持的 | 先运行静态演示；对齐版本；导出静态形状 |
-| 安装 Intel 当前通用驱动后 Windows NPU 失败 | 该驱动面向 OpenVINO 2026.2，而本文锁定 2025.4.1 | 使用明确覆盖 2025.4 的 OEM 驱动，或整套一起升级 |
+| 安装 Intel 当前通用驱动后 Windows NPU 失败 | 驱动 32.0.100.5540 面向 OpenVINO 2026.3.1，而本文锁定 2025.4.1 | 使用明确覆盖 2025.4 的 OEM 驱动，或整套一起升级 |
 | 裸 `AUTO` 被拒绝 | 无法确认物理目标；经验证会回退到 CPU | 先显式验证 `GPU`/`NPU`，再用 `AUTO:GPU,CPU` 这类明确列表 |
 | 非严格模式能跑，但只有 CPU 在忙 | `AUTO` 选择了 CPU，或发生了 ORT 回退 | 显式请求 `GPU`/`NPU`；启用严格模式并检查性能分析 |
 | `GPU.1` 报错 | 实际枚举顺序和假设不同 | 查看演示打印的设备列表；不要假设独显编号 |
@@ -847,7 +855,7 @@ sudo dmesg | grep -Ei 'intel_vpu|ivpu|drm|firmware' | tail -n 100
 |---|---|
 | ORT OpenVINO EP 安装/选项/设备 | [ONNX Runtime OpenVINO EP 文档](https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html) |
 | 已审计的 EP 实现 | [Intel ONNX Runtime v5.9 OpenVINO provider 源码](https://github.com/intel/onnxruntime/tree/v5.9/onnxruntime/core/providers/openvino) |
-| 官方上游源码(已于 2026-07-18 重新核实,选项集合与 EP 5.9 完全一致) | [microsoft/onnxruntime OpenVINO EP 源码(`main` 分支)](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/providers/openvino) |
+| 官方 EP 5.9 源码（已于 2026-08-31 重新核实） | [microsoft/onnxruntime ORT 1.24.1 commit `470ae160` 中的 OpenVINO EP](https://github.com/microsoft/onnxruntime/tree/470ae16099a74fe05e31f2530489332c0525edb5/onnxruntime/core/providers/openvino) |
 | 版本配对与 Windows DLL 设置 | [Intel ONNX Runtime OpenVINO EP 发布](https://github.com/intel/onnxruntime/releases) |
 | 实际的 1.24.1 wheel 文件 | [PyPI JSON 文件清单](https://pypi.org/pypi/onnxruntime-openvino/1.24.1/json) |
 | 更新的独立 OpenVINO 发布（非 EP 锁定版本） | [OpenVINO 发布](https://github.com/openvinotoolkit/openvino/releases) |

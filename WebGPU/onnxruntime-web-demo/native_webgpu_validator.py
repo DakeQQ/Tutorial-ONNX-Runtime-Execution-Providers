@@ -161,7 +161,12 @@ def _parser() -> argparse.ArgumentParser:
         default=DEFAULT_MODEL,
         help="ONNX model to run (default: included execution_provider_demo.onnx).",
     )
-    parser.add_argument("--device-index", type=int, default=0)
+    parser.add_argument(
+        "--device-index",
+        type=int,
+        default=0,
+        help="Index into this plugin's entries returned by ort.get_ep_devices().",
+    )
     parser.add_argument(
         "--warmups", "--warmup", dest="warmups", type=int, default=2
     )
@@ -242,7 +247,7 @@ def main(argv: list[str] | None = None) -> int:
             for device in ort.get_ep_devices()
             if device.ep_name == webgpu_ep.get_ep_name()
         ]
-        print(f"\n[Discovery] Found {len(devices)} WebGPU device(s):")
+        print(f"\n[Discovery] Found {len(devices)} WebGPU EP device entry/entries:")
         for index, device in enumerate(devices):
             print(" ", _hardware_summary(device, index))
 
@@ -371,7 +376,14 @@ def main(argv: list[str] | None = None) -> int:
         assignment_ok = args.allow_cpu_fallback or cpu_event_count == 0
         passed = parity_ok and used_webgpu and assignment_ok
         print("\n" + "=" * 72)
-        print("PASS: native WebGPU plugin inference is working." if passed else "FAIL: see diagnostics above.")
+        if not passed:
+            print("FAIL: see diagnostics above.")
+        elif not args.allow_cpu_fallback:
+            print("PASS: strict native WebGPU inference used zero CPU profile events.")
+        elif cpu_event_count:
+            print("PASS: native WebGPU inference is working with explicit CPU fallback.")
+        else:
+            print("PASS: native WebGPU inference is working; fallback was permitted but no CPU events were observed.")
         print("=" * 72)
         return 0 if passed else 4
 

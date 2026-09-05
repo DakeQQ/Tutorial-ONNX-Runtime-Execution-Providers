@@ -34,13 +34,29 @@ import venv
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_VENV = SCRIPT_DIR / ".venv-xnnpack"
-DEFAULT_WORK_DIR = SCRIPT_DIR / ".xnnpack-build"
-DEFAULT_ARTIFACTS = SCRIPT_DIR / ".xnnpack-smoke"
+
+
+def default_state_paths() -> tuple[Path, Path, Path]:
+    if os.name == "nt":
+        local = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir()))
+        runtime = (
+            f"py{sys.version_info.major}{sys.version_info.minor}-"
+            f"{platform.machine().lower()}"
+        )
+        root = local / "ort-xnnpack-demo" / runtime
+        return root / "venv", root / "work", root / "artifacts"
+    return (
+        SCRIPT_DIR / ".venv-xnnpack",
+        SCRIPT_DIR / ".xnnpack-build",
+        SCRIPT_DIR / ".xnnpack-smoke",
+    )
+
+
+DEFAULT_VENV, DEFAULT_WORK_DIR, DEFAULT_ARTIFACTS = default_state_paths()
 ORT_REPOSITORY = "https://github.com/microsoft/onnxruntime.git"
-ORT_REF = "v1.27.1"
-ORT_COMMIT = "df2ba1cf8108aa63627cf4cdf8f807880b938616"
-ORT_VERSION = "1.27.1"
+ORT_REF = "v1.29.0"
+ORT_COMMIT = "2e2543fbe9fae542f921d47a72d21d5a4ef0b710"
+ORT_VERSION = "1.29.0"
 ONNX_VERSION = "1.22.0"
 XNNPACK_EP = "XnnpackExecutionProvider"
 CPU_EP = "CPUExecutionProvider"
@@ -583,7 +599,7 @@ class LauncherTests(unittest.TestCase):
     def test_build_info_matches_abbreviated_commit(self) -> None:
         self.assertTrue(
             build_info_matches_commit(
-                "ORT Build Info: git-branch=HEAD, git-commit-id=df2ba1c, build type=Release"
+                "ORT Build Info: git-branch=HEAD, git-commit-id=2e2543f, build type=Release"
             )
         )
         self.assertFalse(

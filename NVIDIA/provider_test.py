@@ -25,7 +25,7 @@ from typing import Any
 PROVIDER_NAMES = {
     "cuda": "CUDAExecutionProvider",
     "tensorrt": "TensorrtExecutionProvider",
-    # The 0.3.x wheel helper returns this recommended registration name. Plugin
+    # The plugin wheel helper returns this recommended registration name. Plugin
     # registration names are application-defined and become the OrtEpDevice and
     # profile provider name for that registration.
     "nv_tensorrt_rtx": "nv_tensorrt_rtx",

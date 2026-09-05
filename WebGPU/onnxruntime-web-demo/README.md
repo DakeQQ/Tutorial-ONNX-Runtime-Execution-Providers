@@ -4,13 +4,13 @@
 
 | Item | Baseline |
 |---|---|
-| Last verified | `2026-07-17` |
+| Last verified | `2026-09-01` |
 | Routes | Browser WASM, browser WebGPU, browser WebNN, native Python WebGPU |
-| Runtime | ORT Web 1.27.0; ONNX Runtime 1.27.0 + WebGPU plugin 0.1.0 |
+| Runtime | ORT Web 1.29.0; ONNX Runtime 1.29.0 + WebGPU plugin 0.3.0 |
 | Model | `execution_provider_demo.onnx`: static float32 `MatMul → Add → Relu` |
 | Entry points | `run_demo.bat` and `run_demo.sh` |
 
-These remain the latest installable stable packages as of the verification date. The upstream plugin source already carries a higher development version, but PyPI still publishes 0.1.0; the wrappers intentionally install the published, tested pair.
+These were the latest installable stable packages on the verification date. The wrappers install the exact published pair, and the browser uses either the lockfile or the pinned 1.29.0 CDN path.
 
 ## 1. Choose a route
 
@@ -27,11 +27,13 @@ Run from this folder:
 |---|---|
 | Browser | Python 3.10+ for the local HTTP server; current Chrome/Edge |
 | Local browser assets | Optional Node.js LTS + `npm ci`; otherwise pinned assets load from jsDelivr |
-| Native Windows | 64-bit CPython 3.11–3.14, x64 |
-| Native Linux | 64-bit CPython 3.11–3.14, x86-64, glibc 2.27+ |
+| Native Windows | 64-bit CPython 3.11–3.14, x64 or ARM64 |
+| Native Linux | 64-bit CPython 3.11–3.14, x86-64, glibc 2.28+, and a system Vulkan loader that provides `libvulkan.so.1` |
 | Native macOS | 64-bit CPython 3.11–3.14, macOS 14+, Apple Silicon |
 
-The pinned native route excludes Intel macOS because ONNX Runtime 1.27.0 has no macOS x86-64 core wheel.
+The pinned native route excludes Intel macOS because ONNX Runtime 1.29.0 has no macOS x86-64 core wheel, even though the plugin wheel is universal2.
+
+On Ubuntu/Debian, install the Linux loader with `sudo apt install libvulkan1`. The Python packages can install without it, but native WebGPU device discovery cannot succeed.
 
 ## 2. Run the demo
 
@@ -58,8 +60,9 @@ flowchart LR
 | Route | A pass proves |
 |---|---|
 | Every browser route | Exact ORT Web version, model contract, and independent JavaScript math reference passed |
-| Browser WebGPU/WebNN | A separate WASM comparison passed and strict mode did not use implicit CPU EP fallback |
-| Native WebGPU | CPU ORT parity passed; the profile contains WebGPU compute events and zero CPU node events |
+| Browser WebGPU | Independent JavaScript math and a separate WASM comparison passed. Default strict mode requests only WebGPU and disables ORT CPU EP fallback. A timestamp-query profile event adds direct kernel evidence when the browser exposes it; without one, check `chrome://gpu` before claiming hardware acceleration. |
+| Browser WebNN | Independent JavaScript math and a separate WASM comparison passed. Default strict mode prevents ORT fallback to WASM/CPU, but a PASS does not reveal the final native backend or physical CPU/GPU/NPU; confirm those in `chrome://webnn-internals/` and the WebNN histograms. |
+| Native WebGPU | CPU ORT parity and WebGPU compute-event proof passed; in default strict mode, the profile also contains zero CPU node events |
 
 | Option | Meaning |
 |---|---|

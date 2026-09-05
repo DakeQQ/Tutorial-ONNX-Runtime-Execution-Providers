@@ -1,8 +1,8 @@
 # ONNX Runtime + XNNPACK：跨平台 CPU 推理指南
 
-[English](README.md) · [仓库首页](../README.zh-CN.md) · [XNNPACK EP 官方文档](https://onnxruntime.ai/docs/execution-providers/Xnnpack-ExecutionProvider.html) · [已核验源码 `bf6aa006`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack)
+[English](README.md) · [仓库首页](../README.zh-CN.md) · [XNNPACK EP 官方文档](https://onnxruntime.ai/docs/execution-providers/Xnnpack-ExecutionProvider.html) · [已核验 ORT 1.29.0 源码 `2e2543f`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack)
 
-**XNNPACK** 是一个为 Arm、x86 和 WebAssembly **CPU** 手工调优的数学核心库。ONNX Runtime 的 **XNNPACK Execution Provider（EP）** 会把能执行的 ONNX 节点交给它处理，让推理在*同一颗* CPU 上跑得更快——不涉及 GPU，也不涉及 NPU。本目录要*证明*的是这次交接真的发生了，而不仅仅是“这个 Provider 能加载”。
+**XNNPACK** 是一个为 Arm、x86 和 WebAssembly **CPU** 手工调优的数学核心库。ONNX Runtime 的 **XNNPACK Execution Provider（EP）** 会把能执行的 ONNX 节点交给它处理，让推理在*同一颗* CPU 上跑得更快——不涉及 GPU，也不涉及 NPU。附带的启动脚本会在严格运行成功后证明这次交接；下方验证范围明确记录，本次审查没有构建或运行自定义 wheel。
 
 ```bash
 # Linux，在仓库根目录执行 -> 先构建一次 ONNX Runtime，再完成验证
@@ -19,17 +19,17 @@ python XNNPACK/one_click.py
 
 | 项目 | 基线 |
 |---|---|
-| 最近核验 | `2026-07-17`；对应 ONNX Runtime `main` 的 [`bf6aa006`](https://github.com/microsoft/onnxruntime/commit/bf6aa0063d1c178c4a4d33ed6770425834147e2a) 提交，以及稳定版 `v1.27.1` 的 [`df2ba1cf`](https://github.com/microsoft/onnxruntime/commit/df2ba1cf8108aa63627cf4cdf8f807880b938616) 提交 |
-| 已验证范围 | 启动脚本的单元测试已在 Linux 上通过；真正完成源码构建和严格推理，还需要能访问 GitHub/codeload，并具备 [§2](#2-选择预编译包或源码构建) 列出的构建工具 |
+| 最近核验 | `2026-09-01`；对应 ONNX Runtime `v1.29.0` 的固定提交 [`2e2543f`](https://github.com/microsoft/onnxruntime/commit/2e2543fbe9fae542f921d47a72d21d5a4ef0b710) |
+| 已验证范围 | 6 个启动脚本单元测试已在 Windows CPython 3.14.7 上通过；标签、源码/API 行为、XNNPACK 压缩包哈希与移动端软件包坐标均已核验。当前 shell 没有 CMake、MSVC `cl` 或 Ninja，因此仍需在准备好的构建主机上完成新的自定义 wheel 构建和严格 XNNPACK 推理，本文不宣称已经完成这两项 |
 
 ### 如何理解本文结论
 
 | 结论类型 | 本文采用的依据 | 可以说明什么 |
 |---|---|---|
 | 软件包与公开 API | [XNNPACK 官方页面](https://onnxruntime.ai/docs/execution-providers/Xnnpack-ExecutionProvider.html)和[官方构建指南](https://onnxruntime.ai/docs/build/eps.html#xnnpack) | 官方提供哪些软件包、API 名称以及公开配置项 |
-| 稳定版行为 | 固定版本的 ORT [`v1.27.1` 源码](https://github.com/microsoft/onnxruntime/tree/df2ba1cf8108aa63627cf4cdf8f807880b938616/onnxruntime/core/providers/xnnpack) | 一键脚本的行为，以及 [§7](#7-从源码确认算子支持范围) 所列的 capability 判断规则 |
-| 新版行为 | 已核验的 `main` [提交 `bf6aa006`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack) | 稳定版发布后的修复和源码变化 |
-| 本仓库中的行为 | `one_click.py` 单元测试，以及严格的节点分配/profile 检查 | 脚本在实际运行环境中的表现 |
+| 已发布版本行为 | 固定版本的 ORT [`v1.29.0` 源码](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack) | 一键脚本的行为，以及 [§7](#7-从源码确认算子支持范围) 所列的 capability 判断规则 |
+| 依赖完整性 | ORT 1.29.0 的 [`cmake/deps.txt`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/cmake/deps.txt) 与实际下载的 codeload 压缩包 | 源码构建使用的准确 XNNPACK 提交和压缩包字节 |
+| 本仓库中的行为 | `one_click.py` 单元测试，以及严格的节点分配/profile 检查 | 单元测试只能证明启动逻辑；只有真正完成严格运行才能证明已构建 wheel 上的 XNNPACK 节点分配 |
 | 性能 | 在目标设备上使用生产模型实测 | 速度、内存占用、功耗和温度；这些指标无法仅靠阅读源码得出 |
 
 > [!IMPORTANT]
@@ -175,8 +175,8 @@ mindmap
 
 | 目标平台 | 官方发行方式 | 启用方式 | 本仓库提供的内容 |
 |---|---|---|---|
-| Android | Maven [`com.microsoft.onnxruntime:onnxruntime-android`](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android) 已含 XNNPACK | Java `SessionOptions.addXnnpack(...)` | 提供配置说明；Android 应用应使用移动端官方包 |
-| iOS | CocoaPods `onnxruntime-c` 和 `onnxruntime-objc` 已含 XNNPACK | C/C++ 或 Objective-C 封装接口 | 提供配置说明；构建和打包需要 macOS 与 Xcode |
+| Android | Maven [`com.microsoft.onnxruntime:onnxruntime-android:1.29.0`](https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.29.0/onnxruntime-android-1.29.0.pom) 的官方完整 AAR 构建已含 XNNPACK | Java `SessionOptions.addXnnpack(...)` | 提供配置说明；Android 应用应使用移动端官方包 |
+| iOS | CocoaPods [`onnxruntime-c` 1.29.0](https://trunk.cocoapods.org/api/v1/pods/onnxruntime-c) 与 [`onnxruntime-objc` 1.29.0](https://trunk.cocoapods.org/api/v1/pods/onnxruntime-objc) 的官方完整 Apple framework 构建已含 XNNPACK | C/C++ 或 Objective-C 封装接口 | 提供配置说明；构建和打包需要 macOS 与 Xcode |
 | Windows | 使用 `--use_xnnpack` 自定义构建 ORT | C、C++ 或自定义 Python wheel | 一键脚本支持 |
 | Linux | 使用 `--use_xnnpack` 自定义构建 ORT | C、C++ 或自定义 Python wheel | 一键脚本支持 |
 | WebAssembly | XNNPACK 和 ORT 都支持 WASM 构建 | 取决于具体构建所提供的 JavaScript/C API | 本文只介绍源码；浏览器演示请参阅 Web 目录 |
@@ -186,22 +186,23 @@ mindmap
 
 ### 2.2 桌面构建依赖
 
-一键脚本固定使用 ONNX Runtime `v1.27.1`，并在构建前核对提交 `df2ba1cf8108aa63627cf4cdf8f807880b938616`，确保源码版本没有发生变化。
+一键脚本固定使用 ONNX Runtime `v1.29.0`，并在构建前核对提交 `2e2543fbe9fae542f921d47a72d21d5a4ef0b710`，确保源码版本没有发生变化。
 
 | 启动脚本检查项 | 要求 |
 |---|---|
 | 主机 | Linux 或 Windows；64 位进程 |
 | Python | CPython 3.11–3.14 |
 | CMake | 3.28 或更新版本 |
-| 编译器 | Linux `cc` + `c++`（ORT 会拒绝低于 11.1 的 GCC）；Windows 使用 Visual Studio 2022 的 `cl` |
+| 编译器 | Linux `cc` + `c++`（ORT 会拒绝低于 11.1 的 GCC）；Windows 使用 Visual Studio 2022 的 `cl`，并让命令行环境与目标架构一致 |
 | 构建工具 | 优先使用 Ninja；Linux 没有 Ninja 时可回退到 Make |
-| 隔离的 Python 环境 | 使用指定提交构建的 ORT `1.27.1` 自定义 wheel，以及 `onnx==1.22.0`；脚本会自动安装并再次核对版本 |
+| 隔离的 Python 环境 | 使用指定提交构建的 ORT `1.29.0` 自定义 wheel，以及 `onnx==1.22.0`；脚本会自动安装并再次核对版本 |
+| XNNPACK 源码 | 提交 `3cf85e705098622d59056dcb8f5f963ea7bb0a00`（lock 标签 `2025.06.22`）；压缩包 SHA-1 `6f6bbba627241f89463ca845febaf063982b34fe` |
 
 **Ubuntu 24.04 / Debian 系基线：**
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential git python3-dev python3-venv ninja-build
+sudo apt install -y build-essential git cmake python3-dev python3-venv ninja-build
 cmake --version
 python3 --version
 ```
@@ -214,7 +215,7 @@ Ubuntu 24.04 自带的软件包已经满足这些要求。较旧的发行版需�
 2. 安装 Git for Windows。
 3. 安装 CMake 3.28+ 并加入 `PATH`。
 4. 安装 Visual Studio 2022，勾选 **Desktop development with C++**、MSVC 和当前 Windows SDK。
-5. 在 **x64 Native Tools Command Prompt for VS 2022** 中运行。
+5. 在与目标 Python 一致的 **x64** 或 **ARM64 Native Tools Command Prompt for VS 2022** 中运行。
 
 桌面端启动脚本不支持 macOS；如需部署到 Apple 移动设备，请使用官方 iOS 软件包。
 
@@ -231,7 +232,7 @@ python XNNPACK/one_click.py
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart LR
-    A["创建 .venv-xnnpack"] --> B["拉取指定版本 ORT 源码<br/>核对准确提交"]
+    A["创建隔离环境"] --> B["拉取指定版本 ORT 源码<br/>核对准确提交"]
     B --> C["构建 wheel<br/>--use_xnnpack"]
     C --> D["安装 wheel<br/>核对内嵌提交"]
     D --> E["生成静态<br/>FP32 MatMul"]
@@ -254,12 +255,14 @@ flowchart LR
 
 `MatMul` 模型中的右侧矩阵是计算图里的常量，脚本还关闭了 Python 创建会话时的重试回退，因此一旦有节点未被分配，会话会直接报错，而不是悄悄回退。
 
+Windows 默认把环境、源码/构建目录和验证产物放在 `%LOCALAPPDATA%\ort-xnnpack-demo\py<major><minor>-<arch>` 下，以避免旧式路径长度限制。Linux 仍在本目录使用 `.venv-xnnpack`、`.xnnpack-build` 与 `.xnnpack-smoke`。可通过 `--venv`、`--work-dir`、`--artifacts-dir` 分别覆盖这些位置。
+
 **常用参数：**
 
 | 目标 | 命令 |
 |---|---|
 | 默认严格验证 | `python XNNPACK/one_click.py` |
-| 复用已经构建好的 wheel | `python XNNPACK/one_click.py --wheel /path/to/onnxruntime-1.27.1-*.whl` |
+| 复用已经构建好的 wheel | `python XNNPACK/one_click.py --wheel /path/to/onnxruntime-1.29.0-*.whl` |
 | 重新生成源码/构建目录 | `python XNNPACK/one_click.py --refresh` |
 | 分别调节构建并行数与 XNNPACK 线程数 | `python XNNPACK/one_click.py --jobs 4 --threads 8` |
 | 快速离线测试启动脚本，不构建 ONNX Runtime | `python XNNPACK/one_click.py --unit-tests` |
@@ -303,18 +306,19 @@ Profile 事件数会随预热次数和正式运行次数变化，因此通过条
 
 | 源码 | 职责 |
 |---|---|
-| [`xnnpack_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/xnnpack_provider_factory.cc) | 保存 Provider 和会话参数，并创建 `XnnpackExecutionProvider` |
-| [`xnnpack_execution_provider.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/xnnpack_execution_provider.h) | 声明首选的 NHWC 布局、选择性融合方式、会话内 `Run()` 串行化、内存分配器和私有线程池 |
-| [`xnnpack_execution_provider.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/xnnpack_execution_provider.cc) | 注册静态内核、管理线程池、初始化 XNNPACK，并实现两轮 `GetCapability` 检查 |
-| [`detail/node_support_checker.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/detail/node_support_checker.cc) | 调用各 ONNX/NodeUnit 支持检查，并判断 `Clip`/`Relu` 能否融合 |
-| [`detail/utils.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/detail/utils.cc) | 处理 QDQ 分类与融合、激活函数 MetaDef、量化参数解析和 padding 模式判断 |
-| [`xnnpack_kernel.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/xnnpack_kernel.h) | 内核基类，用于保存私有线程池和可选的 XNNPACK 缓存 |
-| [`xnnpack_init.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/xnnpack_init.cc) | 将 ORT CPU 内存分配器适配为 XNNPACK 所需的分配回调表 |
-| [`nn/`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/nn) | Conv、ConvTranspose、AveragePool 和 MaxPool 的支持检查与内核实现 |
-| [`math/`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/math) | Gemm、MatMul 和 Softmax 的支持检查与内核实现 |
-| [`tensor/resize.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/tensor/resize.cc) | 双线性 Resize 的支持检查和 XNNPACK operator 生命周期管理 |
-| [`onnxruntime_providers_xnnpack.cmake`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/cmake/onnxruntime_providers_xnnpack.cmake) | 把 EP 构建为静态库并定义 `USE_XNNPACK` |
-| [`external/xnnpack.cmake`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/cmake/external/xnnpack.cmake) | 获取 XNNPACK/pthreadpool/fxdiv、选择目标架构，并在适用的 Arm 平台加入 KleidiAI |
+| [`xnnpack_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/xnnpack_provider_factory.cc) | 保存 Provider 和会话参数，并创建 `XnnpackExecutionProvider` |
+| [`xnnpack_execution_provider.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/xnnpack_execution_provider.h) | 声明首选的 NHWC 布局、选择性融合方式、会话内 `Run()` 串行化、内存分配器和私有线程池 |
+| [`xnnpack_execution_provider.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/xnnpack_execution_provider.cc) | 注册静态内核、管理线程池、初始化 XNNPACK，并实现两轮 `GetCapability` 检查 |
+| [`detail/node_support_checker.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/detail/node_support_checker.cc) | 调用各 ONNX/NodeUnit 支持检查，并判断 `Clip`/`Relu` 能否融合 |
+| [`detail/utils.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/detail/utils.cc) | 处理 QDQ 分类与融合、激活函数 MetaDef、量化参数解析和 padding 模式判断 |
+| [`xnnpack_kernel.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/xnnpack_kernel.h) | 内核基类，用于保存私有线程池和可选的 XNNPACK 缓存 |
+| [`xnnpack_init.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/xnnpack_init.cc) | 将 ORT CPU 内存分配器适配为 XNNPACK 所需的分配回调表 |
+| [`nn/`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/nn) | Conv、ConvTranspose、AveragePool 和 MaxPool 的支持检查与内核实现 |
+| [`math/`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/math) | Gemm、MatMul 和 Softmax 的支持检查与内核实现 |
+| [`tensor/resize.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/tensor/resize.cc) | 双线性 Resize 的支持检查和 XNNPACK operator 生命周期管理 |
+| [`onnxruntime_providers_xnnpack.cmake`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/cmake/onnxruntime_providers_xnnpack.cmake) | 把 EP 构建为静态库并定义 `USE_XNNPACK` |
+| [`external/xnnpack.cmake`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/cmake/external/xnnpack.cmake) | 读取依赖 lock、配置 XNNPACK/pthreadpool/fxdiv、选择目标架构，并在适用的 Arm 平台加入 KleidiAI |
+| [`cmake/deps.txt`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/cmake/deps.txt) | 固定 `external/xnnpack.cmake` 使用的准确 XNNPACK 压缩包 URL 与 SHA-1 |
 
 ### 4.2 创建调用链
 
@@ -381,8 +385,8 @@ flowchart TD
 
 该 Provider 没有为独立的 `Relu` 或 `Clip` 注册 XNNPACK 内核，但可以将它们融合到前面的内部 NHWC `Conv`、`MaxPool` 或 `AveragePool` 中。具体做法是在前驱算子的 MetaDef 中记录输出的最小值和最大值。量化 QDQ 组不参与这种激活函数融合。
 
-> [!WARNING]
-> 稳定版 `v1.27.1` 早于修复提交 [`86cbd205`](https://github.com/microsoft/onnxruntime/commit/86cbd2052540c59ad54f5ca135f9b0f58453557a)。如果激活函数之前的输出同时也是计算图输出，或还有其他消费节点，该修复会拒绝融合。`v1.27.1` 仍可能融合这类分支图，随后因为输入悬空而无法创建会话。一键 `MatMul` 验证不受影响。如果生产模型的分支还会使用 Conv/Pool 在激活前的输出，请升级到包含该修复的版本，或回移该提交，然后重新检查节点分配。
+> [!NOTE]
+> ORT 1.29.0 的 `HasOnlyActivationConsumer` 会在前驱输出同时是计算图输出或还有其他消费节点时拒绝融合。因此，带分支的 Conv/Pool 输出会保留为显式图值，不再触发旧版本中的输入悬空问题。
 
 ---
 
@@ -392,9 +396,9 @@ XNNPACK 和 ORT 各自维护一套 intra-op 线程池。如果两套线程池申
 
 | 配置 | 所有者 | 源码行为 |
 |---|---|---|
-| `SessionOptions.intra_op_num_threads` | ORT | 控制 ORT 的 intra-op 线程池 |
+| `SessionOptions.intra_op_num_threads` | ORT | 控制 ORT 的 intra-op 线程池。默认值 `0` 会优先读取 `ORT_INTRA_OP_NUM_THREADS`；未设置该环境变量时由 ORT 选择与机器规模相匹配的线程池 |
 | `session.intra_op.allow_spinning` | ORT | 等待时自旋会占用 CPU；XNNPACK 负责计算线程时应关闭。默认值为 `"1"`（自旋），除非构建时启用了 `ORT_CLIENT_PACKAGE_BUILD`（此时默认值为 `"0"`） |
-| XNNPACK `intra_op_num_threads` | XNNPACK EP | 公开接口要求该值 >= `1`，默认值及实际效果均为 `1`。内部用 `0` 表示调用方未提供配置，此时会复制 ORT 会话原先的线程设置；只有最终结果大于 `1` 时才创建私有 pthreadpool。调优时建议显式设置。 |
+| XNNPACK `intra_op_num_threads` | XNNPACK EP | 固定的 ORT `v1.29.0` 源码默认值为 `0`，表示继承 ORT 会话中的原始设置；实时公开页面则写作默认 `1`，本指南以不可变提交 `2e2543f` 为准。ORT 与 XNNPACK 都保持源码默认 `0` 时，XNNPACK 不创建私有线程池，而 ORT 会单独确定自己的线程池规模。显式设为 `1` 也不创建私有 XNNPACK 线程池；大于 `1` 才会创建。调优时应同时显式设置两套线程池。 |
 | `ConcurrentRunSupported()` | XNNPACK EP | 返回 `false`；因此 ORT 会通过会话级锁，让同一会话中的 `Run()` 调用串行执行 |
 
 推荐起点：
@@ -439,7 +443,7 @@ flowchart TD
 ```
 
 > [!NOTE]
-> 在已核验的 `v1.27.1` 中，Gemm 和 MatMul 虽然在 reshape 阶段使用私有线程池，但调用 `xnn_run_operator` 时传入的是 `nullptr`。因此，不能认为增加 XNNPACK 线程数一定会加速这两个内核。Conv、Pool、Softmax 和 Resize 的执行路径则会传入私有线程池。所有性能结论都必须注明所用模型和源码版本。
+> 在已核验的 `v1.29.0` 中，Gemm 和 MatMul 仍然只在 reshape 阶段使用私有线程池，调用 `xnn_run_operator` 时传入的是 `nullptr`。因此，不能认为增加 XNNPACK 线程数一定会加速这两个内核。Conv、Pool、Softmax 和 Resize 的执行路径则会传入私有线程池。所有性能结论都必须注明所用模型和源码版本。
 
 ### 6.1 XNNPACK Provider 选项参考
 
@@ -447,7 +451,7 @@ flowchart TD
 
 | Provider 选项键 | 类型 | 可接受的值 | 缺省该键时的默认行为 | 作用 |
 |---|---|---|---|---|
-| `intra_op_num_threads` | 整数，以字符串形式传入（例如 `"4"`） | 任何 `std::stoi` 能解析的值；公开接口要求 `>= 1` | 内部先存为 `0`，此时会复制 ORT 自身的 `session_options->intra_op_param.thread_pool_size`（除非你设置了 `SessionOptions.intra_op_num_threads`，否则该值本身也是 `1`） | 请求创建一个**私有的 XNNPACK pthreadpool**。只有解析结果大于 `1` 时才会真正创建私有线程池；随后 Conv/Pool/Softmax/Resize 内核会使用它（Gemm/MatMul 不会——见上面的提示）。 |
+| `intra_op_num_threads` | 整数，以字符串形式传入（例如 `"4"`） | 任何 `std::stoi` 能解析的值；显式设置时应使用 `>= 1` | 内部先存为 `0`，此时会复制 `session_options->intra_op_param.thread_pool_size` 的原始值；如果后者也保持默认 `0`，则不会创建私有 XNNPACK 线程池 | 请求创建一个**私有的 XNNPACK pthreadpool**。只有解析结果大于 `1` 时才会真正创建私有线程池；随后 Conv/Pool/Softmax/Resize 内核会使用它（Gemm/MatMul 不会——见上面的提示）。 |
 
 传入其他任何键都会被静默忽略——ORT 自带的 `xnnpack_basic_test.cc` 特意设置 `options["one"] = "two"`，只是为了证明多余的键不会破坏会话创建。和某些其他 EP 不同（例如 DirectML 的 `ep.dml.*` 会话配置项），XNNPACK 并没有专门的 `xnnpack_..._config_keys.h`，也不会直接读取任何通过 `SessionOptions.add_session_config_entry` 设置的值。
 
@@ -455,8 +459,9 @@ flowchart TD
 # 这是当前唯一真实存在的 XNNPACK Provider 选项，逐项加了注释。
 provider_options = {
     # XNNPACK 私有 pthreadpool 的大小：
-    #   - "1"（或者干脆不传这个键）：不会创建私有线程池，XNNPACK 内核会直接
-    #     在调用 Run() 的那个线程上执行。
+    #   - 省略：继承 SessionOptions.intra_op_num_threads。两者都保持默认
+    #     0 时，不会创建私有 XNNPACK 线程池。
+    #   - "1"：明确不创建私有 XNNPACK 线程池。
     #   - ">1"：XNNPACK 会创建一个独立于 ORT intra-op 线程池的私有
     #     pthreadpool。Conv/Pool/Softmax/Resize 会使用它；Gemm/MatMul 目前
     #     不会（见上面的提示）。
@@ -471,7 +476,7 @@ provider_options = {
 
 ## 7. 从源码确认算子支持范围
 
-官方页面只提供摘要。下表结合 `v1.27.1` 的检查器、内核注册表和内核实现，整理出适合生产环境采用的保守支持范围。对于检查器接受、但实际实现仍存在风险的情况，后文会单独列出。
+官方页面只提供摘要。下表结合 `v1.29.0` 的检查器、内核注册表和内核实现，整理出适合生产环境采用的保守支持范围。对于检查器接受、但实际实现仍存在风险的情况，后文会单独列出。
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"fontSize":"14px","primaryColor":"#dbeafe","primaryTextColor":"#1e293b","primaryBorderColor":"#3b82f6","lineColor":"#94a3b8"},"themeCSS":".mindmap-node text{fill:#1e293b !important;} .mindmap-node span{color:#1e293b !important;}"}}%%
@@ -510,7 +515,7 @@ mindmap
 | QDQ `MaxPool` | 输入输出量化类型必须相同，且为 UINT8 或 INT8；Pool 计算本身不使用单独量化参数 |
 | 普通 ONNX `Resize` | opset >= 10；rank 4；FP32、opset 10–18 上合格平台的 FP16、UINT8 或 INT8；`scales`/`sizes` 为常量；N/C 不变且 H/W 与输出 H/W 已知；`mode=linear`；禁止 antialias/axes/exclude-outside；aspect policy 为 stretch；extrapolation 为 0；坐标模式受限；降采样需通过因数检查 |
 | QDQ `Resize` | 检查器会识别该模式，但融合后生成的是 ONNX 域中的 `Resize`，而对应的静态内核注册在内部 NHWC 域中；上游测试也处于禁用状态。因此，已核验版本不应使用此模式。 |
-| `Gemm` | 使用 FP32，或在兼容平台上使用 FP16；A/B 为二维；`alpha=1`、`beta=1`、`transA=0`；B 为常量；C 省略，或使用常量的一维输出通道 bias；支持 `transB` |
+| `Gemm` | 使用 FP32，或在兼容平台上使用 FP16；A/B 为二维；运行时 M 可以变化，K/N 与常量 B 在会话创建时固定；`alpha=1`、`beta=1`、`transA=0`；C 省略，或使用常量的一维输出通道 bias；支持 `transB` |
 | `MatMul` | 使用 FP32，或在兼容平台上使用 FP16；A 的 rank >= 1；B 是 rank 1 或 rank 2 的非空常量；运行时会将 N-D A 的外层维度展平为 batch |
 | `Softmax` | 使用 FP32，或在兼容平台上使用 FP16；reduction 维度必须是静态值；opset >= 13 时只支持最后一个 axis；opset <= 12 时保留从 axis 开始展平的语义 |
 | QDQ `Softmax` | 只支持 UINT8；输出 scale 必须约为 `1/256`、输出 zero point 为 `0`；融合成动态内部 `QLinearSoftmax` schema |
@@ -524,11 +529,11 @@ mindmap
 | MatMul 只支持 2D | A 可以是 N-D；常量 B 仍只能是 rank 1 或 rank 2 |
 | 注册算子即可使用 | 量化 AveragePool 虽然已经注册，但兼容性检查仍会无条件拒绝它 |
 | 内核注册表包含较旧的 Conv 版本 | `ConvBase::IsOnnxNodeSupported` 会在布局转换前拒绝 opset 11 以下的 ONNX Conv/ConvTranspose |
-| XNNPACK 线程可加速 Gemm/MatMul | 在 `v1.27.1` 中，两者在 reshape 时会使用线程池，但调用 `xnn_run_operator` 时传入的却是 `nullptr` |
+| XNNPACK 线程可加速 Gemm/MatMul | 在 `v1.29.0` 中，两者在 reshape 时会使用线程池，但调用 `xnn_run_operator` 时仍传入 `nullptr` |
 
 ### 已知的检查器与内核实现缺口
 
-前六项问题在已核验的 `main` 提交 `bf6aa006` 中仍然存在；最后一项激活函数融合问题已由 `86cbd205` 修复。
+下面六项检查器/内核缺口在已核验的 ORT 1.29.0 中仍然存在。
 
 | 特殊情况 | 源码实际行为 | 建议做法 |
 |---|---|---|
@@ -538,7 +543,6 @@ mindmap
 | `Resize` 改变 batch，或 H/W 为动态值 | 检查器会检查 C，却不检查 N；`Compute` 强制输出 N 等于输入 N，而 operator 创建时会固定输出 H/W | 保持 N/C 不变，并固定 H/W |
 | opset 19 的 FP16 `Resize` | 检查器接受 FP16，但 opset 19 注册的内核不包含 FP16 | FP16 使用 opset 10–18，或改用 FP32/UINT8/INT8 |
 | opset <= 12 的 `Softmax` reduction 维度未知 | 内层循环的 `break` 不会拒绝节点；Session 创建时会预计算 channel 数 | `axis` 起的维度保持静态 |
-| `v1.27.1` 中激活函数的前驱算子还有其他消费节点，或其输出同时也是图输出 | 稳定版不会拒绝融合该分支，因而可能留下悬空输入 | 升级到包含 `86cbd205` 的版本、回移该提交，或避免在分支中继续使用激活前的输出 |
 
 ### FP16 支持条件
 
@@ -551,6 +555,7 @@ XNNPACK 的执行流程是 create → reshape → setup → run，不过 create 
 | 算子 | Session 创建时固定 | 仍可安全变化的运行时维度 |
 |---|---|---|
 | Conv / Pool | C/H/W、属性、常量权重 | Batch N |
+| Gemm | K/N、常量 B 与可选的常量一维 bias | 矩阵行数 M |
 | MatMul | rank-1/rank-2 常量 B 和 reduction 宽度 | A 的外层 batch 维度 |
 | Softmax | 参与 reduction 的维度 | reduction 区域之前的维度 |
 | Resize | 常量 scales/sizes 和输出 H/W；C 不变 | N 本身不做 resize 时，Batch N 可变化 |
@@ -783,7 +788,6 @@ flowchart TD
 | 禁用 CPU 回退后无法创建 Session | 至少一个节点不满足 XNNPACK 的支持条件 | 临时开启回退，检查详细日志和节点分配，再对照 [§7](#7-从源码确认算子支持范围) 排查 |
 | Conv/Pool 仍由 CPU EP 执行 | C/H/W 为动态维度、padding 或其他属性不受支持、请求了可选输出，或者权重/bias 不是常量 | 固定相关维度并使用 initializer，或保留 CPU EP 作为回退 |
 | 量化模型仍由 CPU EP 执行 | U8/S8 组合不匹配、量化参数是动态值、按通道 zero point 不合规，或 QDQ 模式不受支持 | 按照 [§7](#7-从源码确认算子支持范围) 核对 scale、zero point 和数据类型 |
-| `v1.27.1` 中 `Clip`/`Relu` 分支导致图无效 | 该稳定版早于分支消费节点的融合修复 | 升级到包含 `86cbd205` 的版本、回移该提交，或避免在分支中使用激活前的输出 |
 | 增加线程后反而变慢 | ORT 与 XNNPACK 线程池相互争用、拓扑识别不准确，或工作负载太小 | 将 ORT intra-op 设为 `1`、spinning 设为 `0`，再从 1 到物理核心数逐一测试 XNNPACK 线程数 |
 | `--threads` 没有加速 MatMul/Gemm | 已核验版本的内核在执行阶段向 `xnn_run_operator` 传入 `nullptr`，而不是线程池 | 这是该版本的已知行为；请实测其他版本，或改用受支持且以 Conv 为主的工作负载 |
 | 输出正确，但没有 XNNPACK 事件 | Provider 已加载，但节点没有分配给它；也可能是分配信息 API/profile 不可用 | 不能据此判定通过；请使用完整的自定义构建，并检查当前会话的节点分配和 profile |
@@ -796,11 +800,13 @@ flowchart TD
 
 - [XNNPACK Execution Provider 官方页面](https://onnxruntime.ai/docs/execution-providers/Xnnpack-ExecutionProvider.html)
 - [官方 EP 构建说明](https://onnxruntime.ai/docs/build/eps.html#xnnpack)
-- [已核验的 `main` 源码快照（`bf6aa006`）](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack)
+- [已核验的 ORT 1.29.0 源码（`2e2543f`）](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack)
 - [实时 `main` 源码（可能变化）](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/providers/xnnpack)
-- [固定版本的 Provider 源码（`v1.27.1`，`df2ba1cf`）](https://github.com/microsoft/onnxruntime/tree/df2ba1cf8108aa63627cf4cdf8f807880b938616/onnxruntime/core/providers/xnnpack)
-- [已核验 `main` 中的 Provider 注册实现](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/provider_registration.cc)
-- [已核验 `main` 中的 Python Provider Factory](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/python/onnxruntime_pybind_state.cc)
-- [已核验 `main` 中的 XNNPACK CMake 集成](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/cmake/external/xnnpack.cmake)
+- [ORT 1.29.0 中的 Provider 注册实现](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/provider_registration.cc)
+- [ORT 1.29.0 中的 Python Provider Factory](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/python/onnxruntime_pybind_state.cc)
+- [ORT 1.29.0 中的 XNNPACK 依赖 lock](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/cmake/deps.txt)
+- [ORT 1.29.0 中的 XNNPACK CMake 集成](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/cmake/external/xnnpack.cmake)
+- [ORT 1.29.0 官方 Android 完整 AAR 构建配置](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/tools/ci_build/github/android/default_full_aar_build_settings.json)
+- [ORT 1.29.0 官方 Apple 完整 framework 构建配置](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/tools/ci_build/github/apple/default_full_apple_framework_build_settings.json)
 - [XNNPACK 上游项目](https://github.com/google/XNNPACK)
-- [`v1.27.1` 之后的 activation side-consumer 修复](https://github.com/microsoft/onnxruntime/commit/86cbd2052540c59ad54f5ca135f9b0f58453557a)
+- [固定的 XNNPACK 源码提交](https://github.com/google/XNNPACK/commit/3cf85e705098622d59056dcb8f5f963ea7bb0a00)

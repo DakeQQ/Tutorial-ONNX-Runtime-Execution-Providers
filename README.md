@@ -1,8 +1,8 @@
 # ONNX Runtime Execution Provider Tutorials
 
-Reproducible setup guides and **strict** smoke tests that prove your ONNX model truly runs through **Apple, AMD, Intel, NVIDIA, Qualcomm, Web, cross-vendor Windows, or XNNPACK CPU** backends — not just that a provider *could* load.
+Reproducible setup guides and **strict** smoke tests designed to show whether an ONNX model truly runs through **Apple, AMD, Intel, NVIDIA, Qualcomm, Web, cross-vendor Windows, or XNNPACK CPU** backends — not just whether a provider *can* load. Run a test on matching hardware to produce that proof; each guide records exactly what the repository audit did and did not execute.
 
-[简体中文](README.zh-CN.md)  ·  **Last verified: 2026-07-17.** Every platform guide pins its own packages, hardware gates, tested environments, and validation limits.
+[简体中文](README.zh-CN.md)  ·  **Repository baseline: 2026-09-01.** Every platform guide pins its own packages, hardware gates, tested environments, and validation limits.
 
 ---
 
@@ -86,14 +86,14 @@ flowchart LR
 > [!IMPORTANT]
 > A provider appearing in `get_available_providers()` only means the runtime **can load** it. It does **not** mean your model's nodes actually **ran through that EP**.
 
-That single gap is why so many "it works" demos quietly fall back to CPU. Every test here closes it with four independent checks:
+That single gap is why so many "it works" demos quietly fall back to CPU. Each platform guide defines its exact evidence boundary. The strongest strict runs combine four checks; when a route cannot expose one, its guide names the substitute evidence or remaining limitation:
 
 ```mermaid
 flowchart TD
     Q["get_available_providers()<br/>lists my EP"]
     Q -->|only proves| A["the runtime can load it"]
     Q -.->|does NOT prove| B["your nodes ran through that EP"]
-    subgraph Need["Real proof = all four together"]
+    subgraph Need["Strong proof combines four checks"]
       direction LR
       M["Deterministic<br/>smoke model"] --> R["Independent<br/>reference"]
       R --> G["Assignment /<br/>profile evidence"]
@@ -105,7 +105,7 @@ flowchart TD
 | Check | Confirms | Guards against |
 |---|---|---|
 | Deterministic smoke model | The same input every run | Flaky, unreproducible results |
-| Independent reference | The output is numerically correct | Silently wrong math |
+| Independent reference | Output matches a separate implementation or CPU route, when the guide provides one | Silently wrong math |
 | Assignment / profile evidence | Nodes ran on the target EP | Invisible ORT CPU execution |
 | No CPU fallback | ORT did not move unsupported graph work to its CPU EP | Quiet ORT CPU fallback that looks like success |
 
@@ -135,7 +135,7 @@ flowchart LR
     PL --> RUN
 ```
 
-This repository already exercises four plugin routes: Windows ML MIGraphX, QNN 2.x, standalone TensorRT RTX, and native WebGPU. Registration or device discovery alone is not an execution pass; each platform test still requires output, assignment/profile, and no-fallback evidence.
+This repository covers four plugin routes: Windows ML MIGraphX, QNN 2.x, standalone TensorRT RTX, and native WebGPU. Registration or device discovery alone is not an execution pass. Each guide states the output, assignment/profile, and fallback checks its strict route can perform, plus any remaining device-level limitation.
 
 Read the [Plugin EP source deep dive](PluginEP/README.md) for the loader call chain, `OrtEpFactory` / `OrtEp` lifecycle, compile-versus-kernel execution paths, ABI evolution, packaging rules, and source links.
 
@@ -143,7 +143,7 @@ Read the [Plugin EP source deep dive](PluginEP/README.md) for the loader call ch
 
 ## Pick your path
 
-Start from the hardware in front of you, open its guide, and run the first command.
+Start from the hardware in front of you, open its guide, complete the stated prerequisites, and then run its proof command.
 
 ```mermaid
 flowchart TD
@@ -166,11 +166,11 @@ flowchart TD
     XNN --> G
 ```
 
-| Platform | What you have | Hosts | First command | Guides |
+| Platform | What you have | Hosts | Proof command after guide setup | Guides |
 |---|---|---|---|---|
 | **Apple** | Apple Silicon Mac or iPhone/iPad via CoreML | macOS · iOS | `python3 Apple/one_click.py`<br/><sub>current Python route: macOS 14+ arm64</sub> | [EN](Apple/README.md) · [中文](Apple/README.zh-CN.md) |
 | **Windows** | Any supported DirectX 12 GPU, or Windows ML catalog CPU/GPU/NPU | Windows 10/11; catalog EPs: Windows 11 24H2+ | `py -3.12 DirectML\one_click.py directml`<br/><sub>Windows ML: replace `directml` with `windowsml --allow-download`</sub> | [EN](DirectML/README.md) · [中文](DirectML/README.zh-CN.md) |
-| **AMD** | AMD GPU (DirectML / MIGraphX) or Ryzen AI NPU (Vitis AI) | Windows · Ubuntu | `python AMD/provider_test.py --target dml`<br/><sub>swap `dml` → `migraphx` or `npu` for your host</sub> | [EN](AMD/README.md) · [中文](AMD/README.zh-CN.md) |
+| **AMD** | AMD GPU (DirectML / MIGraphX) or Ryzen AI NPU (Vitis AI) | Windows · Ubuntu | `python AMD/provider_test.py --target dml --bootstrap --strict-all`<br/><sub>Windows DirectML example. Ubuntu MIGraphX and NPU routes need different setup; follow the AMD guide rather than swapping only the target.</sub> | [EN](AMD/README.md) · [中文](AMD/README.zh-CN.md) |
 | **Intel** | Intel CPU, integrated/discrete GPU, or NPU via OpenVINO | Windows 11 · Ubuntu x86-64 | `bash Intel/run_demo.sh --device CPU`<br/><sub>Windows: `Intel\run_demo.bat --device CPU`</sub> | [EN](Intel/README.md) · [中文](Intel/README.zh-CN.md) |
 | **NVIDIA** | NVIDIA GPU via CUDA, classic TensorRT, or TensorRT RTX | Windows 10/11 · Ubuntu x86-64 | `python NVIDIA/provider_test.py --provider cuda` | [EN](NVIDIA/README.md) · [中文](NVIDIA/README.zh-CN.md) |
 | **Qualcomm** | Snapdragon HTP/NPU or GPU via QNN | Windows ARM64 · Android ARM64 | `python Qualcomm/one_click.py htp`<br/><sub>Android: `python Qualcomm/AndroidDemo/build_demo.py --install --backend htp`</sub> | [EN](Qualcomm/README.md) · [中文](Qualcomm/README.zh-CN.md) · [App](Qualcomm/AndroidDemo/README.md) |
@@ -255,13 +255,13 @@ For CoreML and any other EP with an internal scheduler, this table stops at the 
 | [DirectML](DirectML/README.md) | Cross-vendor DirectML and Windows ML setup, strict one-click proof, EP catalog workflow, and DML/WinML source deep dive |
 | [AMD](AMD/README.md) | DirectML, Windows ML MIGraphX, ROCm/MIGraphX, and Ryzen AI/Vitis AI setup and verification |
 | [Intel](Intel/README.md) | OpenVINO EP setup for Intel CPU, GPU, NPU, and meta-devices |
-| [NVIDIA](NVIDIA/README.md) | CUDA, classic TensorRT, and standalone TensorRT RTX setup and strict profiling tests |
+| [NVIDIA](NVIDIA/README.md) | CUDA, classic TensorRT, standalone TensorRT RTX, strict profiling tests, and a cross-provider pseudo-LLM benchmark (RTX 5060 Ti verified) |
 | [Qualcomm](Qualcomm/README.md) | QNN 2.x plugin setup for Snapdragon Windows and Android |
 | [Qualcomm/AndroidDemo](Qualcomm/AndroidDemo/README.md) | Complete Kotlin CPU/GPU/HTP application and one-click build/install launcher |
 | [WebGPU](WebGPU/README.md) | Browser WASM/WebGPU/WebNN and native Python WebGPU guidance |
 | [WebGPU/onnxruntime-web-demo](WebGPU/onnxruntime-web-demo/README.md) | Runnable cross-provider browser/native smoke test |
 | [XNNPACK](XNNPACK/README.md) | Source-level XNNPACK EP guide, mobile packages, desktop source build, threading, operator guards, and strict CPU-path proof |
-| [PluginEP](PluginEP/README.md) | Source-level guide to the Plugin EP ABI, loader, factories/devices, execution paths, compatibility, and packaging |
+| [PluginEP](PluginEP/README.md) | ORT 1.29 release audit of the Plugin EP ABI, loader, factories/devices, execution paths, compatibility, packaging, and the verified TensorRT RTX 0.4 pure-plugin route |
 
 ---
 

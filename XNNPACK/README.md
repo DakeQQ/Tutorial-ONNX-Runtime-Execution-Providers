@@ -1,8 +1,8 @@
 # ONNX Runtime + XNNPACK: cross-platform CPU inference
 
-[简体中文](README.zh-CN.md) · [Repository index](../README.md) · [Official XNNPACK EP documentation](https://onnxruntime.ai/docs/execution-providers/Xnnpack-ExecutionProvider.html) · [Audited source at `bf6aa006`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack)
+[简体中文](README.zh-CN.md) · [Repository index](../README.md) · [Official XNNPACK EP documentation](https://onnxruntime.ai/docs/execution-providers/Xnnpack-ExecutionProvider.html) · [Audited ORT 1.29.0 source at `2e2543f`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack)
 
-**XNNPACK** is a library of hand-tuned math kernels for Arm, x86, and WebAssembly **CPUs**. ONNX Runtime's **XNNPACK Execution Provider (EP)** hands it the ONNX nodes it can run, so inference goes faster on the *same* CPU — no GPU, no NPU involved. This folder *proves* that hand-off really happens, not just that the provider loaded.
+**XNNPACK** is a library of hand-tuned math kernels for Arm, x86, and WebAssembly **CPUs**. ONNX Runtime's **XNNPACK Execution Provider (EP)** hands it the ONNX nodes it can run, so inference goes faster on the *same* CPU — no GPU, no NPU involved. The included launcher is designed to prove that hand-off when its strict run completes; the validation boundary below records that this audit did not build or run the custom wheel.
 
 ```bash
 # Linux, from the repository root -> builds ONNX Runtime once, then proves it
@@ -19,17 +19,17 @@ python XNNPACK/one_click.py
 
 | Item | Baseline |
 |---|---|
-| Last verified | `2026-07-17` against ONNX Runtime `main` [`bf6aa006`](https://github.com/microsoft/onnxruntime/commit/bf6aa0063d1c178c4a4d33ed6770425834147e2a) and stable `v1.27.1` [`df2ba1cf`](https://github.com/microsoft/onnxruntime/commit/df2ba1cf8108aa63627cf4cdf8f807880b938616) |
-| Validation boundary | Launcher unit tests pass on Linux; the real source build and strict inference also need working GitHub/codeload access and the build tools in [§2](#2-choose-a-package-or-build) |
+| Last verified | `2026-09-01` against ONNX Runtime `v1.29.0` at immutable commit [`2e2543f`](https://github.com/microsoft/onnxruntime/commit/2e2543fbe9fae542f921d47a72d21d5a4ef0b710) |
+| Validation boundary | All 6 launcher unit tests pass on Windows CPython 3.14.7; the tag, source/API behavior, XNNPACK archive hash, and mobile package coordinates were verified. This shell has no CMake, MSVC `cl`, or Ninja, so a fresh custom wheel build and strict XNNPACK inference still require a prepared build host and were not claimed here |
 
 ### How to read this audit
 
 | Claim type | Ground truth used here | What it can prove |
 |---|---|---|
 | Package and public API | [Official XNNPACK page](https://onnxruntime.ai/docs/execution-providers/Xnnpack-ExecutionProvider.html) and [official build guide](https://onnxruntime.ai/docs/build/eps.html#xnnpack) | Supported package routes, API names, and documented options |
-| Stable behavior | Immutable ORT [`v1.27.1` source](https://github.com/microsoft/onnxruntime/tree/df2ba1cf8108aa63627cf4cdf8f807880b938616/onnxruntime/core/providers/xnnpack) | The launcher and [§7](#7-source-audited-operator-coverage)'s capability rules |
-| Newer behavior | Immutable audited `main` [commit `bf6aa006`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack) | Post-release fixes and source drift |
-| This repository | `one_click.py` unit tests plus strict assignment/profile checks | Launcher behavior on the machine where it is run |
+| Released behavior | Immutable ORT [`v1.29.0` source](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack) | The launcher and [§7](#7-source-audited-operator-coverage)'s capability rules |
+| Dependency integrity | ORT 1.29.0 [`cmake/deps.txt`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/cmake/deps.txt) plus a downloaded codeload archive | Exact XNNPACK commit/archive bytes used by the source build |
+| This repository | `one_click.py` unit tests plus strict assignment/profile checks | Unit tests prove launcher logic; only a completed strict run proves XNNPACK assignment on a built wheel |
 | Performance | Measurements on the target device and production model | Speed, memory, power, and thermals; source inspection cannot prove these |
 
 > [!IMPORTANT]
@@ -155,8 +155,8 @@ Mobile developers should skip straight to the matrix below — the official pack
 
 | Target | Official distribution | Registration | This repository's scope |
 |---|---|---|---|
-| Android | Maven [`com.microsoft.onnxruntime:onnxruntime-android`](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android) includes XNNPACK | Java `SessionOptions.addXnnpack(...)` | Documented; use the mobile package in an Android app |
-| iOS | CocoaPods `onnxruntime-c` and `onnxruntime-objc` include XNNPACK | C/C++ or Objective-C wrapper | Documented; build/package work requires macOS/Xcode |
+| Android | Maven [`com.microsoft.onnxruntime:onnxruntime-android:1.29.0`](https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.29.0/onnxruntime-android-1.29.0.pom) includes XNNPACK in the official full AAR build | Java `SessionOptions.addXnnpack(...)` | Documented; use the mobile package in an Android app |
+| iOS | CocoaPods [`onnxruntime-c` 1.29.0](https://trunk.cocoapods.org/api/v1/pods/onnxruntime-c) and [`onnxruntime-objc` 1.29.0](https://trunk.cocoapods.org/api/v1/pods/onnxruntime-objc) include XNNPACK in the official full Apple framework build | C/C++ or Objective-C wrapper | Documented; build/package work requires macOS/Xcode |
 | Windows | Custom ONNX Runtime build with `--use_xnnpack` | C, C++, or a custom Python wheel | Supported by the one-click launcher |
 | Linux | Custom ONNX Runtime build with `--use_xnnpack` | C, C++, or a custom Python wheel | Supported by the one-click launcher |
 | WebAssembly | XNNPACK and ORT both have WASM build paths | Build-specific JavaScript/C API integration | Source-discussed only; use the Web folder for browser-first demos |
@@ -166,22 +166,23 @@ Mobile developers should skip straight to the matrix below — the official pack
 
 ### 2.2 Desktop build prerequisites
 
-The launcher pins ONNX Runtime `v1.27.1` and verifies immutable commit `df2ba1cf8108aa63627cf4cdf8f807880b938616` before building.
+The launcher pins ONNX Runtime `v1.29.0` and verifies immutable commit `2e2543fbe9fae542f921d47a72d21d5a4ef0b710` before building.
 
 | Launcher gate | Required value |
 |---|---|
 | Host | Linux or Windows; 64-bit process |
 | Python | CPython 3.11–3.14 |
 | CMake | 3.28 or newer |
-| Compiler | Linux `cc` + `c++` (ORT rejects GCC below 11.1); Windows `cl` from Visual Studio 2022 |
+| Compiler | Linux `cc` + `c++` (ORT rejects GCC below 11.1); Windows `cl` from Visual Studio 2022, in a prompt matching the target architecture |
 | Build tool | Ninja when available; Make is accepted on Linux as the fallback |
-| Isolated Python stack | Custom ORT `1.27.1` wheel from the pinned commit plus `onnx==1.22.0`; the launcher installs and rechecks both |
+| Isolated Python stack | Custom ORT `1.29.0` wheel from the pinned commit plus `onnx==1.22.0`; the launcher installs and rechecks both |
+| XNNPACK source | Commit `3cf85e705098622d59056dcb8f5f963ea7bb0a00` (lock label `2025.06.22`); archive SHA-1 `6f6bbba627241f89463ca845febaf063982b34fe` |
 
 **Ubuntu 24.04 / Debian-family baseline:**
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential git python3-dev python3-venv ninja-build
+sudo apt install -y build-essential git cmake python3-dev python3-venv ninja-build
 cmake --version
 python3 --version
 ```
@@ -194,7 +195,7 @@ Ubuntu 24.04's packages meet the baseline as-is. On an older distribution, insta
 2. Install Git for Windows.
 3. Install CMake 3.28+ and add it to `PATH`.
 4. Install Visual Studio 2022 with **Desktop development with C++**, MSVC, and a current Windows SDK.
-5. Run from **x64 Native Tools Command Prompt for VS 2022**.
+5. Run from the **x64** or **ARM64 Native Tools Command Prompt for VS 2022** that matches the target Python.
 
 The desktop launcher rejects macOS; use the official iOS package flow on Apple mobile targets.
 
@@ -211,7 +212,7 @@ The first run is a real source build and can take a while:
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart LR
-    A["Create .venv-xnnpack"] --> B["Fetch pinned ORT source<br/>verify exact commit"]
+    A["Create isolated environment"] --> B["Fetch pinned ORT source<br/>verify exact commit"]
     B --> C["Build wheel<br/>--use_xnnpack"]
     C --> D["Install wheel<br/>verify embedded commit"]
     D --> E["Generate static<br/>FP32 MatMul"]
@@ -234,12 +235,14 @@ flowchart LR
 
 The right-hand matrix in the `MatMul` model is a graph constant, and the launcher disables Python's session-creation retry so an unassigned node fails loudly instead of silently falling back.
 
+On Windows, default environments, source/build trees, and proof artifacts live under `%LOCALAPPDATA%\ort-xnnpack-demo\py<major><minor>-<arch>` to avoid legacy path-length failures. Linux keeps `.venv-xnnpack`, `.xnnpack-build`, and `.xnnpack-smoke` in this folder. Override any location with `--venv`, `--work-dir`, or `--artifacts-dir`.
+
 **Useful variants:**
 
 | Goal | Command |
 |---|---|
 | Default strict proof | `python XNNPACK/one_click.py` |
-| Reuse an already-built wheel | `python XNNPACK/one_click.py --wheel /path/to/onnxruntime-1.27.1-*.whl` |
+| Reuse an already-built wheel | `python XNNPACK/one_click.py --wheel /path/to/onnxruntime-1.29.0-*.whl` |
 | Recreate generated source/build state | `python XNNPACK/one_click.py --refresh` |
 | Tune build jobs vs. XNNPACK's thread count separately | `python XNNPACK/one_click.py --jobs 4 --threads 8` |
 | Fast offline launcher tests; no ONNX Runtime build | `python XNNPACK/one_click.py --unit-tests` |
@@ -283,18 +286,19 @@ Production qualification must still test the operators and layouts in the real m
 
 | Source | Responsibility |
 |---|---|
-| [`xnnpack_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/xnnpack_provider_factory.cc) | Captures provider options/session options and creates `XnnpackExecutionProvider` |
-| [`xnnpack_execution_provider.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/xnnpack_execution_provider.h) | Declares preferred NHWC layout, filtered fusion style, serialized Session runs, allocator, and private pthreadpool |
-| [`xnnpack_execution_provider.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/xnnpack_execution_provider.cc) | Registers static kernels, owns the pool, initializes XNNPACK, and implements two-pass `GetCapability` |
-| [`detail/node_support_checker.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/detail/node_support_checker.cc) | Dispatches each ONNX/NodeUnit support check and tests `Clip`/`Relu` fusion |
-| [`detail/utils.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/detail/utils.cc) | QDQ classification/fusion, activation MetaDefs, quantization parsing, and supported padding modes |
-| [`xnnpack_kernel.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/xnnpack_kernel.h) | Base kernel that captures the private pool and optional XNNPACK caches |
-| [`xnnpack_init.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/xnnpack_init.cc) | Adapts an ORT CPU allocator to XNNPACK's allocation callback table |
-| [`nn/`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/nn) | Conv, ConvTranspose, AveragePool, and MaxPool support checks/kernels |
-| [`math/`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/math) | Gemm, MatMul, and Softmax support checks/kernels |
-| [`tensor/resize.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack/tensor/resize.cc) | Bilinear Resize support check and XNNPACK operator lifecycle |
-| [`onnxruntime_providers_xnnpack.cmake`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/cmake/onnxruntime_providers_xnnpack.cmake) | Builds this EP as a static library and defines `USE_XNNPACK` |
-| [`external/xnnpack.cmake`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/cmake/external/xnnpack.cmake) | Fetches XNNPACK/pthreadpool/fxdiv, selects the target architecture, and adds Arm KleidiAI where applicable |
+| [`xnnpack_provider_factory.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/xnnpack_provider_factory.cc) | Captures provider options/session options and creates `XnnpackExecutionProvider` |
+| [`xnnpack_execution_provider.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/xnnpack_execution_provider.h) | Declares preferred NHWC layout, filtered fusion style, serialized Session runs, allocator, and private pthreadpool |
+| [`xnnpack_execution_provider.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/xnnpack_execution_provider.cc) | Registers static kernels, owns the pool, initializes XNNPACK, and implements two-pass `GetCapability` |
+| [`detail/node_support_checker.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/detail/node_support_checker.cc) | Dispatches each ONNX/NodeUnit support check and tests `Clip`/`Relu` fusion |
+| [`detail/utils.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/detail/utils.cc) | QDQ classification/fusion, activation MetaDefs, quantization parsing, and supported padding modes |
+| [`xnnpack_kernel.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/xnnpack_kernel.h) | Base kernel that captures the private pool and optional XNNPACK caches |
+| [`xnnpack_init.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/xnnpack_init.cc) | Adapts an ORT CPU allocator to XNNPACK's allocation callback table |
+| [`nn/`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/nn) | Conv, ConvTranspose, AveragePool, and MaxPool support checks/kernels |
+| [`math/`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/math) | Gemm, MatMul, and Softmax support checks/kernels |
+| [`tensor/resize.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack/tensor/resize.cc) | Bilinear Resize support check and XNNPACK operator lifecycle |
+| [`onnxruntime_providers_xnnpack.cmake`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/cmake/onnxruntime_providers_xnnpack.cmake) | Builds this EP as a static library and defines `USE_XNNPACK` |
+| [`external/xnnpack.cmake`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/cmake/external/xnnpack.cmake) | Consumes the dependency lock, configures XNNPACK/pthreadpool/fxdiv, selects the target architecture, and adds Arm KleidiAI where applicable |
+| [`cmake/deps.txt`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/cmake/deps.txt) | Pins the exact XNNPACK archive URL and SHA-1 used by `external/xnnpack.cmake` |
 
 ### 4.2 Construction call chain
 
@@ -361,8 +365,8 @@ Key details:
 
 A standalone `Relu` or `Clip` is not an XNNPACK kernel in this provider. It can be folded into a preceding internal-NHWC `Conv`, `MaxPool`, or `AveragePool` by storing output min/max in the producer's MetaDef. Quantized QDQ groups are excluded from this activation fusion.
 
-> [!WARNING]
-> Stable `v1.27.1` predates commit [`86cbd205`](https://github.com/microsoft/onnxruntime/commit/86cbd2052540c59ad54f5ca135f9b0f58453557a), which rejects fusion when the pre-activation output is also a graph output or has another consumer. In `v1.27.1`, such a branched graph can fail session creation with a dangling input after fusion. The one-click `MatMul` proof is unaffected. For a production model with branched Conv/Pool outputs, use a release containing that fix or backport it and rerun assignment tests.
+> [!NOTE]
+> ORT 1.29.0's `HasOnlyActivationConsumer` guard rejects fusion when the producer output is also a graph output or has any other consumer. Branched Conv/Pool outputs therefore remain explicit graph values instead of creating the dangling-input failure found in older releases.
 
 ---
 
@@ -372,9 +376,9 @@ XNNPACK and ORT have separate intra-op pools. Oversubscribing both can reduce pe
 
 | Setting | Owner | Source behavior |
 |---|---|---|
-| `SessionOptions.intra_op_num_threads` | ORT | Controls ORT's intra-op pool |
+| `SessionOptions.intra_op_num_threads` | ORT | Controls ORT's intra-op pool. Default `0` consults `ORT_INTRA_OP_NUM_THREADS` when set, otherwise ORT chooses a machine-sized pool |
 | `session.intra_op.allow_spinning` | ORT | Spinning workers consume CPU while waiting; disable when XNNPACK owns the compute pool. Default is `"1"` (spin) unless ORT was built with `ORT_CLIENT_PACKAGE_BUILD`, which defaults it to `"0"`. |
-| XNNPACK `intra_op_num_threads` | XNNPACK EP | Public contract: value >= `1`, default/effective value `1`. Internally an omitted option is stored as `0`, copies the raw ORT session setting, and creates a private pthreadpool only when the result is greater than `1`. Set it explicitly when tuning. |
+| XNNPACK `intra_op_num_threads` | XNNPACK EP | Pinned ORT `v1.29.0` source default `0`: inherit the raw ORT session setting. The live public page instead documents default `1`; this source-pinned guide follows immutable commit `2e2543f`. With both ORT and XNNPACK left at source default `0`, XNNPACK creates no private pool while ORT sizes its own pool separately. Explicit `1` also means no private XNNPACK pool; values greater than `1` create one. Set both pools explicitly when tuning. |
 | `ConcurrentRunSupported()` | XNNPACK EP | Returns `false`; ORT consequently serializes `Run()` calls on the same Session with a session-wide lock |
 
 Recommended starting point:
@@ -419,7 +423,7 @@ flowchart TD
 ```
 
 > [!NOTE]
-> In the audited `v1.27.1` source, the Gemm and MatMul kernels pass `nullptr` to `xnn_run_operator`, although they pass the private pool during reshape. Do not assume that increasing XNNPACK's thread option speeds those kernels in this revision. Conv, pool, Softmax, and Resize pass the private pool to the run path. Treat timings as model- and revision-specific evidence.
+> In the audited `v1.29.0` source, the Gemm and MatMul kernels still pass `nullptr` to `xnn_run_operator`, although they pass the private pool during reshape. Do not assume that increasing XNNPACK's thread option speeds those kernels in this revision. Conv, pool, Softmax, and Resize pass the private pool to the run path. Treat timings as model- and revision-specific evidence.
 
 ### 6.1 XNNPACK provider options reference
 
@@ -427,7 +431,7 @@ flowchart TD
 
 | Provider option key | Type | Accepted values | Default when the key is absent | What it controls |
 |---|---|---|---|---|
-| `intra_op_num_threads` | Integer, passed as a string (e.g. `"4"`) | Anything `std::stoi` parses; the public contract documents `>= 1` | Stored internally as `0`, which copies ORT's own `session_options->intra_op_param.thread_pool_size` (itself `1` unless you set `SessionOptions.intra_op_num_threads`) | Requests the size of a **private XNNPACK pthreadpool**. A private pool is created only when the resolved value is `> 1`; the Conv/Pool/Softmax/Resize kernels then use it (Gemm/MatMul do not — see the note above). |
+| `intra_op_num_threads` | Integer, passed as a string (e.g. `"4"`) | Anything `std::stoi` parses; use `>= 1` when setting it explicitly | Stored internally as `0`, which copies the raw `session_options->intra_op_param.thread_pool_size`; if that is also the default `0`, no private XNNPACK pool is created | Requests the size of a **private XNNPACK pthreadpool**. A private pool is created only when the resolved value is `> 1`; the Conv/Pool/Softmax/Resize kernels then use it (Gemm/MatMul do not — see the note above). |
 
 Any other key is silently ignored — ORT's own `xnnpack_basic_test.cc` sets `options["one"] = "two"` purely to prove passthrough does not break session creation. Unlike some other EPs (for example DirectML's `ep.dml.*` session-config keys), there is no XNNPACK-specific `xnnpack_..._config_keys.h`, and XNNPACK does not read anything from `SessionOptions.add_session_config_entry` directly.
 
@@ -435,8 +439,9 @@ Any other key is silently ignored — ORT's own `xnnpack_basic_test.cc` sets `op
 # The ONE real XNNPACK provider option today, fully commented.
 provider_options = {
     # Size of XNNPACK's own private pthreadpool:
-    #   - "1" (or omitting this key): no private pool is created; XNNPACK
-    #     kernels run inline on whichever thread called Run().
+    #   - omit: inherit SessionOptions.intra_op_num_threads. If both stay at
+    #     their default 0, no private XNNPACK pool is created.
+    #   - "1": explicitly run without a private XNNPACK pool.
     #   - ">1": XNNPACK allocates its own pthreadpool of this size,
     #     independent of ORT's intra-op pool. Conv/Pool/Softmax/Resize use
     #     it; Gemm/MatMul currently do not (see the note above).
@@ -451,7 +456,7 @@ provider_options = {
 
 ## 7. Source-audited operator coverage
 
-The public page is a summary. This table gives a conservative production contract from the `v1.27.1` checker, registry, and kernel together. Cases where the checker accepts more than the runtime safely implements are listed immediately below.
+The public page is a summary. This table gives a conservative production contract from the `v1.29.0` checker, registry, and kernel together. Cases where the checker accepts more than the runtime safely implements are listed immediately below.
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"fontSize":"14px","primaryColor":"#dbeafe","primaryTextColor":"#1e293b","primaryBorderColor":"#3b82f6","lineColor":"#94a3b8"},"themeCSS":".mindmap-node text{fill:#1e293b !important;} .mindmap-node span{color:#1e293b !important;}"}}%%
@@ -490,7 +495,7 @@ mindmap
 | QDQ `MaxPool` | Input and output quantized type must match and be UINT8 or INT8; the pool itself does not consume separate quantization parameters |
 | Plain ONNX `Resize` | Opset >= 10; rank 4; FP32, eligible FP16 through opset 18, UINT8, or INT8; constant `scales`/`sizes`; keep N/C unchanged and H/W plus output H/W known; `mode=linear`; no antialias/axes/exclude-outside; stretch aspect policy; zero extrapolation; restricted coordinate modes; downsampling factor checks apply |
 | QDQ `Resize` | Classified by the checker, but fusion emits an ONNX-domain `Resize` while the static kernel is registered in the internal NHWC domain. The upstream tests are disabled. Treat this pattern as unsupported in the audited revisions. |
-| `Gemm` | FP32/eligible FP16; 2D A/B; `alpha=1`, `beta=1`, `transA=0`; constant B; C absent or a constant 1D output-channel bias; `transB` is handled |
+| `Gemm` | FP32/eligible FP16; 2D A/B; runtime M may vary while K/N and constant B remain session-fixed; `alpha=1`, `beta=1`, `transA=0`; C absent or a constant 1D output-channel bias; `transB` is handled |
 | `MatMul` | FP32/eligible FP16; A rank >= 1; B is a nonempty constant of rank 1 or 2; N-D A outer dimensions are flattened into the runtime batch |
 | `Softmax` | FP32/eligible FP16; keep reduced dimensions static; opset >= 13 requires the last axis; opset <= 12 retains flatten-from-axis semantics |
 | QDQ `Softmax` | UINT8 only; output scale must be approximately `1/256` and output zero point `0`; fused into a dynamic internal `QLinearSoftmax` schema |
@@ -504,11 +509,11 @@ mindmap
 | MatMul is 2D only | A may be N-D; constant B remains rank 1 or 2 |
 | Registered operator means usable | Quantized AveragePool is registered but always rejected by its capability helper |
 | Registry contains old Conv versions | `ConvBase::IsOnnxNodeSupported` rejects ONNX Conv/ConvTranspose below opset 11 before layout conversion |
-| XNNPACK threads help Gemm/MatMul | In `v1.27.1`, both pass the pool to reshape but pass `nullptr` to `xnn_run_operator` |
+| XNNPACK threads help Gemm/MatMul | In `v1.29.0`, both pass the pool to reshape but still pass `nullptr` to `xnn_run_operator` |
 
 ### Known checker and kernel gaps
 
-The first six rows remain present at audited `main` commit `bf6aa006`; the activation row is fixed there by `86cbd205`.
+The following six checker/kernel gaps remain in the audited ORT 1.29.0 release.
 
 | Edge case | What the source does | Safe rule |
 |---|---|---|
@@ -518,7 +523,6 @@ The first six rows remain present at audited `main` commit `bf6aa006`; the activ
 | `Resize` changes batch or has dynamic H/W | Checker verifies C but not N; `Compute` forces output N to input N, and operator creation fixes output H/W | Keep N/C unchanged and H/W static |
 | FP16 `Resize` at opset 19 | Checker admits FP16, but the opset-19 kernel registration omits FP16 | Use opset 10–18 for FP16, or use FP32/UINT8/INT8 |
 | Opset <= 12 `Softmax` has unknown reduced dimensions | An inner-loop `break` does not reject the node; channel count is precomputed during Session creation | Keep dimensions from `axis` onward static |
-| `v1.27.1` activation producer has another consumer or graph output | Stable fusion does not reject the branch and can leave a dangling input | Upgrade/backport `86cbd205`, or do not branch the pre-activation output |
 
 ### FP16 gate
 
@@ -531,6 +535,7 @@ XNNPACK uses create → reshape → setup → run, but create still fixes import
 | Operator | Fixed at Session creation | Runtime variation that remains safe |
 |---|---|---|
 | Conv / pool | C/H/W, attributes, constant weights | Batch N |
+| Gemm | K/N, constant B, and optional constant 1D bias | Matrix row count M |
 | MatMul | Constant rank-1/rank-2 B and reduction width | A's outer batch dimensions |
 | Softmax | Dimensions participating in the reduction | Dimensions before the reduced region |
 | Resize | Constant scales/sizes and output H/W; unchanged C | Batch N may vary when N itself is not resized |
@@ -765,7 +770,6 @@ flowchart TD
 | Session fails with CPU fallback disabled | At least one node violates an XNNPACK support guard | Inspect verbose logs/assignment with fallback enabled; check the operator table in [§7](#7-source-audited-operator-coverage) |
 | Conv/Pool stays on CPU EP | Dynamic C/H/W, unsupported padding/attribute, optional output, or nonconstant weight/bias | Freeze dimensions/initializers or retain CPU fallback |
 | Quantized model stays on CPU EP | Wrong U8/S8 combination, dynamic quant params, per-channel zero point, or unsupported QDQ pattern | Compare scales/zero points/types against [§7](#7-source-audited-operator-coverage) |
-| `Clip`/`Relu` branch causes invalid graph on `v1.27.1` | Stable branch predates the side-consumer fusion fix | Upgrade/backport commit `86cbd205`, or avoid exposing/branching the pre-activation output |
 | More threads are slower | ORT and XNNPACK pools contend, topology detection is imperfect, or workload is too small | ORT intra-op `1`, spinning `0`, sweep XNNPACK threads from 1 to physical cores |
 | `--threads` does not speed MatMul/Gemm | Audited kernels run the operator with a null run-time pool | Treat as revision behavior; benchmark another release or supported Conv-heavy workload |
 | Correct output but no XNNPACK events | Provider loaded but graph was not assigned, or the evidence API/profile is unavailable | Do not call it a pass; use a full custom build and inspect current-session assignment/profile |
@@ -778,11 +782,13 @@ flowchart TD
 
 - [Official XNNPACK Execution Provider page](https://onnxruntime.ai/docs/execution-providers/Xnnpack-ExecutionProvider.html)
 - [Official EP build instructions](https://onnxruntime.ai/docs/build/eps.html#xnnpack)
-- [Audited `main` snapshot (`bf6aa006`)](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/xnnpack)
+- [Audited ORT 1.29.0 source (`2e2543f`)](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/xnnpack)
 - [Live `main` source (may drift)](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/providers/xnnpack)
-- [Pinned stable provider source (`v1.27.1`, `df2ba1cf`)](https://github.com/microsoft/onnxruntime/tree/df2ba1cf8108aa63627cf4cdf8f807880b938616/onnxruntime/core/providers/xnnpack)
-- [Provider registration at audited `main`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/provider_registration.cc)
-- [Python provider factory at audited `main`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/python/onnxruntime_pybind_state.cc)
-- [XNNPACK CMake integration at audited `main`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/cmake/external/xnnpack.cmake)
+- [Provider registration at ORT 1.29.0](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/provider_registration.cc)
+- [Python provider factory at ORT 1.29.0](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/python/onnxruntime_pybind_state.cc)
+- [XNNPACK dependency lock at ORT 1.29.0](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/cmake/deps.txt)
+- [XNNPACK CMake integration at ORT 1.29.0](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/cmake/external/xnnpack.cmake)
+- [Official Android full-AAR build settings at ORT 1.29.0](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/tools/ci_build/github/android/default_full_aar_build_settings.json)
+- [Official Apple full-framework build settings at ORT 1.29.0](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/tools/ci_build/github/apple/default_full_apple_framework_build_settings.json)
 - [XNNPACK upstream project](https://github.com/google/XNNPACK)
-- [Post-`v1.27.1` activation side-consumer fix](https://github.com/microsoft/onnxruntime/commit/86cbd2052540c59ad54f5ca135f9b0f58453557a)
+- [Pinned XNNPACK source commit](https://github.com/google/XNNPACK/commit/3cf85e705098622d59056dcb8f5f963ea7bb0a00)

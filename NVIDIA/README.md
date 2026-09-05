@@ -5,10 +5,15 @@
 Run ONNX models on an NVIDIA GPU through **CUDA**, **classic TensorRT**, or the newer **TensorRT RTX** plugin — and *prove* the GPU actually executed the graph, not just that a provider loaded.
 
 ```bash
-# Fastest path: CUDA EP on Windows 10/11 x64 or Ubuntu 22.04/24.04 x86-64
+# Fastest proof after the §2 driver check and §3.4 isolated Python setup
+nvidia-smi
+python --version
 python -m pip install -r NVIDIA/requirements-cuda.txt
+python -m pip check
 python NVIDIA/provider_test.py --provider cuda
 ```
+
+Package installation and `pip check` prove only that the pinned dependencies fit this Python environment. Only the test's final `PASS` provides execution evidence for its smoke graph on this host.
 
 | You are… | Go to |
 |---|---|
@@ -20,16 +25,17 @@ python NVIDIA/provider_test.py --provider cuda
 
 | Item | Baseline |
 |---|---|
-| Metadata reviewed | `2026-07-17` |
+| Guidance metadata reviewed | `2026-09-01` |
+| Hardware evidence executed | `2026-08-30`; preserved, not rerun during the metadata refresh |
 | Hosts | Windows 10/11 x64 · Ubuntu 22.04/24.04 x86-64 |
 | Routes | `CUDAExecutionProvider` · classic `TensorrtExecutionProvider` · standalone `nv_tensorrt_rtx` plugin |
-| Pinned runtime | ORT `1.27.0` (PyPI) · CUDA `13.3 Update 1` · cuDNN `9.24.0.43` · TensorRT `10.14.1.48` · plugin `0.3.0` |
-| Upstream watch | ORT `1.27.1` is tagged, but its Python packages are not on PyPI as of the review date |
-| Entry point | [`provider_test.py`](provider_test.py) |
+| Pinned runtime | ORT `1.29.0` · CUDA `13.3 Update 1` · cuDNN `9.25.1.1` · TensorRT `10.14.1.48.post1` · plugin `0.4.0` |
+| Hardware proof | Windows 11 · GeForce RTX 5060 Ti 16 GB · compute capability 12.0 · driver 616.56 |
+| Entry points | [`provider_test.py`](provider_test.py) · [`llm_benchmark.py`](llm_benchmark.py) |
 | Proof | CPU-numeric parity + fail-closed fallback policy + current-run profile evidence |
 
 > [!NOTE]
-> The refreshed CUDA 13.3 / cuDNN 9.24 stack was **not re-executed on real GPU hardware** for this review — the available host predates this guide's Turing floor. Package resolution and documented ABI compatibility were checked; only the strict proof on your own target GPU is decisive.
+> All three routes were re-executed on the RTX 5060 Ti host above. CUDA, classic TensorRT, and standalone TensorRT RTX each produced current-run profile evidence with no CPU node execution. This proves the pinned smoke graph and pseudo-LLM on that host; your production model still needs its own correctness and performance validation.
 
 ### Files
 
@@ -38,6 +44,7 @@ python NVIDIA/provider_test.py --provider cuda
 | [`README.md`](README.md) | This guide |
 | [`README.zh-CN.md`](README.zh-CN.md) | Simplified Chinese translation |
 | [`provider_test.py`](provider_test.py) | Shared strict proof for all three routes |
+| [`llm_benchmark.py`](llm_benchmark.py) | Cross-environment pseudo-small-LLM benchmark |
 | [`requirements-cuda.txt`](requirements-cuda.txt) | Pinned CUDA EP environment |
 | [`requirements-tensorrt.txt`](requirements-tensorrt.txt) | Pinned classic TensorRT EP environment |
 | [`requirements-tensorrt-rtx.txt`](requirements-tensorrt-rtx.txt) | Pinned standalone TensorRT RTX plugin environment |
@@ -113,12 +120,12 @@ Always validate CUDA first, even if TensorRT is the end goal — TensorRT is not
 
 | Goal | ONNX Runtime | NVIDIA components | Python | GPU floor | Driver |
 |---|---|---|---:|---|---:|
-| CUDA EP | `onnxruntime-gpu==1.27.0` | `cuda-toolkit==13.3.1` extras + `nvidia-cudnn-cu13==9.24.0.43` | 3.11–3.14 x64 | Turing, CC 7.5+ | R580+ (R610+ preferred) |
-| Classic TensorRT EP | Same CUDA core | Above + TensorRT **10.14.1.48** | 3.11–3.13 x64 | TensorRT-supported Turing+ | R580+ (R610+ preferred) |
-| TensorRT RTX, default | `onnxruntime==1.27.0` + plugin `0.3.0` | CUDA 13 variant; TensorRT RTX 1.5 runtime bundled | 3.11–3.14 x64 | Ampere+ RTX (usually RTX 30+) | R580+ |
-| TensorRT RTX, CUDA 12 variant | `onnxruntime==1.27.0` + `onnxruntime-ep-nv-tensorrt-rtx-cu12==0.3.0` | CUDA 12 variant; TensorRT RTX 1.5 bundled | 3.11–3.14 x64 | Ampere+ RTX | Ampere/Ada 555.85+; Blackwell 570.00+ |
+| CUDA EP | `onnxruntime-gpu==1.29.0` | `cuda-toolkit==13.3.1` extras + `nvidia-cudnn-cu13==9.25.1.1` | 3.11–3.14 x64 | Turing, CC 7.5+ | R580+ only under minor-compat caveats; Linux 610.43.02+ for full CUDA 13.3 U1/PTX features |
+| Classic TensorRT EP | Same CUDA core | Above + TensorRT **10.14.1.48.post1** | 3.11–3.13 x64 | TensorRT-supported Turing+ | Same CUDA rule; install a current driver separately on Windows |
+| TensorRT RTX, default | `onnxruntime==1.29.0` + plugin `0.4.0` | CUDA 13 variant; TensorRT RTX `1.6.1.120` bundled | 3.11–3.14 x64 | Ampere+ RTX (usually RTX 30+) | R580+ |
+| TensorRT RTX, CUDA 12 variant | `onnxruntime==1.29.0` + `onnxruntime-ep-nv-tensorrt-rtx-cu12==0.4.0` | CUDA 12 variant; TensorRT RTX 1.6 bundled | 3.11–3.14 x64 | Ampere+ RTX | Ampere/Ada 555.85+; Blackwell 570.00+ |
 
-This guide targets native Windows 10/11 x64 and Ubuntu 22.04/24.04 x86-64. Jetson needs JetPack-specific packages and is out of scope. Only the CUDA and classic TensorRT rows were re-checked this refresh, and only against compatibility metadata — not GPU execution.
+This guide targets native Windows 10/11 x64 and Ubuntu 22.04/24.04 x86-64. Jetson needs JetPack-specific packages and is out of scope. The CUDA 13 routes above were package-resolved and executed on Windows 11/Blackwell; the Linux and CUDA 12 variants were metadata-checked but not executed during this refresh.
 
 ### 2.2 GPU architecture gate
 
@@ -142,25 +149,38 @@ CUDA 13 dropped pre-Turing device code from its compiler and libraries. A newer 
 > [!TIP]
 > Give the standalone plugin its own virtual environment. Classic TensorRT can share the CUDA environment once CUDA already passes.
 
-### 2.4 A package-index trap to avoid
+### 2.4 CUDA 13 wheel layout and ORT upgrades
 
-> [!WARNING]
-> Do not substitute `onnxruntime-gpu[cuda,cudnn]==1.27.0` for the pinned requirements files. ORT 1.27's metadata still points at retired `nvidia-*-cu13` package names; NVIDIA replaced them with un-suffixed packages and left the old names as empty `0.0.1` placeholders, so that extra fails to resolve as of the review date. This repository installs NVIDIA's current `cuda-toolkit==13.3.1` meta-package instead.
+ORT 1.29's `onnxruntime-gpu[cuda,cudnn]` metadata now resolves NVIDIA's current un-suffixed CUDA 13 component packages, and `ort.preload_dlls(directory="")` understands their consolidated `site-packages/nvidia/cu13/bin/<arch>` layout. The pinned requirements use `cuda-toolkit==13.3.1` plus cuDNN explicitly so the complete tested runtime remains reproducible.
 
-`ort.preload_dlls(directory="")` finds the wheels' own `site-packages/nvidia/...` layout regardless of this naming churn. During the transition, `ort.print_debug_info()` may still list old package names as "missing" — trust a failed native-library load or the strict proof test, not that log line.
+ORT 1.27 did not handle this transition cleanly: its extra referenced retired package names, and on Windows its preloader looked in old per-component directories while current wheels installed DLLs under `nvidia/cu13/bin/x86_64`. Upgrade ORT instead of copying DLLs or keeping permanent `PATH` workarounds. If pip fails with Windows error 32, another Python/pip process has a package file open; stop that process and retry rather than installing with `--user` into the Conda environment.
 
 ### 2.5 Why these pins
 
 | Pin | Why |
 |---|---|
-| ORT `1.27.0`, not `1.27.1` | `1.27.1` is tagged upstream, but neither `onnxruntime` nor `onnxruntime-gpu` 1.27.1 is on PyPI as of the review date |
+| ORT `1.29.0` | Current PyPI CPU and CUDA 13 host packages at the review date; includes the consolidated CUDA 13 wheel-layout fix |
 | `cuda-toolkit==13.3.1` | Current CUDA 13.3 Update 1 components under NVIDIA's new package names; CUDA 13 keeps binary compatibility across minor releases |
-| `nvidia-cudnn-cu13==9.24.0.43` | Backward-compatible with the cuDNN 9.14.0.64 the ORT 1.27.0 wheel was built against; its support matrix covers CUDA 13.0–13.3 |
-| Driver R580+, R610+ preferred | R580 is CUDA 13's minor-compatibility floor; CUDA 13.3-generated PTX or newer features can need R610+ |
-| TensorRT `10.14.1.48` | Matches the TensorRT major-10 ABI the ORT 1.27 classic provider was built against; unpinned `tensorrt-cu13` (11.1.0.106) is an incompatible major version |
+| `nvidia-cudnn-cu13==9.25.1.1` | Current cuDNN 9 CUDA 13 wheel at the review date; verified with ORT 1.29 on the target host |
+| Driver R580+ compatibility floor; Linux 610.43.02+ full-toolkit line | R580 is CUDA 13.x's minor-version-compatibility floor, with limited features and no newer PTX guarantee; CUDA 13.3 U1 lists Linux driver 610.43.02 and no bundled Windows driver |
+| TensorRT `10.14.1.48.post1` | Matches the TensorRT 10.14.1.48 ABI used by ORT 1.29 x86-64 CUDA 13 builds; latest standalone `tensorrt-cu13` 11.2.1.2 (2026-07-31) is a different major and is not assumed compatible |
 | TensorRT wheel: CPython ≤ 3.13 | TensorRT 10.14's x86-64 bindings do not publish a 3.14 wheel |
-| Plugin `0.3.0` | Defaults to CUDA 13, bundles the TensorRT RTX 1.5 runtime, and recommends registration name `nv_tensorrt_rtx` |
-| `onnx==1.22.0` | Used only to author the smoke model, saved explicitly as IR 10 / opset 17 for the ONNX 1.21 spec ORT 1.27 targets |
+| Plugin `0.4.0` | Defaults to CUDA 13, bundles TensorRT RTX `1.6.1.120`, adds allocator/profiling controls, and recommends registration name `nv_tensorrt_rtx` |
+| `onnx==1.22.0` | Current PyPI authoring package at the review date; smoke graphs are saved explicitly as broadly supported IR 10 / opset 17 |
+
+### 2.6 Verified Windows 11 / RTX 5060 Ti experience
+
+The following was executed on a GeForce RTX 5060 Ti 16 GB (Blackwell, compute capability 12.0), driver 616.56, and Windows 11 x64:
+
+| Environment | Python | ORT core | NVIDIA route | Strict result |
+|---|---:|---:|---|---|
+| `python_313` | 3.13.14 | `onnxruntime-gpu==1.29.0` | CUDA 13.3.1 + cuDNN 9.25.1.1 | 69 CUDA-profiled smoke events, PASS |
+| `python_313` | 3.13.14 | Same | TensorRT 10.14.1.48.post1 | 23 TensorRT-profiled smoke events, PASS |
+| `python_313_trt_rtx` | 3.13.15 | `onnxruntime==1.29.0` | TensorRT RTX plugin 0.4.0 | 23 plugin-profiled smoke events, PASS |
+
+Keep the standalone plugin in its own environment. Installing plain `onnxruntime` merely to satisfy another package's metadata (for example, a package that does not recognize `onnxruntime-gpu` as an equivalent implementation) would overwrite the GPU module. `pip check` can therefore report such a metadata mismatch even when CUDA execution is healthy; do not "fix" it by co-installing both ORT cores.
+
+In PowerShell, `conda activate` works only after Conda's shell hook is initialized. If activation is unavailable, run the environment's full `python.exe` path for an unambiguous test. `get_available_providers()` will not list the standalone TensorRT RTX plugin before registration; enumerate `get_ep_devices()` after `register_execution_provider_library()` instead.
 
 ## 3. Prepare the host
 
@@ -219,7 +239,7 @@ Complete MOK enrollment in the blue firmware screen if Secure Boot asks for it. 
 
 ### 3.4 Install Python and create a virtual environment
 
-Use 64-bit Python 3.12 or 3.13. Ubuntu 22.04's default Python 3.10 is too old — install 3.11+ separately (or Conda) without touching the system Python.
+Use 64-bit Python 3.12 or 3.13. Do not replace Ubuntu's system Python: Ubuntu 24.04 provides Python 3.12, but Ubuntu 22.04's `python3` is 3.10 and cannot install the pinned ORT 1.29 packages. Follow the matching block below.
 
 ```powershell
 # Windows PowerShell
@@ -231,12 +251,45 @@ python -m pip install --upgrade pip
 
 If activation is blocked, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, reopen PowerShell, then retry.
 
+**Windows Conda alternative used by the verified host**
+
+```powershell
+conda init powershell
+# Reopen PowerShell after the one-time initialization.
+conda create -n python_313 python=3.13 pip -y
+conda activate python_313
+(Get-Command python).Source
+python --version
+```
+
+Create a second environment for the standalone plugin rather than replacing the CUDA core in `python_313`:
+
+```powershell
+conda create -n python_313_trt_rtx python=3.13 pip -y
+conda activate python_313_trt_rtx
+(Get-Command python).Source
+```
+
+The printed interpreter must be inside the selected environment. If shell initialization is unavailable, invoke `<conda-root>\envs\<environment>\python.exe` directly; a successful `conda` command alone does not prove that activation changed the current PowerShell process.
+
+**Ubuntu 24.04 (system Python 3.12):**
+
 ```bash
-# Ubuntu
 cd /path/to/Tutorial-ONNX-Runtime-Execution-Providers
 sudo apt install -y python3-venv zlib1g
 python3 -m venv .venv-cuda
 source .venv-cuda/bin/activate
+python --version
+python -m pip install --upgrade pip
+```
+
+**Ubuntu 22.04 (system Python 3.10 is too old):** install Miniconda using its [official Linux instructions](https://www.anaconda.com/docs/getting-started/miniconda/install/linux-install), reopen the shell, then create a supported environment without changing `/usr/bin/python3`:
+
+```bash
+cd /path/to/Tutorial-ONNX-Runtime-Execution-Providers
+conda create -n ort-cuda python=3.12 pip -y
+conda activate ort-cuda
+python --version
 python -m pip install --upgrade pip
 ```
 
@@ -255,9 +308,9 @@ python -m pip check
 
 | Package | Pin | Purpose |
 |---|---:|---|
-| `onnxruntime-gpu` | `1.27.0` | ORT CUDA 13 core, with built-in CUDA and classic-TensorRT providers |
+| `onnxruntime-gpu` | `1.29.0` | ORT CUDA 13 core, with built-in CUDA and classic-TensorRT providers |
 | `cuda-toolkit` extras | `13.3.1` | Binary-compatible cuBLAS, runtime, cuFFT, cuRAND, nvJitLink, NVRTC |
-| `nvidia-cudnn-cu13` | `9.24.0.43` | Backward-compatible cuDNN 9 runtime for CUDA 13.3 |
+| `nvidia-cudnn-cu13` | `9.25.1.1` | cuDNN 9 runtime verified with CUDA 13.3 |
 | `onnx` | `1.22.0` | Smoke-model authoring only |
 
 ### 4.2 Verify and run the strict proof
@@ -386,7 +439,7 @@ On Windows, download CUDA 13.3 Update 1 from the [CUDA Toolkit Archive](https://
 |---|---|---|
 | `nvidia-smi` missing or failing | Driver absent, kernel module not loaded, or Secure Boot rejection | Fix the driver before touching Python |
 | Driver below branch R580 | CUDA 13 runtime is newer than the driver family | Upgrade the driver, or deliberately use a supported CUDA 12 stack |
-| R580 driver fails in an NVRTC/PTX path | CUDA 13.3 PTX/features exceed minor-compatibility mode | Upgrade to R610+, or roll back to CUDA 13.0 and rerun the proof |
+| R580–R609 driver fails in an NVRTC/PTX path | Minor compatibility does not guarantee newer PTX or driver-coupled features | On Linux use 610.43.02+ for the CUDA 13.3 U1 line; on Windows install a current production driver, then rerun the proof |
 | Only CPU provider appears | Wrong core package, native load failure, or pre-Turing GPU | Rebuild the venv, reinstall the pinned set, confirm `sm_75+`, check debug info |
 | `libcudnn.so.9` / `cudnn64_9.dll` missing | cuDNN wheel absent or undiscoverable | Reinstall requirements, call `preload_dlls(directory="")` |
 | `libcublas.so.13` / CUDA DLL missing | Runtime wheel missing, or stale paths win | Reinstall the pinned set; remove mismatched paths from this process |
@@ -412,13 +465,13 @@ python -m pip check
 ```
 
 > [!WARNING]
-> Never run an unpinned TensorRT upgrade in this environment. ORT 1.27 loads TensorRT major-10 libraries, and TensorRT 11 is not compatible with that ABI.
+> Never run an unpinned TensorRT upgrade in this environment. The ORT 1.29 Windows wheel loads TensorRT major-10 libraries, and TensorRT 11 is not compatible with that ABI.
 
 ```bash
 python -c "import tensorrt as trt; import onnxruntime as ort; ort.preload_dlls(directory=''); print('TensorRT:', trt.__version__); print('ORT:', ort.__version__); print(ort.get_available_providers())"
 ```
 
-Expect TensorRT `10.14.1.48`, ORT `1.27.0`, and both `TensorrtExecutionProvider` and `CUDAExecutionProvider`.
+Expect TensorRT `10.14.1.48.post1`, ORT `1.29.0`, and both `TensorrtExecutionProvider` and `CUDAExecutionProvider`.
 
 ### 5.2 Run the strict proof
 
@@ -485,7 +538,7 @@ Subgraphs TensorRT does not accept still run on CUDA — that is still NVIDIA ex
 
 This table covers every option exposed by upstream [`TensorrtExecutionProviderInfo`](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/providers/tensorrt/tensorrt_execution_provider_info.h) / [`OrtTensorRTProviderOptionsV2`](https://github.com/microsoft/onnxruntime/tree/main/include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h).
 
-| Option | ORT 1.27 default | Start with | Notes |
+| Option | ORT 1.29 default | Start with | Notes |
 |---|---:|---:|---|
 | `device_id` | `0` | Target GPU index | CUDA devices are zero-based |
 | `has_user_compute_stream` / `user_compute_stream` | `0` / unset | Leave unset | Advanced interop; reuse an existing native CUDA stream instead of one ORT creates |
@@ -603,7 +656,7 @@ On Windows, extract the matching TensorRT 10.14.1 CUDA 13 ZIP to a versioned dir
 |---|---|---|
 | CUDA passes, TensorRT EP absent | TensorRT 10 libraries missing/undiscoverable | Install the exact pin; `import tensorrt` before ORT; check loader paths |
 | `libnvinfer.so.10` / `nvinfer_10.dll` missing | Wrong or incomplete runtime | Reinstall 10.14.1; never rename a TensorRT 11 library |
-| `tensorrt.__version__` is 11.x | An unpinned upgrade replaced major 10 | Recreate/repair with `10.14.1.48.post1` |
+| `tensorrt.__version__` is 11.x | An unpinned upgrade selected current 11.2.1.2 instead of ORT's build-time major 10 | Recreate/repair with `10.14.1.48.post1`; do not rename or substitute 11.x libraries |
 | First session takes minutes | Normal tactic profiling + engine build | Keep an app-specific engine/timing cache |
 | Every process rebuilds | Cache unwritable, or model/options/profile/shape changed | Fix permissions; stabilize model, options, profiles |
 | Profile shows only CUDA | TensorRT rejected the graph or found no supported subgraph | Enable info logs + temporary subgraph dump; inspect with `trtexec` |
@@ -618,7 +671,7 @@ On Windows, extract the matching TensorRT 10.14.1 CUDA 13 ZIP to a versioned dir
 Targets modern RTX client apps. It is a **different** core package, registration API, device-discovery model, option set, context format, and runtime cache than classic TensorRT — the similarly named built-in `NvTensorRTRTXExecutionProvider` is deprecated.
 
 > [!WARNING]
-> Plugin `0.3.0` is Alpha on PyPI. Pin it, validate your production model, and keep the working environment until the new one proves out.
+> Plugin `0.4.0` is Alpha on PyPI. Pin it, validate your production model, and keep the working environment until the new one proves out.
 
 ### 6.1 Create a separate environment and install
 
@@ -630,9 +683,16 @@ python -m pip install --upgrade pip
 ```
 
 ```bash
-# Ubuntu
+# Ubuntu 24.04; first leave any environment used by another route
 python3 -m venv .venv-trt-rtx
 source .venv-trt-rtx/bin/activate
+python -m pip install --upgrade pip
+```
+
+```bash
+# Ubuntu 22.04 with Miniconda from §3.4
+conda create -n ort-trt-rtx python=3.12 pip -y
+conda activate ort-trt-rtx
 python -m pip install --upgrade pip
 ```
 
@@ -647,11 +707,11 @@ The wheel bundles the TensorRT RTX runtime and EP library — not the NVIDIA ker
 
 ```bash
 # Optional CUDA 12 variant — never install alongside the CUDA 13 variant
-python -m pip install "onnxruntime==1.27.0" "onnxruntime-ep-nv-tensorrt-rtx-cu12==0.3.0" "onnx==1.22.0"
+python -m pip install "onnxruntime==1.29.0" "onnxruntime-ep-nv-tensorrt-rtx-cu12==0.4.0" "onnx==1.22.0"
 ```
 
 > [!WARNING]
-> `-cu12` is part of the package name, not a version pin. CUDA 12's generic driver floor is 525, but plugin `0.3.0` needs 555.85+ on Ampere/Ada or 570.00+ on Blackwell — use a current production driver.
+> `-cu12` is part of the package name, not a version pin. CUDA 12's generic driver floor is 525, but the plugin needs 555.85+ on Ampere/Ada or 570.00+ on Blackwell — use a current production driver.
 
 ### 6.2 Register the plugin and discover devices
 
@@ -773,7 +833,7 @@ Provider-option values are strings; booleans accept `0`/`1`, `false`/`true`, or 
 | `device_id` | An enumerated EP device | Use discovery results, do not guess an ordinal |
 | `has_user_compute_stream` / `user_compute_stream` | `0` / unset | Advanced interop; value is a native CUDA stream address |
 | `user_aux_stream_array` | unset | Advanced: array of native CUDA stream addresses for TensorRT's auxiliary streams; pairs with `nv_length_aux_stream_array` |
-| `nv_length_aux_stream_array` | `-1` heuristic | Number of auxiliary TensorRT streams per inference stream, and the length of `user_aux_stream_array` when it is set; `0` minimizes memory |
+| `nv_length_aux_stream_array` | Omit for provider policy | When `user_aux_stream_array` is supplied, set its exact non-negative array length; explicitly setting `0` disables auxiliary streams |
 | `enable_cuda_graph` | `0` while validating | Only for stable shapes, addresses, repeated runs |
 | `nv_max_workspace_size` | `0` automatic | Cap only after measuring a real requirement |
 | `nv_dump_subgraphs` | `0` | Temporary parser/partition diagnosis |
@@ -787,10 +847,14 @@ Provider-option values are strings; booleans accept `0`/`1`, `false`/`true`, or 
 | `nv_weight_streaming_budget` | `0` disabled | See note below |
 | `nv_max_shared_mem_size` | `0` automatic | Cap only after measuring a real constraint |
 | `nv_op_types_to_exclude` | Empty | Comma-separated ONNX op types left to another EP |
+| `nv_enable_profiling` / `nv_profiling_output_file` | `0` / automatic path | TensorRT RTX per-layer profiling; enabling it disables CUDA Graph capture |
+| `nv_use_sync_gpu_allocator` | `0` | Keep the faster async allocator unless graphics interop or CUDA async-pool failures require the synchronous arena |
+| `nv_multi_rotary_cache_concat_offset` | `0` | LongRoPE-specific cache switch offset; leave at zero for ordinary models |
+| `nv_weight_stripped_engine_enable_experimental` | `0` | Experimental EP-context packaging option, not a steady-state inference speed control |
 
 > `nv_weight_streaming_budget`: bare `0` uniquely means disabled; `0B`/`0%` enable minimum-VRAM mode; `1M` means $2^{20}$ resident bytes. Start disabled and measure VRAM, build time, and steady-state latency before changing it.
 >
-> EP-context output uses ORT's generic session entries — `ep.context_enable`, `ep.context_file_path`, `ep.context_embed_mode` — not invented `nv_*` options. Plugin `0.3.0` rejects unknown provider options.
+> EP-context output uses ORT's generic session entries — `ep.context_enable`, `ep.context_file_path`, `ep.context_embed_mode` — not invented `nv_*` options. Plugin `0.4.0` rejects unknown provider options.
 >
 > `user_aux_stream_array` and `nv_length_aux_stream_array` mirror the classic TensorRT EP's auxiliary-stream controls. They were confirmed from the in-tree (deprecated) `NvTensorRTRTXExecutionProvider` source, which shares its `nv_*` naming convention with the standalone plugin this guide targets — validate any option this guide has not already exercised through `provider_test.py` before depending on it in production.
 
@@ -843,7 +907,7 @@ Keep the original model. Rebuild context/cache artifacts after any incompatible 
 | Plugin helper import fails | Plugin not installed in the active environment | Check `python -m pip show`; recreate the venv |
 | Registration reports missing DLL/SO | Incomplete wheel, blocked file, missing VC++ runtime, loader conflict | Reinstall cleanly; install VC++ runtime on Windows; inspect the loader error |
 | No compatible EP devices | Pre-Ampere GPU, old driver, wrong OS/arch, or wrong CUDA variant | Verify RTX model, driver, x64 OS, and cu13/cu12 choice |
-| `onnxruntime-gpu` is installed | Wrong core package for the standalone plugin | Remove it; install plain `onnxruntime==1.27.0` |
+| `onnxruntime-gpu` is installed | Wrong core package for the standalone plugin | Use a separate environment with plain `onnxruntime==1.29.0` |
 | No plugin node is profiled | Graph rejected, or plugin received no work | Enable detailed logs/subgraph dump; start from static FP32 |
 | First session is slow | Expected JIT/context compilation | Configure an app-specific runtime cache; retest in a clean process |
 | CUDA Graph errors when inputs change | Captured addresses/shapes changed | Disable it, or use address-stable I/O Binding |
@@ -893,6 +957,46 @@ Three layers answer three different questions — a name appearing in a list is 
 
 This repository's test enforces the third layer: an independent NumPy oracle, ORT automatic fallback disabled, CPU graph fallback disabled, and unexpected providers rejected. Classic TensorRT allows only CUDA as its secondary EP.
 
+### 7.1 Benchmark a pseudo-small LLM
+
+[`llm_benchmark.py`](llm_benchmark.py) builds one deterministic static FP32 graph with token embedding, causal multi-head attention, SwiGLU MLP blocks, residuals, layer normalization, and a tied last-token LM head. The default graph has 6.32 million parameters, a 128-token input, and about 0.57 GMAC per run. It is a provider comparison workload, not a text generator or a replacement for benchmarking your production model and KV-cache shapes.
+
+The controller launches CUDA and classic TensorRT from one `onnxruntime-gpu` environment, then launches the standalone TensorRT RTX plugin from its separate plain-`onnxruntime` environment. Pass the interpreter paths when your environments use different names:
+
+```powershell
+python NVIDIA/llm_benchmark.py `
+    --gpu-python C:\path\to\cuda-env\python.exe `
+    --rtx-python C:\path\to\trt-rtx-env\python.exe `
+    --clear-cache `
+    --json-output benchmark.json
+```
+
+Each worker first creates a profiled fail-closed session, rejects CPU node execution, and checks its output against CPU. It then creates an unprofiled timing session and reports build/proof setup, cached reload, first-run latency, median/P90 host-to-host latency, prefill token throughput, and speedup relative to CUDA. Classic TensorRT may use CUDA only for unsupported subgraphs; the table shows both providers if that occurs.
+
+Use `--clear-cache` to include engine/JIT construction, omit it to measure reuse, and change `--sequence-length`, `--hidden-size`, `--num-heads`, `--intermediate-size`, `--num-layers`, or `--vocab-size` to scale the graph. Cache directories are keyed by the model digest so incompatible engines are not reused.
+
+On the verified host, a 20-warm-up / 200-run cached pass produced the following host-to-host medians. Treat these as one reproducible field result, not a universal ranking:
+
+| Provider | Profile evidence | Median | P90 | Prefill throughput | Relative to CUDA |
+|---|---:|---:|---:|---:|---:|
+| CUDA | 131 CUDA events | 0.826 ms | 1.354 ms | 155,020 token/s | 1.00x |
+| Classic TensorRT | 1 engine event | 0.418 ms | 0.522 ms | 306,074 token/s | 1.97x |
+| TensorRT RTX | 1 engine event | 0.211 ms | 0.224 ms | 605,344 token/s | 3.90x |
+
+The winning measured defaults were CUDA unified-stream execution with TunableOp disabled, classic TensorRT builder optimization level 5, and TensorRT RTX CUDA Graph enabled. CUDA TunableOp measured 0.851 ms versus 0.816 ms without it and added about 359 ms to first use. Classic TensorRT builder level 5 measured 0.413 ms versus 0.918 ms at level 3. TensorRT RTX CUDA Graph was the largest gain, reducing the earlier non-graph median from about 0.499 ms to about 0.211 ms.
+
+The default performance profile explicitly passes the options supported by the installed provider APIs. It keeps the benchmark at FP32/TF32 and uses settings measured to work with host-to-host `session.run`:
+
+| Provider | Active performance policy |
+|---|---|
+| CUDA | Unlimited arena, power-of-two growth, default-stream copies, exhaustive cuDNN search/max workspace, cuDNN enabled, unified EP stream, TF32, automatic SDPA selection |
+| Classic TensorRT | 2 GiB workspace, builder level 5, automatic auxiliary streams/all tactic sources, context-memory sharing, target-specific engine, full tactic search, engine and timing caches |
+| TensorRT RTX | 2 GiB workspace, automatic shared memory/auxiliary streams, resident weights, external initializers, asynchronous allocator, runtime cache, CUDA Graph enabled |
+
+CUDA TunableOp is available through `--cuda-tunable-ops` but defaults off because it must be measured per graph. CUDA and classic TensorRT graph capture are exposed through `--cuda-enable-graph` and `--trt-enable-cuda-graph` but default off: their stable-address contract requires device-bound I/O, which this host-to-host benchmark intentionally does not use. TensorRT precision, builder level, auxiliary streams, build heuristics, sparsity, hardware compatibility, memory limits, TensorRT RTX weight streaming, allocator mode, and workspace/shared-memory limits are also exposed; run `python NVIDIA/llm_benchmark.py --help` for the complete controls.
+
+Raw stream/allocator pointers, INT8 calibration, external plugin libraries, and dynamic-shape profiles cannot be selected safely by a generic static-model benchmark and are deliberately omitted. The prebuilt ORT 1.29 Python factory also rejects its internal `trt_load_user_initializer` field, so the benchmark does not pass that unsupported key.
+
 ## 8. Upgrade safely
 
 ```mermaid
@@ -921,10 +1025,9 @@ Record `python --version`, `pip freeze`, `nvidia-smi`, provider lists, and profi
 
 ## 9. References
 
-- [ONNX Runtime 1.27.0 Python release](https://github.com/microsoft/onnxruntime/releases/tag/v1.27.0)
-- [ONNX Runtime 1.27.1 upstream patch release](https://github.com/microsoft/onnxruntime/releases/tag/v1.27.1)
-- [ONNX Runtime 1.27.0 PyPI metadata](https://pypi.org/pypi/onnxruntime-gpu/1.27.0/json)
-- [ORT 1.27 GPU build variables](https://github.com/microsoft/onnxruntime/blob/v1.27.0/tools/ci_build/github/azure-pipelines/templates/common-variables.yml)
+- [ONNX Runtime 1.29.0 release](https://github.com/microsoft/onnxruntime/releases/tag/v1.29.0)
+- [ONNX Runtime 1.29.0 PyPI metadata](https://pypi.org/pypi/onnxruntime-gpu/1.29.0/json)
+- [ORT 1.29 GPU build variables](https://github.com/microsoft/onnxruntime/blob/v1.29.0/tools/ci_build/github/azure-pipelines/templates/common-variables.yml)
 - [ONNX Runtime installation](https://onnxruntime.ai/docs/install/)
 - [ORT model compatibility](https://onnxruntime.ai/docs/reference/compatibility.html)
 - [CUDA EP documentation](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)
@@ -935,14 +1038,15 @@ Record `python --version`, `pip freeze`, `nvidia-smi`, provider lists, and profi
 - [ONNX Runtime in-tree NvTensorRTRTX EP source (`onnxruntime/core/providers/nv_tensorrt_rtx`) — deprecated built-in EP, naming reference only](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/providers/nv_tensorrt_rtx)
 - [ONNX Runtime plugin EP libraries](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/)
 - [Standalone TensorRT RTX EP ABI repository](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI)
-- [Plugin 0.3.0 release](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/releases/tag/v0.3.0)
-- [Plugin 0.3.0 CUDA 13 wheel metadata](https://pypi.org/pypi/onnxruntime-ep-nv-tensorrt-rtx-cu13/0.3.0/json)
+- [Plugin 0.4.0 release](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/releases/tag/v0.4.0)
+- [Plugin 0.4.0 CUDA 13 wheel metadata](https://pypi.org/pypi/onnxruntime-ep-nv-tensorrt-rtx-cu13/0.4.0/json)
 - [CUDA Toolkit 13.3.1 Python metadata](https://pypi.org/pypi/cuda-toolkit/13.3.1/json)
 - [CUDA Toolkit 13.3 release notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/)
-- [cuDNN CUDA 13 9.24.0.43 metadata](https://pypi.org/pypi/nvidia-cudnn-cu13/9.24.0.43/json)
+- [cuDNN CUDA 13 9.25.1.1 metadata](https://pypi.org/pypi/nvidia-cudnn-cu13/9.25.1.1/json)
 - [cuDNN support matrix](https://docs.nvidia.com/deeplearning/cudnn/backend/latest/reference/support-matrix.html)
 - [cuDNN API compatibility](https://docs.nvidia.com/deeplearning/cudnn/backend/latest/developer/forward-compatibility.html)
 - [TensorRT CUDA 13 10.14.1.48.post1 metadata](https://pypi.org/pypi/tensorrt-cu13/10.14.1.48.post1/json)
+- [Current TensorRT CUDA 13 metadata (11.2.1.2 at audit date)](https://pypi.org/pypi/tensorrt-cu13/json)
 - [NVIDIA CUDA GPU list](https://developer.nvidia.com/cuda-gpus)
 - [NVIDIA CUDA compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html)
 - [CUDA installation for Windows](https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/)

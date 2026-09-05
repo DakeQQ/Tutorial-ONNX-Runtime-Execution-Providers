@@ -1,8 +1,8 @@
 # ONNX Runtime Plugin EP：新手友好、源码核验指南
 
-**Plugin EP 是一扇"门"，不是"目的地"。** 它是 ONNX Runtime 提供的公开 C ABI，负责**加载、发现、选择、打包**执行提供程序（EP）。它不是 GPU 或 NPU，也不存在名为 `PluginExecutionProvider` 的通用计算后端。
+**Plugin EP 是一扇"门"，不是"目的地"。** 它是 ONNX Runtime 提供的公开 C 应用程序二进制接口（**ABI**），负责**加载、发现、选择、打包**执行提供程序（EP）。Plugin EP 机制本身不是 GPU、NPU，也不是名为 `PluginExecutionProvider` 的通用计算后端；通过它加载的具体 `OrtEp` 才会编译或执行其支持的模型运算。
 
-> **一句话总结：** Plugin EP 可以让全新 EP 亮相，也可以让老 EP 换一种方式发布。它只负责"交付"，从不负责"计算"。
+> **一句话总结：** Plugin EP 规定具体 EP 如何接入 ONNX Runtime；计算能力由加载后的 EP 提供，而不是由加载机制本身提供。
 
 ### 如何阅读本指南
 
@@ -25,14 +25,14 @@ flowchart LR
     classDef leaf fill:#eceff1,stroke:#90a4ae,color:#20242b
 ```
 
-**核验版本：** 本文以 ONNX Runtime `main` 分支 [`bf6aa00`](https://github.com/microsoft/onnxruntime/commit/bf6aa0063d1c178c4a4d33ed6770425834147e2a) 提交为准，核验于 2026-07-17。该开发分支报告 `ORT_VERSION=1.29.0`、`ORT_API_VERSION=29`，这是开发快照，不是正式发布包的兼容性承诺。仓库中其他可运行的指南仍以各自实测过的软件包版本为准。
+**核验版本：** 本文以正式发布的 ONNX Runtime [`v1.29.0`、提交 `2e2543f`](https://github.com/microsoft/onnxruntime/commit/2e2543fbe9fae542f921d47a72d21d5a4ef0b710) 为准，源码与文档核验于 2026-09-01。下文的软件包路线已于 2026-08-30 在 Windows 11 + RTX 5060 Ti 上，用普通 `onnxruntime==1.29.0` 与 NVIDIA 独立 TensorRT RTX EP `0.4.0` 实际执行；本次文档更新保留该硬件记录，并未重新运行。本文会分别标明源码约定与软件包行为。
 
 下文每条结论都标注了可信度：
 
 | 标签 | 含义 |
 |---|---|
 | **公开约定** | 由公开头文件或官方文档明确规定，可以放心依赖 |
-| **源码实现** | 在核验的提交中成立，但属于可能变化的实现细节 |
+| **源码实现** | 在锁定的 `v1.29.0` 发布源码中成立，但后续版本仍可能改变该实现细节 |
 | **仓库实测** | 本仓库已用相应软件包实际运行验证过的行为 |
 
 [English](README.md) · [Plugin EP 官方文档](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/)
@@ -134,11 +134,11 @@ flowchart TD
     classDef green fill:#2e7d32,stroke:#a5d6a7,color:#ffffff
 ```
 
-| 接入方式 | 识别方式 | 会话如何创建 EP | 例子（核验源码） | 适用场景 |
+| 接入方式 | 识别方式 | 会话如何创建 EP | 例子（核验源码/软件包） | 适用场景 |
 |---|---|---|---|---|
 | **Internal** | 由 ORT 自行注册 | 直接调用内部工厂 | CPU；`USE_DML` 下的 DML；`USE_WEBGPU && !ORT_USE_EP_API_ADAPTERS` 下的 WebGPU | ORT Core 构建 |
-| **Provider bridge** | 动态库同时导出 `GetProvider` 和两个工厂符号 | 调用旧接口 `Provider::CreateIExecutionProvider()` | CUDA、OpenVINO、QNN、MIGraphX、Vitis AI、TensorRT RTX | 改造现有 EP |
-| **Pure plugin** | 动态库导出两个工厂符号，没有 `GetProvider` | 调用 `OrtEpFactory::CreateEp()`，再封装成 `OrtEp` | 原生 WebGPU、独立 CUDA plugin、示例插件 | 全新或完全解耦的 EP |
+| **Provider bridge** | 动态库同时导出 `GetProvider` 和两个工厂符号 | 调用旧接口 `Provider::CreateIExecutionProvider()` | CUDA、OpenVINO、QNN、MIGraphX、Vitis AI | 改造现有 EP |
+| **Pure plugin** | 动态库导出两个工厂符号，没有 `GetProvider` | 调用 `OrtEpFactory::CreateEp()`，再封装成 `OrtEp` | TensorRT RTX 0.4、原生 WebGPU、独立 CUDA plugin、示例插件 | 全新或完全解耦的 EP |
 
 Loader 只检测动态库是否导出 `GetProvider`，应用不需要额外指定类型。CUDA 同时出现在前两行，是因为它们是同一个 EP 的两条不同发布路线。
 
@@ -394,15 +394,15 @@ flowchart LR
 
 纯 CUDA 和 WebGPU 插件都调用 `ApiInit(ort_api_base, ORT_PLUGIN_EP_MIN_ORT_VERSION)`；CUDA 还会按协商到的 runtime 版本决定是否启用可选回调。仅凭 `ort_version_supported` 并不能完成这种协商。
 
-### 本文核验版本的 API 演进
+### 锁定正式版本的 API 演进
 
 每个新版本只会**追加**能力，绝不会改写已有内容。
 
 ```mermaid
 flowchart LR
-    V22["1.22<br/>注册 + 发现"] --> V23["1.23<br/>编译型 EP"] --> V24["1.24<br/>内核注册表"] --> V25["1.25<br/>Profiler + Sync"] --> V26["1.26<br/>图捕获/重放"] --> V27["1.27<br/>Session 初始化钩子"] --> V28["1.28<br/>SelectBestModelCandidate"]
+    V22["1.22<br/>注册 + 发现"] --> V23["1.23<br/>编译型 EP"] --> V24["1.24<br/>内核注册表"] --> V25["1.25<br/>Profiler + Sync"] --> V26["1.26<br/>图捕获/重放"] --> V27["1.27<br/>Session 初始化钩子"] --> V28["1.28<br/>SelectBestModelCandidate"] --> V29["1.29<br/>Weightless 支持"]
 
-    class V22,V25,V26,V27,V28 leaf
+    class V22,V25,V26,V27,V28,V29 leaf
     class V23 blue
     class V24 green
     classDef leaf fill:#eceff1,stroke:#90a4ae,color:#20242b
@@ -415,13 +415,13 @@ flowchart LR
 | 1.22 | 动态库注册/卸载；硬件与 EP 设备的发现和选择；基础 factory/EP 字段 | 打基础 |
 | 1.23 | 图读取、`GetCapability`、`Compile`、`OrtNodeComputeInfo`、分配器、数据传输、stream、layout、run hook、编译模型兼容性 | 支持编译型 EP |
 | 1.24 | 内核注册表、If/Loop/Scan helper、虚拟设备、外部资源、自定义 op domain、不兼容详情 | 只用注册表的 EP 可以不实现 `Compile` |
-| 1.25 | EP profiler 与事件、算子 schema 查询、`OrtEp::Sync`、图形互操作 | 本核验版本中 `OrtEpApi` 的最后一次追加 |
+| 1.25 | EP profiler 与事件、算子 schema 查询、`OrtEp::Sync`、图形互操作 | Profiling 与同步能力 |
 | 1.26 | 资源预算、图捕获/重放回调 | 加在 `OrtEp` 上，不在 `OrtEpApi` 里 |
-| 1.27 | Session 初始化完成通知、默认内存设备、释放已捕获的图 | 本核验版本中最新的 `OrtEp` 回调 |
-| 1.28 | `OrtEpFactory::SelectBestModelCandidate`；核心 API 新增 `KernelContext_GetSyncStream` | 本核验版本中最新的 `OrtEpFactory` 回调 |
-| 1.29 开发分支 | 版本号报 29，但本次核验未见最终定型的 `OrtApi`/`OrtEpApi`/`OrtEp`/`OrtEpFactory` 新增项 | 不要据此推断已发布的兼容承诺 |
+| 1.27 | Session 初始化完成通知、默认内存设备、释放已捕获的图 | Session 与图捕获生命周期扩展 |
+| 1.28 | `OrtEpFactory::SelectBestModelCandidate`；核心 API 新增 `KernelContext_GetSyncStream` | 模型包候选版本选择 |
+| 1.29 | `OrtEpApi::SessionOptionsGetWeightlessSourceModelBuffer`、`OrtWeightlessSupport`、`OrtEp::GetWeightlessSupport` | 正式定型的 weightless 模型支持 |
 
-`OrtEpApi` 函数表本身在版本 25 处有槽位断言收尾，所以 "Plugin EP API 版本" 并非单张表——后续能力还会体现在回调 struct 和核心 `OrtApi` 里。
+“Plugin EP API 版本”并不只对应一张函数表。ORT 1.29 的能力分布在核心 `OrtApi`、`OrtEpApi` 与带版本的 factory/EP/回调 struct 中。每个已实现 struct 都要正确设置 `ort_version_supported`，插件调用新 API 前还必须按实际协商到的 runtime 版本进行检查。
 
 > [!IMPORTANT]
 > `main` 的头文件、正式发布的 ORT 包、厂商插件包，是三个各自独立定版本的产物。编译成功，不代表运行时一定兼容。
@@ -438,7 +438,12 @@ import vendor_plugin_ep
 
 registration_name = "my_plugin_registration"
 library_path = vendor_plugin_ep.get_library_path()
-ep_names = vendor_plugin_ep.get_ep_names()
+if hasattr(vendor_plugin_ep, "get_ep_names"):
+  ep_names = vendor_plugin_ep.get_ep_names()
+elif hasattr(vendor_plugin_ep, "get_ep_name"):
+  ep_names = [vendor_plugin_ep.get_ep_name()]
+else:
+  raise RuntimeError("插件包没有 EP 名称 helper")
 if not ep_names:
     raise RuntimeError("插件包没有报告 EP 名称")
 ep_name = ep_names[0]
@@ -461,7 +466,7 @@ finally:
     ort.unregister_execution_provider_library(registration_name)
 ```
 
-这段代码沿用了官方 Python 示例的 API 名称和清理顺序。
+这段代码遵循 Plugin EP 的注册、发现、选择与清理流程。Python 包 helper 的命名属于打包约定，不属于 ORT C ABI；请支持所安装软件包实际记录的 helper 形式。
 
 | 常见误区 | 应当这样做 |
 |---|---|
@@ -534,7 +539,7 @@ flowchart LR
 | 模型测试 | 严格无回退运行；检查输出和节点分配 | 官方指南推荐模型级测试 |
 | 版本 CI | 同时把关最低支持版本和目标 runtime 版本 | CUDA/WebGPU 的 `ApiInit` 模式 |
 | 软件包内容 | 只打包插件动态库及其依赖，不要附带一份 ORT Core | 官方打包指南 |
-| 包 helper | `get_library_path()`、`get_ep_names()`，可选 `get_ep_name()` | 官方 PyPI 建议 |
+| 包 helper | `get_library_path()`，再配合 `get_ep_names()` 或单 EP 的 `get_ep_name()` | 打包约定；helper 名称不属于 ORT ABI |
 | 软件包依赖 | 记录并验证兼容的 ORT 版本范围 | 官方打包指南 |
 
 ---
@@ -547,26 +552,82 @@ flowchart LR
 |---|---|---|---|
 | AMD Windows ML MIGraphX | Provider bridge | 现有 MIGraphX 后端，现在走工厂/设备发现 | [AMD/provider_test.py](../AMD/provider_test.py) |
 | Qualcomm QNN 2.x | Provider bridge | QNN CPU/GPU/HTP 后端脱离单一 ORT 包 | [Qualcomm/one_click.py](../Qualcomm/one_click.py) |
-| NVIDIA TensorRT RTX | Provider bridge | 与经典 TensorRT EP 是不同产品，加载方式相同 | [NVIDIA/provider_test.py](../NVIDIA/provider_test.py) |
+| NVIDIA TensorRT RTX 0.4 | Pure plugin | 独立 EP ABI 产品，与经典 TensorRT 不同；不导出 `GetProvider` | [NVIDIA/provider_test.py](../NVIDIA/provider_test.py) |
 | 原生 WebGPU | Pure plugin | 原生 ORT 宿主与软件包，不是浏览器版 `onnxruntime-web` API | [native_webgpu_validator.py](../WebGPU/onnxruntime-web-demo/native_webgpu_validator.py) |
 
 > 上游还有一个独立的纯 CUDA Plugin EP，但这不代表本仓库内置的 `CUDAExecutionProvider` 路线已被取代——软件包、依赖、验证结论都要分开看待。
 
-### 源码核验表
+### 已验证的 TensorRT RTX 0.4 软件包路线
 
-以下链接全部指向核验时的固定提交，而不是随时变化的 `main`。
+独立软件包已在 Windows 11、RTX 5060 Ti（Blackwell，计算能力 12.0）、驱动 616.56 上执行。它的 DLL 只导出 `CreateEpFactories` 与 `ReleaseEpFactory`，因此 ORT 1.29 通过 `EpLibraryPlugin` 加载它，而不是 `EpLibraryProviderBridge`。
+
+该插件必须放在只安装普通 ORT 的独立环境中，不能与 `onnxruntime-gpu` 共存：
+
+```powershell
+conda create -n python_313_trt_rtx python=3.13 pip -y
+D:\Anaconda\envs\python_313_trt_rtx\python.exe -m pip install `
+  "onnxruntime==1.29.0" `
+  "onnxruntime-ep-nv-tensorrt-rtx==0.4.0" `
+  "onnx==1.22.0"
+```
+
+```python
+import gc
+from pathlib import Path
+
+import onnxruntime as ort
+import onnxruntime_ep_nv_tensorrt_rtx as trt_ep
+
+registration_name = trt_ep.get_ep_name()
+ort.register_execution_provider_library(
+  registration_name, trt_ep.get_library_path()
+)
+session = None
+try:
+  devices = [
+    device
+    for device in ort.get_ep_devices()
+    if device.ep_name == registration_name
+  ]
+  if not devices:
+    raise RuntimeError("没有兼容的 TensorRT RTX 设备")
+
+  cache = Path.home() / ".cache" / "my_app" / "trt_rtx"
+  cache.mkdir(parents=True, exist_ok=True)
+  options = ort.SessionOptions()
+  options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+  options.add_provider_for_devices(
+    [devices[0]],
+    {"enable_cuda_graph": "0", "nv_runtime_cache_path": str(cache)},
+  )
+  session = ort.InferenceSession(
+    "model.onnx", sess_options=options, enable_fallback=False
+  )
+  outputs = session.run(None, feeds)
+finally:
+  del session
+  gc.collect()
+  ort.unregister_execution_provider_library(registration_name)
+```
+
+`get_available_providers()` 不是动态插件的发现 API；注册前只显示宿主内置 provider 属于正常现象。从仓库根目录运行严格命令 `python NVIDIA/provider_test.py --provider nv_tensorrt_rtx`，得到 23 个插件 profiling 冒烟事件，且没有节点落到 CPU。仓库伪 LLM 基准把完整计算图编译为 1 个插件事件；开启 TensorRT RTX CUDA Graph 后，在该主机上完成 200 次缓存测量，中位延迟为 0.211 ms。方法与边界请参阅 [NVIDIA 指南](../NVIDIA/README.zh-CN.md#71-伪小型-llm-基准测试)。
+
+### 正式发布源码核验表
+
+以下 ORT 链接全部指向不可变的 `v1.29.0` 发布提交，而不是随时变化的 `main`。
 
 | 源码 | 核验结论 |
 |---|---|
-| [`onnxruntime_ep_c_api.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/session/onnxruntime_ep_c_api.h) | 公开 struct、所有权说明、回调版本、4/8 容量、1.28 factory 尾字段 |
-| [`onnxruntime_c_api.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/session/onnxruntime_c_api.h) / [`.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/onnxruntime_c_api.cc) | 注册约定、核心 API 版本、只追加的槽位断言、minimal-build 桩代码 |
-| [`utils.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/utils.cc) | 相对路径基准、`GetProvider` 探测、同名且同工厂的选择要求 |
-| [`ep_library_plugin.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/plugin_ep/ep_library_plugin.cc) | 必需符号、工厂创建/释放、动态卸载 |
-| [`environment.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/environment.cc) | 重复名称、设备、虚拟模式、分配器/数据传输、卸载顺序 |
-| [`ep_library_internal.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/plugin_ep/ep_library_internal.cc) / [`ep_library_provider_bridge.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/plugin_ep/ep_library_provider_bridge.cc) | 内置 Provider 列表、旧版桥接适配 |
-| [`ep_plugin_provider_interfaces.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/plugin_ep/ep_plugin_provider_interfaces.cc) | 纯插件适配器、初始检查、能力、编译与释放顺序 |
-| [`ep_kernel_registration.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/plugin_ep/ep_kernel_registration.cc) / [`ep_api.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/session/plugin_ep/ep_api.cc) | Registry 复制、控制流 helper、`OrtEpApi` 版本槽位 |
-| [`example_plugin_ep`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/test/autoep/library/example_plugin_ep) / [`example_plugin_ep_kernel_registry`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/test/autoep/library/example_plugin_ep_kernel_registry) | 编译型与内核注册表的参考实现 |
-| [`cuda/plugin`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/cuda/plugin) / [`webgpu/ep/api.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/webgpu/ep/api.cc) | 纯插件入口点、runtime 版本协商 |
+| [`onnxruntime_ep_c_api.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/include/onnxruntime/core/session/onnxruntime_ep_c_api.h) | 公开 struct、所有权、回调版本、4/8 容量与正式定型的 1.29 weightless 支持 |
+| [`onnxruntime_c_api.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/include/onnxruntime/core/session/onnxruntime_c_api.h) / [`.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/onnxruntime_c_api.cc) | 注册约定、API 版本、只追加的槽位、minimal-build 桩代码 |
+| [`utils.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/utils.cc) | 相对路径基准、`GetProvider` 探测、同名且同工厂的选择要求 |
+| [`ep_library_plugin.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/plugin_ep/ep_library_plugin.cc) | 必需导出、加载失败清理、工厂释放与动态卸载 |
+| [`environment.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/environment.cc) | 重复名称、设备、虚拟模式、分配器/数据传输、卸载顺序 |
+| [`ep_library_internal.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/plugin_ep/ep_library_internal.cc) / [`ep_library_provider_bridge.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/plugin_ep/ep_library_provider_bridge.cc) | 内置 Provider 列表与旧版桥接适配 |
+| [`ep_plugin_provider_interfaces.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/plugin_ep/ep_plugin_provider_interfaces.cc) | 纯插件适配器、初始检查、能力、编译与释放顺序 |
+| [`ep_kernel_registration.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/plugin_ep/ep_kernel_registration.cc) / [`ep_api.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/session/plugin_ep/ep_api.cc) | Registry 复制、控制流 helper 与 `OrtEpApi` 版本槽位 |
+| [`example_plugin_ep`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/test/autoep/library/example_plugin_ep) / [`example_plugin_ep_kernel_registry`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/test/autoep/library/example_plugin_ep_kernel_registry) | 编译型与内核注册表的参考实现 |
+| [`cuda/plugin`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/cuda/plugin) / [`webgpu/ep/api.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/webgpu/ep/api.cc) | 纯插件入口点与 runtime 版本协商 |
+| [TensorRT RTX 0.4 导出](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/blob/v0.4.0/src/tensorrt_rtx_execution_provider.def) / [Python helper](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/blob/v0.4.0/python/onnxruntime_ep_nv_tensorrt_rtx/__init__.py) | 纯插件分类、打包库路径、单数/复数 EP 名称 helper |
 
 官方参考：[Usage](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/usage.html) · [Development](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/development.html) · [Testing](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/testing.html) · [Packaging](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/packaging.html)

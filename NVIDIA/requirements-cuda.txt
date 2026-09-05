@@ -1,11 +1,8 @@
-# Latest PyPI ONNX Runtime CUDA core for Windows/Linux x86-64 (1.27.1 is not on PyPI).
-# ORT 1.27.0 was built with CUDA 13.0/cuDNN 9.14; CUDA 13 minor-version binary
-# compatibility and cuDNN 9 backward compatibility allow these newer runtime pins.
-# The ORT 1.27 cuda extra still references retired *-cu13 package names;
-# use NVIDIA's current un-suffixed CUDA component packages through this meta-package.
-onnxruntime-gpu==1.27.0
+# PyPI CUDA 13 stack verified on Windows 11 x64 with a Blackwell RTX 5060 Ti.
+# ORT 1.29 understands NVIDIA's consolidated site-packages/nvidia/cu13 layout.
+onnxruntime-gpu==1.29.0
 cuda-toolkit[cublas,cudart,cufft,curand,nvjitlink,nvrtc]==13.3.1
-nvidia-cudnn-cu13==9.24.0.43
+nvidia-cudnn-cu13==9.25.1.1
 
 # Used only to generate the repository smoke-test model.
 onnx==1.22.0

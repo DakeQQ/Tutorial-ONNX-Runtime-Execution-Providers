@@ -55,17 +55,23 @@ PROTECTED_ORT_DISTRIBUTIONS = {
     "onnxruntime-windowsml",
 }
 DIRECTML_ORT_VERSION = "1.24.4"
-WINDOWS_NUMPY_VERSION = "1.26.4"
+DIRECTML_NUMPY_VERSION = "1.26.4"
 DIRECTML_CP312_WHEEL = "onnxruntime_directml-1.24.4-cp312-cp312-win_amd64.whl"
 DIRECTML_CP312_SHA256 = "f2ecb68b7b7b259d2ef3112ae760149f9b5a1e7c0fbb73d539da6250a648a614"
 DIRECTML_DLL_SHA256 = "b73972115320e906a49602f2027a3266622881b0d325ba685e0f165a9482a8d7"
-WINDOWS_ML_WASDK_VERSION = "2.1.3"
-WINDOWS_ML_ORT_DISTRIBUTION_VERSION = "1.24.6.202605042033"
+WINDOWS_ML_WASDK_VERSION = "2.3.0"
+WINDOWS_ML_ORT_DISTRIBUTION_VERSION = "1.25.2.202605110140"
 WINDOWS_ML_MIGRAPHX_MSIX_VERSION = (1, 8, 57, 0)
+ROCM10_MIGRAPHX_VERSION = "2.17.0+rocm10.0.0"
+ROCM10_PLUGIN_VERSION = "1.0.0+rocm10.0.0"
+ROCM10_NUMPY_VERSION = "2.5.2"
+ROCM10_ORT_INDEX = "https://stable.repo.amd.com/rocm/onnxruntime/whl-next/"
+ROCM10_MIGRAPHX_INDEX = "https://stable.repo.amd.com/rocm/migraphx/whl-next/"
 MIGRAPHX_ORT_BY_ROCM = {
     "7.2.1": "1.23.2",
     "7.2.4": "1.23.2",
     "7.14.0": "1.23.2",
+    "10.0.0": "1.29.0",
 }
 MIGRAPHX_WHEEL_SHA256 = {
     ("7.2.1", "cp310"): "07f485fbeb8fbd6a89fa42d24832b4e206057fca62654b0eb39eb1edf9d6e70a",
@@ -73,14 +79,23 @@ MIGRAPHX_WHEEL_SHA256 = {
     ("7.2.4", "cp310"): "4886faab646a7ef12f33fb53f085208182fab8dac249ba199dc5d23f8bd128ec",
     ("7.2.4", "cp312"): "ee8edeb2ba6a8d99b3043b23e812423e6f10333b508e003fc77b0feda197449f",
     ("7.14.0", "cp312"): "67c32a5d8396c28da5efd3643c1ebcb55a03581aad089f7d99922ed5a51bc58b",
+    ("10.0.0", "cp312"): "ba6942b0cb362a69579ad2e74da0430c4c842b965c6107225bb1a1a50b04d8e1",
+    ("10.0.0", "cp314"): "67c00393988f020dbd32d1037013b8029c065eaab9fe967d709bfb28882ba7e6",
 }
 MIGRAPHX_PROVIDER_SHA256_BY_ROCM = {
     "7.2.1": "8079986332cdf12234635ed4f2b5abd1b49519f6592d6dfcd8afaf5000887b7b",
     "7.2.4": "f3fb0b10996b2a2f94afc59edf6fab421bfa12842f09518339d1e0d8f3bd86c7",
     "7.14.0": "447bb405de55dd7872a8e01a90405ff0f0397d5d562acc6f48711312971537c0",
 }
+MIGRAPHX_PLUGIN_PROVIDER_SHA256 = {
+    ("10.0.0", "cp312"): "28fa542ddc3871be7ac6e5648951b8690a4da857595a237a38d1c554af89bb5a",
+    ("10.0.0", "cp314"): "2d5933c6a67353a11b4d76882fd9e1d3c52bd4f7d6663a59c1651ace15faeef0",
+}
 MIGRAPHX_SUPPORTED_GFX_BY_ROCM = {
     "7.14.0": frozenset({"gfx942", "gfx950"}),
+    "10.0.0": frozenset(
+        {"gfx950", "gfx942", "gfx1200", "gfx1201", "gfx1100", "gfx1101", "gfx1102"}
+    ),
 }
 AMD_PCI_VENDOR_ID = 0x1002
 SMOKE_MODEL_SHA256 = "d8b1fcc3bfdd175afab01c11d502f0b1b28b3516434961e6de65a1f315434b7d"
@@ -182,6 +197,16 @@ def migraphx_wheel_details(release: str, python_version: tuple[int, int]) -> tup
     expected_sha256 = MIGRAPHX_WHEEL_SHA256.get((release, python_tag))
     if ort_version is None or expected_sha256 is None:
         raise ValueError(f"No audited AMD MIGraphX wheel for ROCm {release}, Python {python_version}.")
+    if release == "10.0.0":
+        wheel_name = (
+            f"onnxruntime_ep_migraphx-{ROCM10_PLUGIN_VERSION}-{python_tag}-{python_tag}-"
+            "manylinux_2_28_x86_64.whl"
+        )
+        wheel_url = (
+            f"{ROCM10_ORT_INDEX}onnxruntime-ep-migraphx/"
+            + wheel_name.replace("+", "%2B")
+        )
+        return wheel_name, wheel_url, expected_sha256
     if release == "7.14.0":
         wheel_name = (
             f"onnxruntime_migraphx-{ort_version}+rocm{release}-{python_tag}-{python_tag}-"
@@ -226,6 +251,8 @@ def pip_install_for_target(target: str, rocm_version: str | None, device_id: int
         )
 
     expected_runtime_wheel: tuple[str, str, str] | None = None
+    extra_index_args: list[str] = []
+    release: str | None = None
     if target == "cpu":
         desired = "onnxruntime"
         dependency_specs = ["numpy"]
@@ -248,7 +275,7 @@ def pip_install_for_target(target: str, rocm_version: str | None, device_id: int
                 f"current Python is {platform.python_version()}. Use the guide's Python 3.12 venv."
             )
         desired = "onnxruntime-directml"
-        dependency_specs = [f"numpy=={WINDOWS_NUMPY_VERSION}"]
+        dependency_specs = [f"numpy=={DIRECTML_NUMPY_VERSION}"]
         runtime_specs = [f"{desired}=={DIRECTML_ORT_VERSION}"]
         runtime_download_specs = runtime_specs
         expected_runtime_wheel = (DIRECTML_CP312_WHEEL, DIRECTML_CP312_SHA256, "Microsoft DirectML")
@@ -263,17 +290,6 @@ def pip_install_for_target(target: str, rocm_version: str | None, device_id: int
             )
         if platform.machine().lower() not in {"amd64", "x86_64"}:
             fail("AMD's published MIGraphX wheel is Linux x86-64 only. / MIGraphX wheel 仅支持 Linux x86-64。")
-        if sys.version_info[:2] not in {(3, 10), (3, 12)}:
-            fail(
-                "The audited AMD MIGraphX routes require CPython 3.10 or 3.12; ROCm 7.14 "
-                f"specifically requires 3.12. Current interpreter: {platform.python_version()}. "
-                "/ 已审计的 MIGraphX 路线需要 CPython 3.10/3.12；ROCm 7.14 仅支持 3.12。"
-            )
-        if not Path("/opt/rocm/bin/migraphx-driver").is_file():
-            fail(
-                "MIGraphX is not installed at /opt/rocm/bin/migraphx-driver. Run "
-                "'sudo apt install migraphx' first. / 未检测到 MIGraphX，请先安装 migraphx。"
-            )
         detected_rocm = detect_rocm_version()
         if not detected_rocm:
             fail(
@@ -300,19 +316,55 @@ def pip_install_for_target(target: str, rocm_version: str | None, device_id: int
                 f"Audited releases: {', '.join(MIGRAPHX_ORT_BY_ROCM)}."
             )
         verify_migraphx_release_hardware(release, device_id)
-        desired = "onnxruntime-migraphx"
         ort_version = MIGRAPHX_ORT_BY_ROCM[release]
         try:
             wheel_name, wheel_url, wheel_sha256 = migraphx_wheel_details(
                 release,
-                (sys.version_info.major, sys.version_info.minor),
+                (sys.version_info[0], sys.version_info[1]),
             )
         except ValueError as exc:
             fail(str(exc))
-        dependency_specs = ["numpy==1.26.4"]
-        runtime_specs = [f"{desired}=={ort_version}"]
-        runtime_download_specs = [wheel_url]
-        expected_runtime_wheel = (wheel_name, wheel_sha256, "AMD MIGraphX")
+        if release == "10.0.0":
+            if sys.version_info[:2] not in {(3, 12), (3, 14)}:
+                fail(
+                    "AMD validates ROCm 10 ONNX Runtime on CPython 3.12 or 3.14; "
+                    f"current interpreter is {platform.python_version()}."
+                )
+            desired = "onnxruntime"
+            dependency_specs = [
+                f"numpy=={ROCM10_NUMPY_VERSION}",
+                f"migraphx=={ROCM10_MIGRAPHX_VERSION}",
+                f"migraphx-libs=={ROCM10_MIGRAPHX_VERSION}",
+            ]
+            runtime_specs = [
+                f"{desired}=={ort_version}",
+                f"onnxruntime-ep-migraphx=={ROCM10_PLUGIN_VERSION}",
+            ]
+            runtime_download_specs = runtime_specs
+            extra_index_args = [
+                "--extra-index-url",
+                ROCM10_ORT_INDEX,
+                "--extra-index-url",
+                ROCM10_MIGRAPHX_INDEX,
+            ]
+            expected_runtime_wheel = (wheel_name, wheel_sha256, "AMD ROCm 10 MIGraphX plugin")
+        else:
+            if sys.version_info[:2] not in {(3, 10), (3, 12)}:
+                fail(
+                    "The audited ROCm 7.x MIGraphX routes require CPython 3.10 or 3.12; "
+                    "ROCm 7.14 specifically requires 3.12. Current interpreter: "
+                    f"{platform.python_version()}."
+                )
+            if not Path("/opt/rocm/bin/migraphx-driver").is_file():
+                fail(
+                    "MIGraphX is not installed at /opt/rocm/bin/migraphx-driver. Run "
+                    "'sudo apt install migraphx' first. / 未检测到 MIGraphX，请先安装 migraphx。"
+                )
+            desired = "onnxruntime-migraphx"
+            dependency_specs = ["numpy==1.26.4"]
+            runtime_specs = [f"{desired}=={ort_version}"]
+            runtime_download_specs = [wheel_url]
+            expected_runtime_wheel = (wheel_name, wheel_sha256, "AMD MIGraphX")
     else:
         fail("Only Windows and Linux are supported by this demo. / 此演示仅支持 Windows 和 Linux。")
 
@@ -345,6 +397,7 @@ def pip_install_for_target(target: str, rocm_version: str | None, device_id: int
                 "--only-binary=:all:",
                 "--index-url",
                 "https://pypi.org/simple",
+                *extra_index_args,
                 "--dest",
                 str(wheelhouse),
                 *download_requirements,
@@ -376,6 +429,8 @@ def pip_install_for_target(target: str, rocm_version: str | None, device_id: int
         )
 
     os.environ["AMD_ORT_BOOTSTRAPPED"] = "1"
+    if release == "10.0.0":
+        prepare_rocm10_loader_environment()
     info("Packages installed; restarting this script. / 依赖安装完成，正在重启脚本。")
     os.execv(sys.executable, [sys.executable, *sys.argv])
 
@@ -454,8 +509,46 @@ def verify_migraphx_release_hardware(release: str, device_id: int) -> None:
         )
 
 
-def import_runtime() -> tuple[Any, Any]:
+def prepare_rocm10_loader_environment() -> None:
     try:
+        ort_distribution = importlib.metadata.distribution("onnxruntime")
+        migraphx_libs_distribution = importlib.metadata.distribution("migraphx-libs")
+    except importlib.metadata.PackageNotFoundError as exc:
+        raise RuntimeError(f"ROCm 10 loader package is missing: {exc}") from exc
+
+    ort_capi = Path(ort_distribution.locate_file("onnxruntime/capi")).resolve()
+    migraphx_libs = Path(migraphx_libs_distribution.locate_file("migraphx_libs")).resolve()
+    versioned_library = ort_capi / "libonnxruntime.so.1.29.0"
+    soname_library = ort_capi / "libonnxruntime.so.1"
+    if not versioned_library.is_file() or versioned_library.is_symlink():
+        raise RuntimeError(f"ROCm 10 base ORT library is missing or unsafe: {versioned_library}")
+    if not migraphx_libs.is_dir():
+        raise RuntimeError(f"ROCm 10 MIGraphX library directory is missing: {migraphx_libs}")
+    if soname_library.is_symlink():
+        if soname_library.resolve() != versioned_library:
+            raise RuntimeError(f"ROCm 10 ORT SONAME link points to an unexpected file: {soname_library}")
+    elif soname_library.exists():
+        if not soname_library.is_file():
+            raise RuntimeError(f"ROCm 10 ORT SONAME path is not a regular file: {soname_library}")
+    else:
+        soname_library.symlink_to(versioned_library.name)
+
+    required_paths = [str(ort_capi), str(migraphx_libs)]
+    current_paths = [path for path in os.environ.get("LD_LIBRARY_PATH", "").split(os.pathsep) if path]
+    missing_paths = [path for path in required_paths if path not in current_paths]
+    if missing_paths:
+        if os.environ.get("AMD_ORT_ROCM10_LOADER_READY") == "1":
+            raise RuntimeError(f"ROCm 10 loader paths were not preserved after restart: {missing_paths}")
+        os.environ["LD_LIBRARY_PATH"] = os.pathsep.join([*missing_paths, *current_paths])
+        os.environ["AMD_ORT_ROCM10_LOADER_READY"] = "1"
+        info("Restarting once with the ROCm 10 ORT/MIGraphX loader paths. / 正在配置 ROCm 10 库路径。")
+        os.execv(sys.executable, [sys.executable, *sys.argv])
+
+
+def import_runtime(*, initialize_rocm_migraphx: bool = False) -> tuple[Any, Any]:
+    try:
+        if initialize_rocm_migraphx:
+            importlib.import_module("migraphx")
         np = importlib.import_module("numpy")
         ort = importlib.import_module("onnxruntime")
     except (ImportError, OSError) as exc:
@@ -463,6 +556,27 @@ def import_runtime() -> tuple[Any, Any]:
             f"Cannot import NumPy/ONNX Runtime: {exc} / 无法导入 NumPy/ONNX Runtime。"
         ) from exc
     return np, ort
+
+
+def initialize_rocm10_migraphx(ort: Any) -> None:
+    verify_runtime_artifact("MIGraphXExecutionProvider", ort, windows_ml=False)
+    try:
+        plugin = importlib.import_module("onnxruntime_ep_migraphx")
+        names = list(plugin.get_ep_names())
+        paths = list(plugin.get_library_paths())
+    except (AttributeError, ImportError, OSError) as exc:
+        raise RuntimeError(f"Cannot load the ROCm 10 MIGraphX EP plugin: {exc}") from exc
+    if names != ["MIGraphXExecutionProvider"] or len(paths) != 1:
+        raise RuntimeError(
+            f"Unexpected ROCm 10 MIGraphX plugin descriptor: names={names}, paths={paths}."
+        )
+    library_path = Path(paths[0])
+    if not library_path.is_file() or library_path.is_symlink():
+        raise RuntimeError(f"ROCm 10 MIGraphX plugin library is missing or unsafe: {library_path}")
+    try:
+        ort.register_execution_provider_library(names[0], str(library_path))
+    except Exception as exc:
+        raise RuntimeError(f"Cannot register the ROCm 10 MIGraphX EP plugin: {exc}") from exc
 
 
 def choose_provider(target: str, available: Iterable[str]) -> str:
@@ -544,7 +658,7 @@ def initialize_windows_ml_migraphx(ort: Any, device_id: int) -> list[Any]:
         expected = ".".join(map(str, WINDOWS_ML_MIGRAPHX_MSIX_VERSION))
         actual = ".".join(map(str, actual_package_version))
         fail(
-            f"Windows ML installed MIGraphX MSIX {actual}, but this 2026-07-17 audit requires "
+            f"Windows ML installed MIGraphX MSIX {actual}, but this 2026-09-01 audit requires "
             f"the currently supported {expected}. Recheck Microsoft's live EP table and update "
             "this guide before accepting another catalog release."
         )
@@ -656,10 +770,26 @@ def verify_runtime_artifact(provider: str, ort: Any, *, windows_ml: bool) -> Non
         release = canonical_rocm_release(detect_rocm_version() or "")
         if release is None:
             fail("Cannot match the installed ROCm release to an audited MIGraphX provider binary.")
-        require_distribution_version("onnxruntime-migraphx", MIGRAPHX_ORT_BY_ROCM[release])
-        artifact = package_root / "capi" / "libonnxruntime_providers_migraphx.so"
-        expected_sha256 = MIGRAPHX_PROVIDER_SHA256_BY_ROCM[release]
-        artifact_name = f"AMD ROCm {release} MIGraphX provider"
+        if release == "10.0.0":
+            require_distribution_version("onnxruntime", MIGRAPHX_ORT_BY_ROCM[release])
+            require_distribution_version("onnxruntime-ep-migraphx", ROCM10_PLUGIN_VERSION)
+            require_distribution_version("migraphx", ROCM10_MIGRAPHX_VERSION)
+            require_distribution_version("migraphx-libs", ROCM10_MIGRAPHX_VERSION)
+            python_tag = f"cp{sys.version_info[0]}{sys.version_info[1]}"
+            expected_sha256 = MIGRAPHX_PLUGIN_PROVIDER_SHA256.get((release, python_tag))
+            if expected_sha256 is None:
+                fail(f"No audited ROCm 10 MIGraphX plugin binary for {python_tag}.")
+            try:
+                plugin = importlib.import_module("onnxruntime_ep_migraphx")
+                artifact = Path(plugin.get_library_path())
+            except (AttributeError, ImportError, OSError) as exc:
+                fail(f"Cannot locate the ROCm 10 MIGraphX plugin library: {exc}")
+            artifact_name = f"AMD ROCm {release} MIGraphX plugin"
+        else:
+            require_distribution_version("onnxruntime-migraphx", MIGRAPHX_ORT_BY_ROCM[release])
+            artifact = package_root / "capi" / "libonnxruntime_providers_migraphx.so"
+            expected_sha256 = MIGRAPHX_PROVIDER_SHA256_BY_ROCM[release]
+            artifact_name = f"AMD ROCm {release} MIGraphX provider"
     else:
         return
 
@@ -937,10 +1067,10 @@ def verify_linux_migraphx_hardware(device_id: int = 0) -> None:
 
 def verify_linux_ryzen_ai_platform() -> None:
     if platform.machine().lower() not in {"amd64", "x86_64"}:
-        fail("Ryzen AI for Linux 1.7.1 supports x86-64 STX/KRK PCs, not Arm Adaptive SoCs.")
+        fail("Ryzen AI for Linux 1.8.0 supports x86-64 STX/KRK PCs, not Arm Adaptive SoCs.")
     if sys.version_info[:2] != (3, 12):
         fail(
-            "Ryzen AI for Linux 1.7.1 requires Python 3.12.x; detected "
+            "Ryzen AI for Linux 1.8.0 requires Python 3.12.x; detected "
             f"{platform.python_version()}. Activate the installer-created Linux venv."
         )
 
@@ -954,18 +1084,11 @@ def verify_linux_ryzen_ai_platform() -> None:
         fail(f"Cannot read /etc/os-release to verify the Ryzen AI Linux platform: {exc}")
     if os_release.get("ID") != "ubuntu" or os_release.get("VERSION_ID") != "24.04":
         fail(
-            "Ryzen AI 1.7.1 NPU support is documented only for Ubuntu 24.04 LTS; "
+            "Ryzen AI 1.8.0 NPU packages target Ubuntu 24.04 LTS; "
             f"detected {os_release.get('PRETTY_NAME', os_release)}."
         )
-
-    kernel_match = re.match(r"^(\d+)\.(\d+)", platform.release())
-    if not kernel_match or tuple(map(int, kernel_match.groups())) < (6, 10):
-        fail(
-            f"Ryzen AI 1.7.1 requires Linux kernel >= 6.10; detected {platform.release()}. "
-            "Install Ubuntu's supported HWE/OEM kernel, reboot, and retry."
-        )
     if not Path("/opt/xilinx/xrt/setup.sh").is_file():
-        fail("XRT is missing at /opt/xilinx/xrt/setup.sh. Install the Ryzen AI 1.7.1 NPU/XRT bundle.")
+        fail("XRT is missing at /opt/xilinx/xrt/setup.sh. Install the Ryzen AI 1.8.0 NPU/XRT bundle.")
 
 
 def provider_configuration(
@@ -1274,7 +1397,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--rocm-version",
-        help="Assert the detected ROCm wheel repository version, for example 7.14.0.",
+        help="Assert the detected ROCm package release, for example 10.0.0.",
     )
     parser.add_argument(
         "--strict-all",
@@ -1315,8 +1438,28 @@ def run_demo(args: argparse.Namespace) -> int:
             "Create a clean environment with exactly one runtime package."
         )
 
+    rocm_release = None
+    initialize_rocm_migraphx = False
+    if platform.system() == "Linux":
+        rocm_release = canonical_rocm_release(detect_rocm_version() or "")
+        initialize_rocm_migraphx = rocm_release == "10.0.0" and args.target in {
+            "auto",
+            "gpu",
+            "migraphx",
+        }
+        if initialize_rocm_migraphx:
+            try:
+                importlib.metadata.version("onnxruntime-ep-migraphx")
+            except importlib.metadata.PackageNotFoundError:
+                pass
+            else:
+                try:
+                    prepare_rocm10_loader_environment()
+                except RuntimeError as exc:
+                    fail(str(exc))
+
     try:
-        np, ort = import_runtime()
+        np, ort = import_runtime(initialize_rocm_migraphx=initialize_rocm_migraphx)
     except RuntimeError as exc:
         if args.bootstrap and os.environ.get("AMD_ORT_BOOTSTRAPPED") != "1":
             pip_install_for_target(args.target, args.rocm_version, args.device_id)
@@ -1329,6 +1472,14 @@ def run_demo(args: argparse.Namespace) -> int:
         available = sorted({device.ep_name for device in ort.get_ep_devices()})
     else:
         available = ort.get_available_providers()
+        if initialize_rocm_migraphx:
+            try:
+                initialize_rocm10_migraphx(ort)
+            except RuntimeError as exc:
+                if args.bootstrap and os.environ.get("AMD_ORT_BOOTSTRAPPED") != "1":
+                    pip_install_for_target(args.target, args.rocm_version, args.device_id)
+                fail(str(exc))
+            available = ort.get_available_providers()
         try:
             provider = choose_provider(args.target, available)
         except RuntimeError as exc:
@@ -1509,6 +1660,8 @@ def run_unit_tests() -> int:
             self.assertEqual(canonical_rocm_release("7.2.1"), "7.2.1")
             self.assertEqual(canonical_rocm_release("7.14"), "7.14.0")
             self.assertEqual(canonical_rocm_release("7.14.0"), "7.14.0")
+            self.assertEqual(canonical_rocm_release("10.0"), "10.0.0")
+            self.assertEqual(canonical_rocm_release("10.0.0"), "10.0.0")
             for value in ("7.2.0", "7.2.3", "8.0", "latest"):
                 with self.subTest(value=value):
                     self.assertIsNone(canonical_rocm_release(value))
@@ -1541,6 +1694,29 @@ def run_unit_tests() -> int:
             with self.assertRaises(ValueError):
                 migraphx_wheel_details("7.14.0", (3, 10))
 
+        def test_rocm_10_plugin_wheels_are_pinned_to_amd_repository(self) -> None:
+            expected = {
+                (3, 12): "ba6942b0cb362a69579ad2e74da0430c4c842b965c6107225bb1a1a50b04d8e1",
+                (3, 14): "67c00393988f020dbd32d1037013b8029c065eaab9fe967d709bfb28882ba7e6",
+            }
+            for python_version, expected_digest in expected.items():
+                with self.subTest(python_version=python_version):
+                    python_tag = f"cp{python_version[0]}{python_version[1]}"
+                    name, url, digest = migraphx_wheel_details("10.0.0", python_version)
+                    self.assertEqual(
+                        name,
+                        f"onnxruntime_ep_migraphx-1.0.0+rocm10.0.0-{python_tag}-{python_tag}-"
+                        "manylinux_2_28_x86_64.whl",
+                    )
+                    self.assertEqual(
+                        url,
+                        f"{ROCM10_ORT_INDEX}onnxruntime-ep-migraphx/"
+                        + name.replace("+", "%2B"),
+                    )
+                    self.assertEqual(digest, expected_digest)
+            with self.assertRaises(ValueError):
+                migraphx_wheel_details("10.0.0", (3, 13))
+
         def test_directml_wheel_hash_is_pinned(self) -> None:
             self.assertEqual(DIRECTML_CP312_WHEEL, "onnxruntime_directml-1.24.4-cp312-cp312-win_amd64.whl")
             self.assertEqual(
@@ -1558,8 +1734,9 @@ def run_unit_tests() -> int:
                 DIRECTML_DLL_SHA256,
                 *MIGRAPHX_WHEEL_SHA256.values(),
                 *MIGRAPHX_PROVIDER_SHA256_BY_ROCM.values(),
+                *MIGRAPHX_PLUGIN_PROVIDER_SHA256.values(),
             ]
-            self.assertEqual(len(fingerprints), 10)
+            self.assertEqual(len(fingerprints), 14)
             for fingerprint in fingerprints:
                 with self.subTest(fingerprint=fingerprint):
                     self.assertIsNotNone(re.fullmatch(r"[0-9a-f]{64}", fingerprint))
@@ -1822,6 +1999,49 @@ def run_unit_tests() -> int:
                 pip_install_for_target("dml", None)
             run_mock.assert_called_once()
 
+        def test_rocm10_bootstrap_stages_plugin_stack_before_install(self) -> None:
+            wheel_name, _, wheel_digest = migraphx_wheel_details("10.0.0", (3, 12))
+
+            def fake_download(command: list[str]) -> subprocess.CompletedProcess[str]:
+                if "download" in command:
+                    destination = Path(command[command.index("--dest") + 1])
+                    (destination / wheel_name).write_bytes(b"staged plugin")
+                return subprocess.CompletedProcess(args=command, returncode=0, stdout="", stderr="")
+
+            with (
+                mock.patch.object(module, "in_isolated_python_environment", return_value=True),
+                mock.patch.object(module, "installed_ort_distributions", return_value=set()),
+                mock.patch.object(platform, "system", return_value="Linux"),
+                mock.patch.object(platform, "machine", return_value="x86_64"),
+                mock.patch.object(sys, "version_info", (3, 12, 9)),
+                mock.patch.object(module, "detect_rocm_version", return_value="10.0.0"),
+                mock.patch.object(module, "verify_migraphx_release_hardware"),
+                mock.patch.object(module, "sha256_file", return_value=wheel_digest),
+                mock.patch.object(module, "run_command", side_effect=fake_download) as run_mock,
+                mock.patch.object(module, "prepare_rocm10_loader_environment") as prepare_loader,
+                mock.patch.object(os, "execv") as execv,
+            ):
+                pip_install_for_target("migraphx", "10.0.0")
+
+            self.assertEqual(run_mock.call_count, 2)
+            download_command = run_mock.call_args_list[0].args[0]
+            install_command = run_mock.call_args_list[1].args[0]
+            for requirement in (
+                "numpy==2.5.2",
+                "migraphx==2.17.0+rocm10.0.0",
+                "migraphx-libs==2.17.0+rocm10.0.0",
+                "onnxruntime==1.29.0",
+                "onnxruntime-ep-migraphx==1.0.0+rocm10.0.0",
+            ):
+                self.assertIn(requirement, download_command)
+                self.assertIn(requirement, install_command)
+            self.assertEqual(download_command.count("--extra-index-url"), 2)
+            self.assertIn(ROCM10_ORT_INDEX, download_command)
+            self.assertIn(ROCM10_MIGRAPHX_INDEX, download_command)
+            self.assertIn("--no-index", install_command)
+            prepare_loader.assert_called_once_with()
+            execv.assert_called_once()
+
         def test_installed_directml_binary_is_hash_checked(self) -> None:
             with tempfile.TemporaryDirectory() as raw_dir:
                 package = Path(raw_dir) / "onnxruntime"
@@ -1835,6 +2055,45 @@ def run_unit_tests() -> int:
                 ):
                     verify_runtime_artifact("DmlExecutionProvider", ort, windows_ml=False)
             require_version.assert_called_once_with("onnxruntime-directml", DIRECTML_ORT_VERSION)
+
+        def test_rocm10_plugin_is_verified_and_registered(self) -> None:
+            with tempfile.TemporaryDirectory() as raw_dir:
+                library = Path(raw_dir) / "libmigraphx-ep.so"
+                library.write_bytes(b"plugin")
+                plugin = SimpleNamespace(
+                    get_ep_names=lambda: ["MIGraphXExecutionProvider"],
+                    get_library_paths=lambda: [str(library)],
+                    get_library_path=lambda: str(library),
+                )
+                ort = SimpleNamespace(
+                    __file__=str(Path(raw_dir) / "onnxruntime" / "__init__.py"),
+                    register_execution_provider_library=mock.Mock(),
+                )
+                with (
+                    mock.patch.object(platform, "system", return_value="Linux"),
+                    mock.patch.object(module, "detect_rocm_version", return_value="10.0.0"),
+                    mock.patch.object(sys, "version_info", (3, 12, 9)),
+                    mock.patch.object(module, "require_distribution_version") as require_version,
+                    mock.patch.object(importlib, "import_module", return_value=plugin),
+                    mock.patch.object(
+                        module,
+                        "sha256_file",
+                        return_value=MIGRAPHX_PLUGIN_PROVIDER_SHA256[("10.0.0", "cp312")],
+                    ),
+                ):
+                    initialize_rocm10_migraphx(ort)
+            self.assertEqual(
+                require_version.call_args_list,
+                [
+                    mock.call("onnxruntime", "1.29.0"),
+                    mock.call("onnxruntime-ep-migraphx", "1.0.0+rocm10.0.0"),
+                    mock.call("migraphx", "2.17.0+rocm10.0.0"),
+                    mock.call("migraphx-libs", "2.17.0+rocm10.0.0"),
+                ],
+            )
+            ort.register_execution_provider_library.assert_called_once_with(
+                "MIGraphXExecutionProvider", str(library)
+            )
 
         def test_installed_runtime_hash_mismatch_fails_closed(self) -> None:
             with tempfile.TemporaryDirectory() as raw_dir:
@@ -1860,11 +2119,11 @@ def run_unit_tests() -> int:
             self.assertEqual(
                 require_version.call_args_list,
                 [
-                    mock.call("onnxruntime-windowsml", "1.24.6.202605042033"),
-                    mock.call("wasdk-Microsoft.Windows.AI.MachineLearning", "2.1.3"),
+                    mock.call("onnxruntime-windowsml", "1.25.2.202605110140"),
+                    mock.call("wasdk-Microsoft.Windows.AI.MachineLearning", "2.3.0"),
                     mock.call(
                         "wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap",
-                        "2.1.3",
+                        "2.3.0",
                     ),
                 ],
             )

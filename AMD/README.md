@@ -2,20 +2,20 @@
 
 [简体中文](README.zh-CN.md) · [Repository index](../README.md) · [Official MIGraphX EP guide](https://onnxruntime.ai/docs/execution-providers/MIGraphX-ExecutionProvider.html)
 
-ONNX Runtime reaches AMD hardware through four routes — **DirectML**, **Windows ML**, **ROCm/MIGraphX**, and **Ryzen AI/Vitis AI**. This guide picks the right one for your device, then *proves* it with real node placement, not just a provider name in a list.
+ONNX Runtime reaches AMD hardware through four routes — **DirectML**, **Windows ML**, **ROCm/MIGraphX**, and **Ryzen AI/Vitis AI**. This guide helps you pick the right one. Its strict commands can prove target-EP execution through current-run node placement when they complete on matching hardware; the validation boundary below records what the repository audit did and did not execute.
 
 FastFlowLM is a separate native runtime for its own supported-model catalog on XDNA2 Ryzen AI NPUs, not an ONNX Runtime EP. This guide identifies when that route fits the device, while keeping generic or custom ONNX validation on the Vitis AI path.
 
 | Item | Baseline |
 |---|---|
-| ORT baseline last verified | `2026-07-17` against linked AMD, Microsoft, Canonical, ONNX Runtime, Docker Hub, and PyPI sources |
-| FastFlowLM review | `v1.0.1` source/docs reviewed `2026-08-13`; native XDNA2 catalog-model route, separate from the audited ORT artifacts |
+| Guidance last verified | `2026-09-01` against linked AMD, Microsoft, Canonical, ONNX Runtime, Docker Hub, and package-registry sources |
+| FastFlowLM review | `v1.0.3` source/docs reviewed `2026-08-31`; native XDNA2 catalog-model route, separate from the audited ORT artifacts |
 | Hosts | Windows and Ubuntu; exact gates vary by GPU/NPU generation |
-| ORT routes | DirectML · Windows ML MIGraphX · ROCm/MIGraphX · Ryzen AI/Vitis AI |
+| ORT routes | DirectML · Windows ML + MIGraphX · ROCm/MIGraphX · Ryzen AI/Vitis AI |
 | Native NPU route | FastFlowLM for its supported models on XDNA2 Ryzen AI PCs; not an ORT EP |
 | Entry point | [`provider_test.py`](provider_test.py) |
 | Proof | Current-run node placement + output sanity; CPU parity for the built-in GPU model, or any model with `--compare-cpu` |
-| Validation boundary | Script self-tests passed on Linux; final DirectML/Windows ML/MIGraphX/Vitis AI proof needs matching hardware |
+| Validation boundary | All 38 deterministic script tests passed on Windows; final DirectML/Windows ML/MIGraphX/Vitis AI proof needs matching hardware |
 
 ### Files
 
@@ -30,7 +30,7 @@ FastFlowLM is a separate native runtime for its own supported-model catalog on X
 | On Windows, building a new app for Win 11 24H2+ | [§10 Windows ML + MIGraphX](#10-new-windows-path-windows-ml--amd-migraphx) |
 | On Ubuntu with an AMD GPU | [§6 Install the matching ROCm track](#6-install-the-matching-rocm-track) |
 | On an XDNA2 Ryzen AI PC with a FastFlowLM-supported local model | [§1.1 FastFlowLM](#fastflowlm-xdna2) |
-| On a Ryzen AI laptop with a generic or custom ONNX model, Windows | [§12 Install Ryzen AI Software](#12-install-ryzen-ai-software-171) |
+| On a Ryzen AI laptop with a generic or custom ONNX model, Windows | [§12 Install Ryzen AI Software](#12-install-ryzen-ai-software-180) |
 | On a Ryzen AI laptop with a generic or custom ONNX model, Ubuntu | [§15 Install the Linux NPU driver](#15-install-the-ubuntu-npu-driver-and-ryzen-ai) |
 | Targeting a Zynq/Versal board | [§16 Embedded Linux targets](#16-embedded-linux-targets) |
 | Asking "why did my node land on CPU?" | [§19 Verification flow](#19-verification-flow) + [§21 Troubleshooting](#21-troubleshooting) |
@@ -59,7 +59,7 @@ FastFlowLM is a separate native runtime for its own supported-model catalog on X
   - [10. New Windows path: Windows ML + AMD MIGraphX](#10-new-windows-path-windows-ml--amd-migraphx)
 - [Part C — Windows Ryzen AI NPU: Vitis AI](#part-c--windows-ryzen-ai-npu-vitis-ai)
   - [11. Supported scope](#11-supported-scope)
-  - [12. Install Ryzen AI Software 1.7.1](#12-install-ryzen-ai-software-171)
+  - [12. Install Ryzen AI Software 1.8.0](#12-install-ryzen-ai-software-180)
   - [13. Vitis AI provider options by generation](#13-vitis-ai-provider-options-by-generation)
 - [Part D — Ubuntu Ryzen AI NPU: Vitis AI](#part-d--ubuntu-ryzen-ai-npu-vitis-ai)
   - [14. Current Linux support gate](#14-current-linux-support-gate)
@@ -87,8 +87,8 @@ mindmap
     GPU
       Windows DirectML
       Windows ML MIGraphX
-      Ubuntu ROCm 7.14, gfx950 or gfx942
-      Ubuntu ROCm 7.2.4 or 7.2.1
+      Ubuntu ROCm 10.0, validated Instinct or Radeon GPU
+      Retained ROCm 7.14, 7.2.4, or 7.2.1
     Ryzen AI NPU
       FastFlowLM native runtime, XDNA2 catalog models
       Windows direct SDK and VitisAI
@@ -143,15 +143,15 @@ flowchart TD
 | Windows 11 24H2+, supported AMD GPU | Dynamically acquire AMD MIGraphX through Windows ML | `MIGraphXExecutionProvider` | Available via catalog; `--windows-ml` supports this path |
 | Ubuntu, AMD GPU in the ONNX matrix | ROCm + MIGraphX + AMD wheel | `MIGraphXExecutionProvider` | **Primary Linux GPU path**; exact GPU/ROCm/Python/wheel gates apply |
 | Windows or Linux, XDNA2 Ryzen AI PC, FastFlowLM-supported model | FastFlowLM native runtime | None — not an ORT EP | **Catalog-model route only**; its own XRT/HRX runtime and model engines; see §1.1 |
-| Windows, Ryzen AI NPU, generic/custom ONNX | Ryzen AI Software 1.7.1; Windows ML is also catalog-available | `VitisAIExecutionProvider` | PHX/HPT/STX/KRK; `--windows-ml` is GPU-only, use the vendor env for NPU |
-| Ubuntu 24.04, Ryzen AI NPU, generic/custom ONNX | Ryzen AI for Linux 1.7.1 | `VitisAIExecutionProvider` | **STX/KRK only, kernel >= 6.10, Python 3.12** |
+| Windows, Ryzen AI NPU, generic/custom ONNX | Ryzen AI Software 1.8.0; Windows ML is also catalog-available | `VitisAIExecutionProvider` | PHX/HPT/STX/KRK; `--windows-ml` is GPU-only, use the vendor env for NPU |
+| Ubuntu 24.04, Ryzen AI NPU, generic/custom ONNX | Ryzen AI for Linux 1.8.0 | `VitisAIExecutionProvider` | **STX/KRK only, Python 3.12**; current XRT 2.25 package set |
 | Linux, AMD/Xilinx Adaptive SoC | Vitis AI target image and runtime | `VitisAIExecutionProvider` | Embedded Linux path for Zynq and Versal |
 | Native Windows ROCm Core SDK | Not a current ORT MIGraphX Python path | None | ROCm 7.14 grows Windows core support, but the validated MIGraphX/ORT stack stays Linux-only |
 
 <a id="fastflowlm-xdna2"></a>
 ### 1.1 FastFlowLM: native XDNA2 local-model route
 
-At the reviewed `v1.0.1` release, [FastFlowLM](https://fastflowlm.com/docs/) is an AMD ROCm-hosted native NPU runtime, not an ONNX Runtime provider. Its source selects XRT by default or HRX with an opt-in build flag, then loads native model engines. It uses its own supported model catalog and `flm pull`/`flm run` workflow; it is not documented as a general runner for arbitrary `.onnx` files.
+At the reviewed `v1.0.3` release, [FastFlowLM](https://fastflowlm.com/docs/) is an AMD ROCm-hosted native NPU runtime, not an ONNX Runtime provider. Its source selects XRT by default or HRX with an opt-in build flag, then loads native model engines. It uses its own supported model catalog and `flm pull`/`flm run` workflow; it is not documented as a general runner for arbitrary `.onnx` files. Version 1.0.3 changed Qwen3.5 and Qwen3.6-MoE weights from Q4_1 to Q4_K, so users upgrading those models must pull the weights again.
 
 | Workload or device | Select | Why |
 |---|---|---|
@@ -222,39 +222,40 @@ providers = [
 
 ## 3. Version and support matrix
 
-### 3.1 Snapshot verified on 2026-07-17
+### 3.1 Snapshot verified on 2026-08-31
 
 | Component | Verified version | Notes |
 |---|---:|---|
-| Current ROCm Core SDK | 7.14.0 | Production release 2026-07-15; first after the TheRock versioning discontinuity |
-| ROCm 7.14 validated ONNX stack | ORT 1.23.2 + MIGraphX 2.16 | Linux, Python 3.12, `gfx950`/`gfx942` only — not a drop-in for the 7.2.x recipes below |
-| Audited AMD-hosted MIGraphX wheel route | ROCm 7.2.4 + ORT 1.23.2 | CPython 3.10/3.12; newest broad, reproducible route this guide enforces |
-| Official ROCm ORT Docker | ROCm 7.2.4 + ORT 1.23 + PyTorch 2.10.0 | Newest `rocm/onnxruntime` tags, Ubuntu 22.04/24.04 |
+| Current ROCm Core SDK | 10.0.0 | Production release 2026-08-26; TheRock-based Linux and Windows core SDK |
+| Current ROCm ONNX stack | ORT 1.29.0 + MIGraphX EP plugin 1.0.0 + MIGraphX 2.17 | Linux; Python 3.12/3.14; `gfx950`, `gfx942`, `gfx1200/1201`, `gfx1100/1101/1102` only |
+| Retained ROCm 7.14 ONNX stack | monolithic ORT-MIGraphX 1.23.2 + MIGraphX 2.16 | Linux, Python 3.12, `gfx950`/`gfx942` only |
+| Audited AMD-hosted legacy wheel routes | ROCm 7.2.4 or 7.2.1 + ORT 1.23.2 | CPython 3.10/3.12; retained for their release-matched hardware matrices |
+| Official ROCm ORT Docker | ROCm 10.0 + ORT 1.29 + PyTorch 2.11.0 | Exact Ubuntu 22.04/24.04 tags for Python 3.11–3.14; mutable `latest` still points to the old 7.2.4 image |
 | Consumer Radeon validation matrix | ROCm 7.2.1 + ORT 1.23.2 | Radeon/Ryzen pages update on a different schedule than core ROCm |
 | Latest upstream ORT / PyPI MIGraphX package | 1.27.1 | Dated 2026-07-12; AMD has not published a matching ROCm row, so this guide keeps the audited route |
-| Stable Ryzen AI Software | 1.7.1 | Windows + Ubuntu NPU; 1.8.0 beta is not for production |
-| Minimum Ryzen AI Windows NPU driver | 32.0.203.280 | Compatibility floor for Ryzen AI EP 1.7 |
-| FastFlowLM native NPU runtime | 1.0.1 | Separate XDNA2-only catalog-model route; its driver/XRT/HRX gates are not part of the ORT artifact verifier |
+| Stable Ryzen AI Software | 1.8.0 | Current Windows and Linux installers; Linux supports STX/KRK NPU-only flow |
+| Ryzen AI Windows NPU driver | 32.0.203.376 | Production driver documented for PHX/HPT/STX/STX Halo/KRK; direct SDK route, not the Windows ML catalog gate |
+| FastFlowLM native NPU runtime | 1.0.3 | Separate XDNA2-only catalog-model route; its driver/XRT/HRX gates are not part of the ORT artifact verifier |
 | PyPI ONNX Runtime DirectML | 1.24.4 | Current x64 wheel; Python >= 3.11 |
 | DirectML operator library in ORT | DirectML 1.15.2, opset up to 20 | Sustained engineering, with some opset-20 exceptions |
-| Python packaging | pip 26.1.2; NumPy pinned to 1.26.4 | AMD's Radeon 7.2.1 ORT wheel is documented as incompatible with NumPy 2.x |
-| Latest PyPI Windows ML artifacts | `wasdk-*` 2.3.0 + `onnxruntime-windowsml` 1.27.1 | Independently serviced — do not hand-combine newest version numbers |
-| Reproducible Windows ML Python recipe | `wasdk-*` 2.1.3 + `onnxruntime-windowsml` 1.24.6.202605042033 | Exact dependency published by the 2.1.3 wheel; keep this pair together |
+| Python packaging | pip 26.2.1; NumPy 2.5.2 on ROCm 10, 1.26.4 on retained 7.x routes | AMD documents the older Radeon ORT wheel as incompatible with NumPy 2.x |
+| Standalone PyPI Windows ML runtime | `onnxruntime-windowsml` 1.28.0.202607272323 | Newest standalone wheel; not a substitute for the projection tuple below |
+| Reproducible Windows ML Python tuple | `wasdk-*` 2.3.0 + ORT 1.25.2.202605110140 + runtime 2.3.1 | Exact ORT dependency declared by the 2.3.0 projection; keep the release line together |
 
 > [!IMPORTANT]
 > "Latest" is not a compatibility guarantee. ROCm, MIGraphX, and the ORT MIGraphX wheel must come from one vendor-validated release set. Windows ML's two `wasdk-*` packages and the Windows App Runtime must share a release line, and the exact ORT dependency the projection declares wins over any standalone "latest" ORT. Never install more than one `onnxruntime-*` distribution in one environment.
 
 > [!NOTE]
-> **Why Windows ML is pinned to 2.1.3:** the unpinned PyPI projection already resolves to 2.3.0, while Microsoft's public stable Windows App SDK download page still tops out at runtime 2.2.0. The 2.1.3 projection, its exact ORT dependency, and the 2.1.3 runtime are all still published and form one reproducible set — do not replace these pins with "latest".
+> **Why Windows ML does not use standalone ORT 1.28:** the 2.3.0 machine-learning projection declares ORT `1.25.2.202605110140` exactly, while Microsoft services the matching Windows App Runtime as patch 2.3.1. Those three values form the supported tuple; independently newer standalone wheels are not interchangeable.
 
 ### 3.2 Documentation skew
 
-The generic ONNX Runtime Vitis AI page still describes Ryzen AI as Windows-only with Linux limited to Adaptive SoCs. Ryzen AI Software 1.7.1's own product documentation adds Ubuntu 24.04 NPU support for STX/KRK. FastFlowLM separately documents an XDNA2 native-runtime route on Windows and Linux. That newer route does not change the Vitis AI ONNX matrix or turn FastFlowLM into an ORT EP: use product-version docs for Ryzen AI PCs, and the Vitis AI target docs for Zynq/Versal.
+The generic ONNX Runtime Vitis AI page and AMD's product-version pages do not move in lockstep. AMD's Ryzen AI 1.8 product docs are authoritative for Ryzen PCs and include separate native Windows and native Linux installers. The 1.8 release notes state that model generation is not supported on Linux; models generated on Windows are compatible with Linux. FastFlowLM separately documents an XDNA2 native-runtime route on both systems. It does not change the Vitis AI ONNX matrix or turn FastFlowLM into an ORT EP.
 
 ### 3.3 Audited artifact fingerprints
 
 > [!WARNING]
-> The verifier enforces these SHA-256 values (downloaded from the stated Microsoft PyPI or AMD HTTPS source and rehashed 2026-07-17). A mismatch fails closed — it is not permission to bypass the check. Re-audit any new vendor artifact and update code/docs together.
+> The verifier enforces these SHA-256 values. Legacy wheel rows were downloaded and rehashed on 2026-07-17; ROCm 10 plugin rows were downloaded from AMD's stable repository and rehashed on 2026-08-31. A mismatch fails closed — it is not permission to bypass the check. Re-audit any changed vendor artifact and update code/docs together.
 
 | Artifact | SHA-256 |
 |---|---|
@@ -268,6 +269,10 @@ The generic ONNX Runtime Vitis AI page still describes Ryzen AI as Windows-only 
 | MIGraphX provider SO inside both 7.2.4 wheels | `f3fb0b10996b2a2f94afc59edf6fab421bfa12842f09518339d1e0d8f3bd86c7` |
 | AMD ROCm 7.14.0 MIGraphX 1.23.2 CPython 3.12 wheel | `67c32a5d8396c28da5efd3643c1ebcb55a03581aad089f7d99922ed5a51bc58b` |
 | MIGraphX provider SO inside the 7.14.0 wheel | `447bb405de55dd7872a8e01a90405ff0f0397d5d562acc6f48711312971537c0` |
+| ROCm 10 MIGraphX plugin 1.0.0 CPython 3.12 wheel | `ba6942b0cb362a69579ad2e74da0430c4c842b965c6107225bb1a1a50b04d8e1` |
+| `libmigraphx-ep.so` inside the CPython 3.12 plugin wheel | `28fa542ddc3871be7ac6e5648951b8690a4da857595a237a38d1c554af89bb5a` |
+| ROCm 10 MIGraphX plugin 1.0.0 CPython 3.14 wheel | `67c00393988f020dbd32d1037013b8029c065eaab9fe967d709bfb28882ba7e6` |
+| `libmigraphx-ep.so` inside the CPython 3.14 plugin wheel | `2d5933c6a67353a11b4d76882fd9e1d3c52bd4f7d6663a59c1651ace15faeef0` |
 
 Windows ML is serviced dynamically, so the verifier instead requires certified catalog status, exact current MSIX `1.8.57.0`, the pinned Python distributions, and a valid Microsoft Authenticode signature on the Windows App Runtime installer.
 
@@ -315,19 +320,19 @@ After installing ROCm: `/opt/rocm/bin/rocminfo | grep -E 'Name:|Marketing Name:'
 
 ## 5. Hardware and OS gates
 
-AMD publishes three distinct ONNX Runtime tracks. The newest ROCm Core SDK is not automatically the right ONNX package for every GPU:
+AMD publishes one current ONNX Runtime track plus retained release-matched tracks. Core ROCm hardware support is broader than its prebuilt ONNX/MIGraphX support, so check the inference row rather than inferring support from the SDK alone:
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart TD
     A["Ubuntu AMD GPU"] --> B{"Exact GPU model?"}
-    B -->|"Instinct MI350X / MI355X / MI300X / MI325X"| C{"gfx950 or gfx942,<br/>confirmed by rocminfo?"}
-    C -->|Yes| D["ROCm 7.14.0 track<br/>ORT 1.23.2 + MIGraphX 2.16<br/>Ubuntu 24.04, Python 3.12 only"]
-    B -->|"Other Instinct: MI300A, MI200, MI100"| E["Not in the 7.14 ONNX row"]
+    B -->|"gfx950 or gfx942 Instinct"| C{"Target confirmed<br/>by rocminfo?"}
+    C -->|Yes| D["ROCm 10.0 current track<br/>ORT 1.29 + plugin 1.0 + MIGraphX 2.17<br/>Python 3.12 or 3.14"]
+    B -->|"gfx1200/1201 or gfx1100/1101/1102 Radeon"| G["ROCm 10.0 current track<br/>exact listed SKU and OS required"]
+    B -->|"Other Instinct: gfx90a or gfx908"| E["Core ROCm supported,<br/>not in the current ONNX row"]
     E --> F["Use only an explicit archived route<br/>or a validated source build"]
-    B -->|"Radeon / Radeon PRO listed in AMD's Radeon ONNX matrix"| G["ROCm 7.2.1 track<br/>Radeon-focused, needs the exact HWE kernel"]
-    B -->|"Retained archived Instinct matrix"| H["ROCm 7.2.4 track<br/>retained, not current production"]
-    B -->|"Ryzen APU iGPU or unlisted GPU"| I["Stop — no ONNX row yet<br/>use DirectML or the Vitis AI NPU path"]
+    B -->|"Older release-matched deployment"| H["Retained ROCm 7.14 / 7.2.x track<br/>use only its original matrix"]
+    B -->|"Ryzen APU iGPU or unlisted target"| I["No current prebuilt ONNX row<br/>use DirectML or the Vitis AI NPU path"]
 
     classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
     classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
@@ -343,17 +348,16 @@ Do not combine the driver, MIGraphX package, or wheel from different tracks.
 
 | Family | Representative models | Mandatory check |
 |---|---|---|
-| Instinct `gfx950` / `gfx942` | MI355X, MI350X, MI325X, MI300X | Current ROCm 7.14 AI Ecosystem ONNX matrix; use the exact target `rocminfo` reports |
-| Other Instinct | MI300A, MI200 family, MI100 | Not in the current 7.14 ONNX row; use only an explicitly supported archived route or a separately validated source build |
-| Radeon PRO | AI PRO R9700/R9600D, W7900/W7800/W7700 families | Must appear in the Radeon-focused ONNX matrix — a core ROCm listing alone is not enough |
-| Radeon RDNA4 | RX 9070/9060 families | Usually restricted to specific Ubuntu/RHEL releases |
-| Radeon RDNA3 | RX 7900/7800/7700 families | Use only SKUs AMD explicitly lists |
+| Instinct `gfx950` / `gfx942` | MI355X, MI350X, MI325X, MI300X | Current ROCm 10 ONNX matrix; use the exact target `rocminfo` reports |
+| Other Instinct | MI350P, MI300A, MI200 family, MI100 | Core SDK support does not put these in the current prebuilt ONNX row; use an explicit retained route or validated source build |
+| Radeon `gfx1200` / `gfx1201` | Listed RX 9000 and Radeon AI PRO R9000 SKUs | Current ROCm 10 ONNX matrix; exact SKU and OS must also match |
+| Radeon `gfx1100` / `gfx1101` / `gfx1102` | Listed RX 7000 and Radeon PRO W7000 SKUs | Current ROCm 10 ONNX matrix; exact SKU and OS must also match |
 | Unlisted GPU | Older Polaris/Vega/RDNA2 or another model | Might run, but is not officially supported; do not use for a production commitment |
 
 > [!NOTE]
 > An unlisted GPU appearing in `rocminfo` does not mean every prebuilt ROCm/MIGraphX library supports it — enumeration can succeed while a kernel launch later fails.
 >
-> **Ryzen APU iGPU:** ROCm 7.14 adds core GPU support for several `gfx115x` Ryzen APUs, but its AI Ecosystem ONNX row stays `gfx950/gfx942` only, and the Radeon 7.2.1 matrix does not cover Ryzen APUs either. On a Ryzen AI laptop use DirectML for the GPU and Vitis AI for the documented STX/KRK NPU path.
+> **Ryzen APU iGPU:** ROCm 10 adds core support for several `gfx115x` Ryzen APUs, but the current prebuilt ONNX row does not list `gfx115x`. On a Ryzen AI laptop, use DirectML for the GPU and Vitis AI for the documented NPU path unless AMD adds that exact iGPU to the ONNX matrix.
 
 ---
 
@@ -369,7 +373,33 @@ Do not combine the driver, MIGraphX package, or wheel from different tracks.
 > [!WARNING]
 > Every route below installs or replaces GPU software and can require a reboot. Use only the route matching your exact hardware, release, and Ubuntu version.
 
-### 6.1 Current ROCm 7.14.0 ONNX track — Ubuntu 24.04, `gfx950/gfx942` only
+### 6.1 Current ROCm 10.0.0 ONNX track
+
+The current prebuilt ONNX path supports Linux with Python 3.12 or 3.14 on `gfx950`, `gfx942`, `gfx1200`, `gfx1201`, `gfx1100`, `gfx1101`, and `gfx1102`. First use AMD's [ROCm 10 install selector](https://rocm.docs.amd.com/en/docs-10.0.0/install/rocm.html) and [compatibility matrix](https://rocm.docs.amd.com/en/docs-10.0.0/compatibility/compatibility-matrix.html) to install a supported 31.50-series kernel driver and register the repository for your exact OS. Then install exactly one matching architecture package, for example:
+
+```bash
+# Set this only after rocminfo or the exact GPU specification confirms it.
+GFX_TARGET=gfx950  # allowed ONNX targets: gfx950 gfx942 gfx1200 gfx1201 gfx1100 gfx1101 gfx1102
+case "$GFX_TARGET" in
+  gfx950|gfx942|gfx1200|gfx1201|gfx1100|gfx1101|gfx1102) ;;
+  *) echo "Target is not in the ROCm 10 prebuilt ONNX matrix: $GFX_TARGET" >&2; exit 1 ;;
+esac
+sudo apt install "amdrocm10.0-${GFX_TARGET}"
+sudo usermod -a -G render,video "$LOGNAME"
+sudo reboot
+```
+
+Confirm the installed release and target after reboot:
+
+```bash
+/opt/rocm/bin/hipconfig --version
+/opt/rocm/bin/rocminfo | grep -E '^[[:space:]]*Name:[[:space:]]*gfx(950|942|1200|1201|1100|1101|1102)$'
+/opt/rocm/bin/amd-smi version
+```
+
+The target must be one of the seven values above and must correspond to an exact GPU/OS combination in AMD's matrix.
+
+### 6.2 Retained ROCm 7.14.0 ONNX track — Ubuntu 24.04, `gfx950/gfx942` only
 
 ROCm 7.14 uses the new TheRock packaging layout — do not adapt the older `amdgpu-install_7.2.x` commands below. Open AMD's current [ROCm install selector](https://rocm.docs.amd.com/en/latest/install/rocm.html), select your exact GPU and Ubuntu 24.04, and complete its driver/repository prerequisites. Then install exactly **one** architecture package:
 
@@ -394,7 +424,7 @@ Confirm the installed release and exact GPU target before continuing:
 
 `rocminfo` must print the target matching your GPU. A different `gfx` target is not eligible for the 7.14 ONNX wheel even if core ROCm supports it.
 
-### 6.2 Retained ROCm 7.2.4 track — Ubuntu 24.04
+### 6.3 Retained ROCm 7.2.4 track — Ubuntu 24.04
 
 This older block is retained for AMD's release-matched 7.2.4 ORT artifacts. It is **not** the current ROCm release.
 
@@ -413,7 +443,7 @@ sudo apt install rocm
 sudo reboot
 ```
 
-### 6.3 Retained ROCm 7.2.4 track — Ubuntu 22.04
+### 6.4 Retained ROCm 7.2.4 track — Ubuntu 22.04
 
 ```bash
 wget --https-only -O amdgpu-install_7.2.4.70204-1_all.deb \
@@ -430,7 +460,7 @@ sudo apt install rocm
 sudo reboot
 ```
 
-### 6.4 Radeon-focused ONNX track — ROCm 7.2.1
+### 6.5 Retained Radeon-focused ONNX track — ROCm 7.2.1
 
 The conservative, fully matrix-validated route for the discrete Radeon/Radeon PRO products on AMD's Radeon ONNX page. Install the HWE kernel the matrix requires, reboot, and verify the kernel before continuing.
 
@@ -498,7 +528,9 @@ cat /opt/rocm/.info/version
 
 ### 7.1 MIGraphX runtime
 
-For **ROCm 7.14**, install AMD's exact MIGraphX 2.16 packages:
+For **ROCm 10**, use AMD's stable Python indexes in §7.2. They install MIGraphX 2.17 and its runtime libraries inside the venv together with the ONNX Runtime EP plugin; do not combine that route with the retained system-wide MIGraphX 2.16/7.x packages below.
+
+For retained **ROCm 7.14**, install AMD's exact MIGraphX 2.16 packages:
 
 ```bash
 wget --https-only \
@@ -529,10 +561,10 @@ dpkg-query -W -f='${Package} ${Version}\n' migraphx half
 
 ### 7.2 Create an isolated Python environment
 
-Three release-matched `onnxruntime_migraphx-1.23.2` routes are used here: **7.14.0** is CPython 3.12-only and gated to `gfx950/gfx942`; the retained **7.2.4** and **Radeon 7.2.1** repositories carry CPython 3.10 and 3.12. Use Ubuntu's native Python — do not add an unofficial Python repository for this demo.
+The current **ROCm 10** route uses base `onnxruntime==1.29.0`, `onnxruntime-ep-migraphx==1.0.0+rocm10.0.0`, and MIGraphX 2.17 as separate packages. AMD validates Python 3.12 and 3.14. The retained **7.14.0**, **7.2.4**, and **7.2.1** routes use monolithic `onnxruntime_migraphx-1.23.2` wheels. Use a Python version supplied by the selected supported OS; do not add an unofficial Python repository for this demo.
 
 ```bash
-# Ubuntu 24.04
+# Ubuntu 24.04 (ROCm 10 or retained 7.x)
 sudo apt install -y python3.12 python3.12-venv
 python3.12 -m venv .venv-amd-ort
 
@@ -543,12 +575,38 @@ python3.10 -m venv .venv-amd-ort
 
 Activate the environment and install from the source matching your installed ROCm release.
 
-**Current ROCm 7.14.0** (`gfx950/gfx942`, Python 3.12 only):
+**Current ROCm 10.0.0** (seven supported targets listed in §6.1; Python 3.12 shown):
+
+```bash
+source .venv-amd-ort/bin/activate
+/opt/rocm/bin/hipconfig --version 2>&1 | grep -Eq '(^|[^0-9])10\.0(\.0)?([^0-9]|$)' || { echo "Installed ROCm is not 10.0.0" >&2; exit 1; }
+python -m pip install --index-url https://pypi.org/simple "pip==26.2.1"
+python -m pip install --index-url https://pypi.org/simple \
+  --extra-index-url https://stable.repo.amd.com/rocm/onnxruntime/whl-next/ \
+  --extra-index-url https://stable.repo.amd.com/rocm/migraphx/whl-next/ \
+  "numpy==2.5.2" \
+  "migraphx==2.17.0+rocm10.0.0" \
+  "migraphx-libs==2.17.0+rocm10.0.0" \
+  "onnxruntime==1.29.0" \
+  "onnxruntime-ep-migraphx==1.0.0+rocm10.0.0"
+
+# AMD's documented packaging workaround: add the ORT SONAME link and loader paths.
+SP="$(python -c 'import site; print(site.getsitepackages()[0])')"
+ln -sf "$SP/onnxruntime/capi/libonnxruntime.so.1.29.0" \
+  "$SP/onnxruntime/capi/libonnxruntime.so.1"
+export LD_LIBRARY_PATH="$SP/onnxruntime/capi:$SP/migraphx_libs:${LD_LIBRARY_PATH:-}"
+
+python -c "import migraphx, onnxruntime as ort, onnxruntime_ep_migraphx as ep; [ort.register_execution_provider_library(n, p) for n, p in zip(ep.get_ep_names(), ep.get_library_paths())]; print(ort.__version__); print(ort.get_available_providers())"
+```
+
+The output must show ORT 1.29.0 and include both `MIGraphXExecutionProvider` and `CPUExecutionProvider`. The registration step is mandatory for the plugin package. `provider_test.py` performs the same registration, SONAME setup, version checks, and plugin binary hash check automatically.
+
+**Retained ROCm 7.14.0** (`gfx950/gfx942`, Python 3.12 only):
 
 ```bash
 source .venv-amd-ort/bin/activate
 /opt/rocm/bin/hipconfig --version 2>&1 | grep -Eq '(^|[^0-9])7\.14(\.0)?([^0-9]|$)' || { echo "Installed ROCm is not 7.14.0" >&2; exit 1; }
-python -m pip install --index-url https://pypi.org/simple "pip==26.1.2"
+python -m pip install --index-url https://pypi.org/simple "pip==26.2.1"
 python -m pip install --index-url https://pypi.org/simple "numpy==1.26.4"
 python -m pip install --index-url https://pypi.org/simple \
   "https://rocm.frameworks.amd.com/whl-multi-arch/onnxruntime-migraphx/onnxruntime_migraphx-1.23.2%2Brocm7.14.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
@@ -559,7 +617,7 @@ python -m pip install --index-url https://pypi.org/simple \
 ```bash
 source .venv-amd-ort/bin/activate
 grep -Eq '(^|[^0-9])7\.2\.4([^0-9]|$)' /opt/rocm/.info/version || { echo "Installed ROCm is not 7.2.4" >&2; exit 1; }
-python -m pip install --index-url https://pypi.org/simple "pip==26.1.2"
+python -m pip install --index-url https://pypi.org/simple "pip==26.2.1"
 python -m pip install --index-url https://pypi.org/simple "numpy==1.26.4"
 PYTAG="$(python -c 'import sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}")')"
 case "$PYTAG" in cp310|cp312) ;; *) echo "Unsupported Python ABI: $PYTAG" >&2; exit 1;; esac
@@ -572,7 +630,7 @@ python -m pip install --index-url https://pypi.org/simple \
 ```bash
 source .venv-amd-ort/bin/activate
 grep -Eq '(^|[^0-9])7\.2\.1([^0-9]|$)' /opt/rocm/.info/version || { echo "Installed ROCm is not 7.2.1" >&2; exit 1; }
-python -m pip install --index-url https://pypi.org/simple "pip==26.1.2"
+python -m pip install --index-url https://pypi.org/simple "pip==26.2.1"
 python -m pip install --index-url https://pypi.org/simple "numpy==1.26.4"
 PYTAG="$(python -c 'import sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}")')"
 case "$PYTAG" in cp310|cp312) ;; *) echo "Unsupported Python ABI: $PYTAG" >&2; exit 1;; esac
@@ -583,19 +641,21 @@ python -m pip install --index-url https://pypi.org/simple \
 > [!NOTE]
 > This is a freshly created, disposable venv. If `python -m pip list` already shows any `onnxruntime-*` package before you install, delete the venv and recreate it — don't uninstall packages in place.
 >
-> The direct AMD wheel URLs are deliberate: 7.14 comes from `rocm.frameworks.amd.com`, 7.2.x from their exact `repo.radeon.com` release directories. PyPI now hosts independently published same-named wheels (including 1.27.1) that AMD has not mapped to these tracks, so `--bootstrap` hash-verifies the selected wheel against [§3.3](#33-audited-artifact-fingerprints) before installing.
+> The package sources are deliberate: ROCm 10 uses AMD's `stable.repo.amd.com` plugin and MIGraphX indexes; 7.14 uses `rocm.frameworks.amd.com`; 7.2.x uses exact `repo.radeon.com` release directories. PyPI's independently published `onnxruntime-migraphx` 1.27.1 is not a substitute for any of these release-matched stacks. `--bootstrap` hash-verifies the selected ORT artifact against [§3.3](#33-audited-artifact-fingerprints) before installing.
 >
-> NumPy is pinned to `1.26.4` because AMD's Radeon 7.2.1 ORT page documents an incompatibility with NumPy 2.x; this guide keeps one conservative baseline across all three ORT 1.23.2 routes.
+> ROCm 10 uses NumPy 2.5.2. NumPy remains pinned to `1.26.4` on the three retained ORT 1.23.2 routes because AMD's Radeon 7.2.1 page documents that older wheel as incompatible with NumPy 2.x.
 
-Verify the wheel:
+Verify a retained monolithic wheel:
 
 ```bash
 python -c "import onnxruntime as ort; print(ort.__version__); print(ort.get_available_providers())"
 ```
 
-Expected: `['MIGraphXExecutionProvider', 'CPUExecutionProvider']`
+Expected: the list includes `MIGraphXExecutionProvider` and `CPUExecutionProvider`.
 
 ### 7.3 One-command GPU run
+
+From the repository root, with the selected virtual environment active:
 
 ```bash
 python AMD/provider_test.py --target migraphx --strict-all
@@ -608,7 +668,7 @@ python AMD/provider_test.py --target migraphx --bootstrap --strict-all
 ```
 
 > [!NOTE]
-> `--bootstrap` never installs a kernel driver — it only manages Python packages in the active environment. It requires an activated venv or non-base Conda env, refuses to touch Ryzen AI/Windows ML vendor environments, checks the x86-64 + release-specific Python ABI, verifies MIGraphX and the installed ROCm release (accepting only 7.2.1, 7.2.4, or 7.14.0), and never uninstalls an existing ORT. The 7.14 path additionally reads `rocminfo` and rejects any `--device-id` that isn't `gfx942/gfx950` before downloading.
+> `--bootstrap` never installs a kernel driver — it only manages Python packages in the active environment. It requires an activated venv or non-base Conda env, refuses to touch Ryzen AI/Windows ML vendor environments, checks x86-64 and the release-specific Python ABI, verifies the detected ROCm release, and never uninstalls an existing ORT. ROCm 10 accepts Python 3.12/3.14 and the seven targets in §6.1; ROCm 7.14 accepts Python 3.12 and `gfx942/gfx950`; retained 7.2.x accepts only its mapped CPython 3.10/3.12 artifacts.
 
 ---
 
@@ -616,14 +676,16 @@ python AMD/provider_test.py --target migraphx --bootstrap --strict-all
 
 Host prerequisites: the AMD kernel driver, `/dev/kfd`, `/dev/dri`, Docker Engine, and correct user permissions. The container carries ROCm user-space libraries, MIGraphX, and ORT.
 
-> [!WARNING]
-> As of 2026-07-17 AMD has not published a ROCm 7.14 `rocm/onnxruntime` image — the newest official tags remain 7.2.4. This shortcut covers only the 7.2.x tracks; use [§6.1](#61-current-rocm-7140-onnx-track--ubuntu-2404-gfx950gfx942-only) and [§7](#7-install-migraphx-and-the-ort-wheel) for 7.14.
+> [!IMPORTANT]
+> Use an exact tag. Docker Hub's mutable `latest` still resolves to the older 7.2.4 image even though AMD published ROCm 7.14 and ROCm 10 tags later.
 
 ```bash
-# ROCm core 7.2.4, Ubuntu 24.04:
-IMAGE=rocm/onnxruntime:rocm7.2.4_ub24.04_ort1.23_torch2.10.0
-# Radeon-focused ROCm 7.2.1, Ubuntu 24.04 (use this instead on that track):
-# IMAGE=rocm/onnxruntime:rocm7.2.1_ub24.04_ort1.23_torch2.9.1
+# Current ROCm 10, Ubuntu 24.04, Python 3.12:
+IMAGE=rocm/onnxruntime:rocm10.0.0_ub24.04_ort1.29_torch2.11.0_py3.12
+# Retained ROCm 7.14, Ubuntu 24.04, Python 3.12:
+# IMAGE=rocm/onnxruntime:rocm7.14.0_ub24.04_ort1.23_torch2.10.0_py3.12
+# Retained ROCm 7.2.4, Ubuntu 24.04:
+# IMAGE=rocm/onnxruntime:rocm7.2.4_ub24.04_ort1.23_torch2.10.0
 
 docker pull "$IMAGE"
 
@@ -637,7 +699,7 @@ docker run --rm -it \
   python3 AMD/provider_test.py --target migraphx --strict-all
 ```
 
-Ubuntu 22.04 tags: `rocm7.2.4_ub22.04_ort1.23_torch2.10.0` (core) and `rocm7.2.1_ub22.04_ort1.23_torch2.9.1` (Radeon). Verify inside the container with `rocminfo` and `/opt/rocm/bin/amd-smi list`.
+Corresponding Ubuntu 22.04 tags exist for ROCm 10, 7.14, and 7.2.4. ROCm 10/7.14 tags are published for several Python versions, but this verifier follows AMD's ONNX compatibility rows: use Python 3.12 or 3.14 for ROCm 10 and Python 3.12 for 7.14. Verify inside the container with `rocminfo` and `/opt/rocm/bin/amd-smi list`.
 
 ---
 
@@ -684,7 +746,7 @@ py -3.12 -m venv .venv-amd-dml
 Set-ExecutionPolicy -Scope Process Bypass -Force
 .\.venv-amd-dml\Scripts\Activate.ps1
 
-python -m pip install --index-url https://pypi.org/simple "pip==26.1.2"
+python -m pip install --index-url https://pypi.org/simple "pip==26.2.1"
 python -m pip install --index-url https://pypi.org/simple "numpy==1.26.4" "onnxruntime-directml==1.24.4"
 
 python -c "import onnxruntime as ort; print(ort.get_available_providers())"
@@ -699,7 +761,7 @@ python AMD/provider_test.py --target dml --strict-all
 python AMD/provider_test.py --target dml --device-id 1 --strict-all
 ```
 
-Run from the repository root. The demo enumerates DXGI adapters in the same order DirectML uses, and fails unless the selected `--device-id` has AMD PCI vendor ID `0x1002`.
+The demo enumerates DXGI adapters in the same order DirectML uses, and fails unless the selected `--device-id` has AMD PCI vendor ID `0x1002`.
 
 Required session settings (DirectML does not support ORT parallel execution or memory-pattern optimization — use separate sessions for concurrency):
 
@@ -744,19 +806,19 @@ py -3.12 -m venv .venv-winml
 Set-ExecutionPolicy -Scope Process Bypass -Force
 .\.venv-winml\Scripts\Activate.ps1
 
-python -m pip install --index-url https://pypi.org/simple "pip==26.1.2"
+python -m pip install --index-url https://pypi.org/simple "pip==26.2.1"
 python -m pip install --index-url https://pypi.org/simple `
-  "numpy==1.26.4" `
-  "wasdk-Microsoft.Windows.AI.MachineLearning[all]==2.1.3" `
-  "wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.1.3" `
-  "onnxruntime-windowsml==1.24.6.202605042033"
+  "numpy==2.5.2" `
+  "wasdk-Microsoft.Windows.AI.MachineLearning[all]==2.3.0" `
+  "wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.3.0" `
+  "onnxruntime-windowsml==1.25.2.202605110140"
 
 winget install --id "Microsoft.VCRedist.2015+.x64" -e `
   --accept-package-agreements --accept-source-agreements
 
-$runtimeInstaller = "$env:TEMP\windowsappruntimeinstall-2.1.3-x64.exe"
+$runtimeInstaller = "$env:TEMP\windowsappruntimeinstall-2.3.1-x64.exe"
 Invoke-WebRequest `
-  https://aka.ms/windowsappsdk/2.1/2.1.3/windowsappruntimeinstall-x64.exe `
+  https://aka.ms/windowsappsdk/2.3/2.3.1/windowsappruntimeinstall-x64.exe `
   -OutFile $runtimeInstaller
 
 $signature = Get-AuthenticodeSignature -LiteralPath $runtimeInstaller
@@ -775,7 +837,7 @@ try {
 }
 ```
 
-Verify before running (both `wasdk-*` at `2.1.3`, ORT at `1.24.6.202605042033`; stop and recreate the venv on any mismatch):
+Verify before running (both `wasdk-*` at `2.3.0`, ORT at `1.25.2.202605110140`; stop and recreate the venv on any mismatch):
 
 ```powershell
 python -m pip list | findstr /i "wasdk onnxruntime-windowsml winrt-runtime"
@@ -825,19 +887,19 @@ sequenceDiagram
 | Plugin | Current catalog release | Driver gate |
 |---|---|---|
 | MIGraphX | MSIX 1.8.57.0 / GPU EP 7.2.2606.20 | AMD GPU driver **25.10.13.09 exactly**; not currently supported for GenAI scenarios |
-| VitisAI | MSIX 1.8.63.0 / EP 2858 | Min Adrenalin 25.6.3 + NPU 32.00.0203.280; max Adrenalin 25.9.1 + NPU 32.00.0203.297 |
+| VitisAI | MSIX 1.8.68.0 / EP 6059 | Min Adrenalin 25.6.3 + NPU 32.00.0203.280; max Adrenalin 25.9.1 + NPU 32.00.0203.297 |
 
 > [!WARNING]
 > These catalog values change through Windows Update D-week releases — recheck the live table before install or image freeze. A newer driver number is **not automatically compatible**.
 >
-> **Do not mix the two NPU tracks.** AMD's direct Ryzen AI 1.7.1 page links NPU drivers `32.0.203.280` and `32.0.203.314`, but the Windows ML VitisAI catalog caps at `32.00.0203.297`. Driver `.314` is valid for the direct 1.7.1 SDK but outside the Windows ML VitisAI gate. The NPU commands in this guide use the direct Ryzen AI environment, not `--windows-ml`.
+> **Do not mix the two NPU tracks.** Direct Ryzen AI 1.8 documents production NPU driver `32.0.203.376`, but the Windows ML VitisAI catalog still caps at `32.00.0203.297`. Driver `.376` belongs to the direct 1.8 SDK route and is outside the catalog gate. The NPU commands in this guide use the direct Ryzen AI environment, not `--windows-ml`.
 
 ### 10.2 Why native Windows ROCm is not this path
 
-ROCm 7.14 substantially expands Windows Core SDK support, but AMD's MIGraphX 2.16 and ONNX Runtime 1.23.2 AI Ecosystem pages still validate only Linux x86-64 on `gfx950/gfx942`, and the AMD ORT wheel is a manylinux artifact. Native Windows ROCm therefore does not make `MIGraphXExecutionProvider` appear in a normal Windows ORT Python wheel. Current Windows choices remain: DirectML, Windows ML (for the MIGraphX plugin), or native Ubuntu ROCm/MIGraphX.
+ROCm 10 substantially expands Windows Core SDK support, but AMD's current MIGraphX 2.17 and ONNX Runtime 1.29 AI Ecosystem row still lists Linux for the prebuilt inference stack. The EP plugin wheel is a manylinux artifact. Native Windows ROCm therefore does not make `MIGraphXExecutionProvider` appear in a normal Windows ORT Python environment. Current Windows choices remain DirectML or Windows ML; use native Linux for the ROCm/MIGraphX plugin route.
 
 > [!WARNING]
-> **WSL2 is not a MIGraphX route.** AMD's current ROCDXG WSL guide (Adrenalin 26.2.2 + ROCm 7.2.1) explicitly states MIGraphX is **not supported** on WSL. An older, now-legacy 7.2 compatibility page listed ONNX Runtime 1.23.2, but it does not override this limitation — the verifier rejects MIGraphX on a WSL kernel. Use native Ubuntu, native Windows DirectML, or Windows ML MIGraphX instead. Ryzen AI 1.7.1 NPU docs likewise cover native Windows and native Ubuntu 24.04 STX/KRK only, not WSL passthrough.
+> **WSL2 is not a MIGraphX route.** AMD's current ROCDXG WSL guide explicitly states MIGraphX is **not supported** on WSL. An older, now-legacy 7.2 compatibility page listed ONNX Runtime 1.23.2, but it does not override this limitation — the verifier rejects MIGraphX on a WSL kernel. Use native Linux, native Windows DirectML, or Windows ML MIGraphX instead. Ryzen AI 1.8 NPU routes are native Windows and native Ubuntu, not WSL passthrough.
 
 ---
 
@@ -845,7 +907,7 @@ ROCm 7.14 substantially expands Windows Core SDK support, but AMD's MIGraphX 2.1
 
 ## 11. Supported scope
 
-Ryzen AI Software 1.7 supports Phoenix (PHX), Hawk Point (HPT), Strix/Strix Halo (STX), and Krackan Point (KRK).
+Ryzen AI Software 1.8 supports Phoenix (PHX), Hawk Point (HPT), Strix/Strix Halo (STX), and Krackan Point (KRK).
 
 | Model type | PHX/HPT | STX/KRK |
 |---|---:|---:|
@@ -856,12 +918,12 @@ Ryzen AI Software 1.7 supports Phoenix (PHX), Hawk Point (HPT), Strix/Strix Halo
 
 Recommended opset: **17**. Unsupported nodes auto-partition to CPU unless strict placement is requested and verified.
 
-## 12. Install Ryzen AI Software 1.7.1
+## 12. Install Ryzen AI Software 1.8.0
 
 | Dependency | Requirement |
 |---|---|
-| Windows | Build >= 22621.3527 for the direct 1.7.1 stack |
-| NPU driver | 32.0.203.280+; still verify against the exact EP release |
+| Windows | Build >= 22621.3527 for the direct 1.8.0 stack |
+| NPU driver | 32.0.203.376 production driver for PHX/HPT/STX/STX Halo/KRK |
 | Visual Studio | VS 2022 + Desktop Development with C++ for builds/custom ops; optional for the basic quicktest |
 | CMake | >= 3.26 |
 | Environment manager | Miniforge preferred |
@@ -884,26 +946,30 @@ cmake --version   # expect >= 3.26 after reopening Miniforge Prompt
 .\npu_sw_installer.exe
 ```
 
-3. Reboot if requested; confirm **Task Manager → Performance → NPU 0**. Use a linked production driver (`32.0.203.280` or `32.0.203.314`) — do not combine the Ryzen AI 1.8 beta driver with this 1.7.1 stack.
-4. Download and run `ryzen-ai-lt-1.7.1.exe`, keep the default path, and let it create the Conda environment `ryzen-ai-1.7.1`.
+3. Reboot if requested; confirm **Task Manager → Performance → NPU 0** and driver `32.0.203.376`. This direct SDK driver is not compatible with the separately capped Windows ML VitisAI catalog route described in §10.
+4. Download and run `ryzen-ai-1.8.0.exe`, keep the default path `C:\Program Files\RyzenAI\1.8.0`, and let it create the Conda environment `ryzen-ai-1.8.0`.
 
 ### 12.1 Vendor quicktest (STX/KRK)
 
-Open the **Miniforge Prompt** (Command Prompt shortcut, not PowerShell):
+Open the **Miniforge Prompt** (Command Prompt shortcut, not PowerShell), change to the repository root, and replace the example path below with its real location:
 
 ```bat
-conda activate ryzen-ai-1.7.1
+cd /d "C:\path\to\Tutorial-ONNX-Runtime-Execution-Providers-main"
+conda activate ryzen-ai-1.8.0
 python -c "import onnxruntime as ort; print(ort.__version__); print(ort.get_available_providers())"
-cd /d "%RYZEN_AI_INSTALLATION_PATH%\quicktest"
+pushd "%RYZEN_AI_INSTALLATION_PATH%\quicktest"
 python quicktest.py
+popd
 ```
 
-Expected final line: `Test Finished`. Stop if `VitisAIExecutionProvider` is absent — never repair the vendor environment with pip.
+Expected final line: `Test Finished`. `popd` returns to the repository root for §12.2. Stop if `VitisAIExecutionProvider` is absent — never repair the vendor environment with pip.
 
 > [!NOTE]
 > **PHX/HPT:** do not use an unmodified `quicktest.py`. AMD requires `target=X1`, `xlnx_enable_py3_round=0`, and the Phoenix `4x4.xclbin`. Skip to [§12.2](#122-one-command-proof-with-profiling) — the repository verifier applies those options without touching the vendor file.
 
 ### 12.2 One-command proof with profiling
+
+Continue in the same Miniforge Prompt, now back at the repository root:
 
 ```powershell
 python AMD/provider_test.py --target npu --strict-all
@@ -1014,20 +1080,19 @@ The report's `deviceStat` section shows `CPU`/`NPU` node counts. Set `enable_cac
 
 ## 14. Current Linux support gate
 
-Ryzen AI 1.7.1 is the first product documentation in this guide to explicitly support Ryzen NPU inference on Linux.
+Ryzen AI 1.8.0 supports native Linux NPU inference on STX and KRK.
 
-| Requirement | Current 1.7.1 value |
+| Requirement | Current 1.8.0 value |
 |---|---|
 | Supported NPU families | STX and KRK |
 | Distribution | Ubuntu 24.04 LTS |
-| Kernel | >= 6.10 |
 | Python | 3.12.x |
-| RAM | 64 GB recommended |
 | Models | CNN INT8/BF16, encoder NLP BF16, NPU-only LLM flow |
 | EP | `VitisAIExecutionProvider` |
+| Driver bundle | XRT 2.25.37 + amdxdna plugin 2.25.260102.56 |
 
 > [!NOTE]
-> PHX/HPT are **not** listed in the current Linux support statement. Do not infer Linux support from the Windows matrix.
+> PHX/HPT are **not** listed in the current Linux support statement. Do not infer Linux support from the Windows matrix. Ryzen AI 1.8 also does not support model generation on Linux; generate the model on Windows and deploy that output on Linux.
 
 ## 15. Install the Ubuntu NPU driver and Ryzen AI
 
@@ -1038,29 +1103,21 @@ sudo apt update
 sudo apt install -y software-properties-common
 sudo add-apt-repository -y universe
 sudo apt update
-sudo apt install -y python3.12 python3.12-venv libboost-filesystem1.74.0 pciutils
+sudo apt install -y python3.12 python3.12-venv libboost-filesystem1.74.0 dkms pciutils
 uname -r
 ```
 
-`libboost-filesystem1.74.0` ships in Ubuntu 24.04's `universe` component, enabled above. If the GA kernel is below 6.10, move to a supported HWE/OEM kernel and reboot before installing XRT:
-
-```bash
-sudo apt-get update
-sudo apt-get install --install-recommends linux-generic-hwe-24.04
-sudo reboot
-```
-
-After reboot, `uname -r` must show >= 6.10. If `ubuntu-drivers list-oem` shows an OEM kernel track, keep that cadence and follow vendor/Ubuntu documentation instead of switching tracks.
+`libboost-filesystem1.74.0` ships in Ubuntu 24.04's `universe` component, enabled above. AMD's 1.8 page does not declare a minimum kernel version; use a supported, fully updated Ubuntu 24.04 kernel and let DKMS build the packaged driver rather than carrying a superseded gate forward.
 
 ### 15.2 Download and install XRT/NPU packages
 
-Get `RAI_1.7.1_Linux_NPU_XRT.zip` from the official AMD Ryzen AI download page, extract it, then from that directory:
+Download AMD's [`RAI_1.8_Linux_NPU_XRT.zip`](https://download.amd.com/opendownload/RyzenAI/Driver/RAI_1.8_Linux_NPU_XRT.zip), extract it, then run from that directory:
 
 ```bash
-sudo apt install --fix-broken -y ./xrt_202610.2.21.75_24.04-amd64-base.deb
-sudo apt install --fix-broken -y ./xrt_202610.2.21.75_24.04-amd64-base-dev.deb
-sudo apt install --fix-broken -y ./xrt_202610.2.21.75_24.04-amd64-npu.deb
-sudo apt install --fix-broken -y ./xrt_plugin.2.21.260102.53.release_24.04-amd64-amdxdna.deb
+sudo apt install --fix-broken -y ./xrt_202620.2.25.37_24.04-amd64-base.deb
+sudo apt install --fix-broken -y ./xrt_202620.2.25.37_24.04-amd64-base-dev.deb
+sudo apt install --fix-broken -y ./xrt_202620.2.25.37_24.04-amd64-npu.deb
+sudo apt install --fix-broken -y ./xrt_plugin.2.25.260102.56.release_24.04-amd64-amdxdna.deb
 
 export LD_LIBRARY_PATH=/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}
 source /opt/xilinx/xrt/setup.sh
@@ -1069,17 +1126,18 @@ xrt-smi examine
 
 Expected device name resembles `NPU Strix` (exact BDF/name vary by machine).
 
-### 15.3 Install the Ryzen AI 1.7.1 package
+### 15.3 Install the Ryzen AI 1.8.0 package
 
 ```bash
-mkdir -p ryzen_ai-1.7.1
-cp ryzen_ai-1.7.1.tgz ryzen_ai-1.7.1/
-cd ryzen_ai-1.7.1
-tar -xvzf ryzen_ai-1.7.1.tgz
+mkdir -p ryzen_ai-1.8.0
+cp ryzen_ai-1.8.0.tgz ryzen_ai-1.8.0/
+cd ryzen_ai-1.8.0
+tar -xvzf ryzen_ai-1.8.0.tgz
 
-./install_ryzen_ai.sh -a yes -p "$HOME/ryzen-ai-1.7.1/venv"
-source "$HOME/ryzen-ai-1.7.1/venv/bin/activate"
+./install_ryzen_ai.sh -a yes -p "$HOME/ryzen-ai-1.8.0/venv"
+source "$HOME/ryzen-ai-1.8.0/venv/bin/activate"
 echo "$RYZEN_AI_INSTALLATION_PATH"
+export LD_LIBRARY_PATH="/lib/x86_64-linux-gnu:${RYZEN_AI_INSTALLATION_PATH}/onnxruntime/lib/:${LD_LIBRARY_PATH:-}"
 python -c "import sys; assert sys.version_info[:2] == (3, 12), sys.version; print(sys.version)"
 python -c "import onnxruntime as ort; print(ort.__version__); print(ort.get_available_providers())"
 ```
@@ -1091,8 +1149,9 @@ Linux uses the installer-created venv — ignore Windows-only Conda steps. Stop 
 ```bash
 export LD_LIBRARY_PATH=/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}
 source /opt/xilinx/xrt/setup.sh
-source "$HOME/ryzen-ai-1.7.1/venv/bin/activate"
-cd "$HOME/ryzen-ai-1.7.1/venv/quicktest"
+source "$HOME/ryzen-ai-1.8.0/venv/bin/activate"
+export LD_LIBRARY_PATH="/lib/x86_64-linux-gnu:${RYZEN_AI_INSTALLATION_PATH}/onnxruntime/lib/:${LD_LIBRARY_PATH:-}"
+cd "$HOME/ryzen-ai-1.8.0/venv/quicktest"
 python quicktest.py
 
 # Replace with the absolute path to this repository.
@@ -1444,26 +1503,26 @@ flowchart TD
 
 | Symptom or error | Likely cause | Fix |
 |---|---|---|
-| Only `CPUExecutionProvider` appears | Wrong ORT distribution or inactive vendor environment | Create a clean venv; install the exact DML/MIGraphX wheel or activate the Ryzen AI environment |
-| Multiple `onnxruntime-*` distributions reported | Overlapping wheels share the same module files | Delete and recreate the environment with exactly one runtime package |
+| Only `CPUExecutionProvider` appears | Wrong ORT distribution/plugin or inactive vendor environment | Create a clean venv; install the exact DirectML package, ROCm 10 plugin stack, or retained 7.x wheel; otherwise activate Ryzen AI |
+| Multiple competing ORT runtime distributions reported | Overlapping base runtimes share the same module files | Recreate the environment with one base runtime; ROCm 10's `onnxruntime-ep-migraphx` is a companion plugin, not another base runtime |
 | `--bootstrap` refuses the environment | Base/system Python, a vendor env, an existing ORT, or unverifiable/mismatched ROCm | Delete and recreate the dedicated disposable venv; bootstrap never repairs/uninstalls ORT in place |
 | Reports an unaudited distribution or hash | Same-named PyPI wheel, modified binary, different release, or custom source build | Recreate from the direct vendor URL or `--bootstrap`; validate intentional source builds separately |
 | `ROCMExecutionProvider` missing on ORT 1.23+ | Expected removal | Migrate to `MIGraphXExecutionProvider` |
-| MIGraphX provider library cannot load | ROCm/MIGraphX version mismatch or missing runtime library | `sudo apt install migraphx`; inspect the provider `.so` with `ldd`; align the wheel repository |
+| MIGraphX provider library cannot load | ROCm/MIGraphX version mismatch or missing runtime library | On ROCm 10 align the two AMD indexes and loader paths; on retained 7.x install its matching MIGraphX package; inspect the provider `.so` with `ldd` |
 | `Permission denied` for `/dev/kfd` | User not in `render,video` | `sudo usermod -a -G render,video $LOGNAME`, then log out or reboot |
 | `hipErrorNoBinaryForGpu` / invalid device function | GPU architecture absent or unsupported | Check the official GPU matrix; don't rely only on `rocminfo` visibility |
-| Import fails after a NumPy upgrade | AMD wheel ABI mismatch | Clean venv + `numpy==1.26.4` for the current wheel |
+| Import fails after a NumPy upgrade | AMD wheel ABI mismatch | Use NumPy 2.5.2 on ROCm 10; use 1.26.4 only with the retained ORT 1.23.2 wheels |
 | DirectML uses the wrong GPU | `device_id=0` maps to another DXGI adapter | Check Task Manager; try `--device-id 1`; benchmark both |
 | DirectML test rejects PCI vendor other than `0x1002` | Selected DXGI index is Intel/NVIDIA/Microsoft, not AMD | Use the printed adapter list; pass the AMD index with `--device-id` |
 | DirectML session rejects options | Parallel mode or memory pattern enabled | Set sequential mode; disable memory pattern |
 | Windows ML pip install fails on Python 3.10 | Pinned `onnxruntime-windowsml` declares Python >= 3.11 | Use the guide's Python 3.12 environment |
-| Windows ML bootstrap fails / no MIGraphX catalog entry | `wasdk-*`/runtime mismatch, Store Python, OS below 24H2, or incompatible driver | Use the exact 2.1.3/1.24.6.202605042033 recipe, python.org/winget Python, build >=26100, exact live driver |
+| Windows ML bootstrap fails / no MIGraphX catalog entry | `wasdk-*`/runtime mismatch, Store Python, OS below 24H2, or incompatible driver | Use the exact 2.3.0/1.25.2.202605110140/runtime-2.3.1 tuple, python.org/winget Python, build >=26100, exact live driver |
 | Vitis AI EP present but all nodes on CPU | Unsupported ops/shapes/precision or wrong model generation | Use opset 17; check the supported-op table and assignment report; quantize/compile correctly |
 | PHX/HPT Vitis session fails | Missing `target=X1` or `4x4.xclbin` | Use generation-specific options and the vendor install path |
 | STX/KRK error mentions xclbin | Legacy option carried forward | Remove `xclbin` for the current X2 flow |
 | First NPU load takes minutes | Expected compilation | Enable caching; separate compile time from inference time |
 | NPU cache fails after an update | Cache/driver/EP incompatibility | Delete or version the cache; regenerate EP Context |
-| Ubuntu cannot see the NPU | Kernel < 6.10, XRT/amdxdna absent, or unsupported PHX/HPT | Meet the exact 1.7.1 Linux gate; run `xrt-smi examine` |
+| Ubuntu cannot see the NPU | Wrong OS/platform, missing DKMS/XRT/amdxdna packages, or unsupported PHX/HPT | Use the exact Ryzen AI 1.8 Ubuntu package set; source XRT; run `xrt-smi examine` |
 | FastFlowLM `flm validate` passes but `flm run` cannot open NPU device `0` | Kernel-side probe works, but XRT or its AMD XDNA plugin cannot open the NPU | Run `xrt-smi examine`; install/repair the FastFlowLM-required XRT and XDNA plugin for the distribution, then recheck the device before running a catalog model |
 | Docker cannot see the GPU | Device passthrough missing | Add `--device /dev/kfd --device /dev/dri`; verify the host driver |
 | EP registered but demo exits with code 5 | No target-provider profile events and no fresh Vitis NPU evidence | Intentional fail-closed behavior — inspect unsupported nodes, the current-run report, and logs |
@@ -1471,7 +1530,7 @@ flowchart TD
 **Advanced Linux library check** — locate and inspect the MIGraphX provider library without copying it to a global system directory:
 
 ```bash
-provider_so="$(find "$VIRTUAL_ENV" -name 'libonnxruntime_providers_migraphx.so' -print -quit)"
+provider_so="$(find "$VIRTUAL_ENV" \( -name 'libmigraphx-ep.so' -o -name 'libonnxruntime_providers_migraphx.so' \) -print -quit)"
 if [[ -z "$provider_so" ]]; then
   echo "MIGraphX provider library was not found in $VIRTUAL_ENV" >&2
 else
@@ -1489,7 +1548,7 @@ ORT recommends keeping provider shared libraries beside the matching ORT library
 - [ ] The hardware SKU is explicitly listed in the matching AMD support matrix.
 - [ ] The OS build/kernel is exactly supported.
 - [ ] Driver, ROCm/XRT, MIGraphX/Vitis AI, ORT, and Python ABI are pinned as one tested set.
-- [ ] Only one `onnxruntime-*` distribution is installed in the environment.
+- [ ] Exactly one base ONNX Runtime distribution is installed; any EP plugin is its matching companion release, not another base runtime.
 - [ ] The target EP is first, and CPU fallback policy is intentional.
 - [ ] A profile/assignment report proves target-device node execution.
 - [ ] Accuracy is compared with CPU/reference data before reduced precision is enabled.
@@ -1525,9 +1584,9 @@ ORT recommends keeping provider shared libraries beside the matching ORT library
 | Radeon native-Linux support and ONNX matrix | <https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/native_linux/native_linux_compatibility.html> |
 | Radeon 7.2.1 driver/ROCm installation | <https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/native_linux/install-radeon.html> |
 | Radeon MIGraphX + ONNX installation | <https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/native_linux/install-onnx.html> |
-| ROCm 7.14 release notes and compatibility | <https://rocm.docs.amd.com/en/latest/about/release-notes.html> · <https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html> |
-| ROCm 7.14 ONNX Runtime / MIGraphX install | <https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/inference/onnxruntime.html> · <https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/inference/migraphx.html> |
-| Ryzen AI 1.7.1 documentation | <https://ryzenai.docs.amd.com/en/latest/> |
+| ROCm 10 release notes and compatibility | <https://rocm.docs.amd.com/en/docs-10.0.0/about/release-notes.html> · <https://rocm.docs.amd.com/en/docs-10.0.0/compatibility/compatibility-matrix.html> |
+| ROCm 10/7.14 ONNX Runtime and MIGraphX selector | <https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/inference/onnxruntime.html> · <https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/inference/migraphx.html> |
+| Ryzen AI 1.8.0 documentation | <https://ryzenai.docs.amd.com/en/latest/> |
 | Ryzen AI Windows installation | <https://ryzenai.docs.amd.com/en/latest/inst.html> |
 | Ryzen AI Linux installation | <https://ryzenai.docs.amd.com/en/latest/linux.html> |
 | Ryzen AI model deployment and options | <https://ryzenai.docs.amd.com/en/latest/modelrun.html> |
@@ -1563,7 +1622,7 @@ ORT recommends keeping provider shared libraries beside the matching ORT library
 > is documented here only because it was requested alongside MIGraphX and VitisAI, and "VSINPU" vs
 > "VitisAI" is an easy name mix-up. Do not install or configure it expecting it to touch AMD hardware, and
 > do not confuse its `vsinpu` source folder with the AMD `vitisai` folder covered in
-> [Part C](#part-c--windows-ryzen-ai-npuvitis-ai)/[Part D](#part-d--ubuntu-ryzen-ai-npuvitis-ai) above.
+> [Part C](#part-c--windows-ryzen-ai-npu-vitis-ai)/[Part D](#part-d--ubuntu-ryzen-ai-npu-vitis-ai) above.
 
 | Item | Detail |
 |---|---|
@@ -1598,5 +1657,5 @@ session = ort.InferenceSession(
 
 > [!NOTE]
 > If you actually want an AMD Ryzen AI NPU, use `VitisAIExecutionProvider` from
-> [Part C](#part-c--windows-ryzen-ai-npuvitis-ai) (Windows) or [Part D](#part-d--ubuntu-ryzen-ai-npuvitis-ai)
+> [Part C](#part-c--windows-ryzen-ai-npu-vitis-ai) (Windows) or [Part D](#part-d--ubuntu-ryzen-ai-npu-vitis-ai)
 > (Ubuntu) instead — see [§13](#13-vitis-ai-provider-options-by-generation) for its full option reference.

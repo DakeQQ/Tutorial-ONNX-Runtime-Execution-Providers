@@ -2,20 +2,20 @@
 
 [English](README.md) · [仓库首页](../README.zh-CN.md) · [MIGraphX EP 官方指南](https://onnxruntime.ai/docs/execution-providers/MIGraphX-ExecutionProvider.html)
 
-ONNX Runtime 通过四条路径接入 AMD 硬件——**DirectML**、**Windows ML**、**ROCm/MIGraphX** 和 **Ryzen AI/Vitis AI**。本指南先帮你选对路径，再用真实的节点分配结果*证明*它确实生效，而不只是 Provider 列表里多了一个名字。
+ONNX Runtime 通过四条路径接入 AMD 硬件——**DirectML**、**Windows ML**、**ROCm/MIGraphX** 和 **Ryzen AI/Vitis AI**。本指南先帮你选对路径。在匹配的硬件上成功完成严格命令后，本次运行的节点分配记录可以证明目标 EP 确实执行了模型；下方验证范围会说明仓库审查实际执行和未执行的内容。
 
 FastFlowLM 是面向 XDNA2 Ryzen AI NPU、运行其自身已支持模型目录的独立原生运行时，并非 ONNX Runtime EP。本指南会说明何时应选择这条路径；通用或自定义 ONNX 模型的验证仍使用 Vitis AI 路径。
 
 | 项目 | 基线 |
 |---|---|
-| ORT 基线最近验证 | `2026-07-17`；已与 AMD、Microsoft、Canonical、ONNX Runtime、Docker Hub 和 PyPI 官方资料核对 |
-| FastFlowLM 审查 | `v1.0.1` 源码/文档于 `2026-08-13` 审查；面向 XDNA2 目录模型的原生路径，独立于已审计的 ORT artifact |
+| 指南最近验证 | `2026-09-01`；已与 AMD、Microsoft、Canonical、ONNX Runtime、Docker Hub 和软件包注册表的官方资料核对 |
+| FastFlowLM 审查 | `v1.0.3` 源码/文档于 `2026-08-31` 审查；面向 XDNA2 目录模型的原生路径，独立于已审计的 ORT artifact |
 | 支持平台 | Windows 与 Ubuntu；具体要求随 GPU/NPU 代际变化 |
-| ORT 路径 | DirectML · Windows ML MIGraphX · ROCm/MIGraphX · Ryzen AI/Vitis AI |
+| ORT 路径 | DirectML · Windows ML + MIGraphX · ROCm/MIGraphX · Ryzen AI/Vitis AI |
 | 原生 NPU 路径 | FastFlowLM：用于 XDNA2 Ryzen AI PC 上其已支持的模型；不是 ORT EP |
 | 验证脚本 | [`provider_test.py`](provider_test.py) |
 | 验证内容 | 本次运行的节点分配 + 输出基本有效性；内置 GPU 模型或带 `--compare-cpu` 的自定义模型还会与 CPU 结果做数值对比 |
-| 验证范围 | 脚本自检已在 Linux 上通过；DirectML、Windows ML、MIGraphX、Vitis AI 的最终验证仍需匹配的目标硬件 |
+| 验证范围 | 38 项确定性脚本测试已在 Windows 上通过；DirectML、Windows ML、MIGraphX、Vitis AI 的最终验证仍需匹配的目标硬件 |
 
 ### 文件
 
@@ -30,7 +30,7 @@ FastFlowLM 是面向 XDNA2 Ryzen AI NPU、运行其自身已支持模型目录�
 | Windows，要为 Win 11 24H2+ 开发新应用 | [§10 Windows ML + MIGraphX](#10-windows-新方案windows-ml--amd-migraphx) |
 | Ubuntu + AMD GPU | [§6 安装匹配的 ROCm 方案](#6-安装匹配的-rocm-方案) |
 | XDNA2 Ryzen AI PC，运行 FastFlowLM 已支持的本地模型 | [§1.1 FastFlowLM](#fastflowlm-xdna2) |
-| Ryzen AI 笔记本，运行通用或自定义 ONNX 模型，Windows | [§12 安装 Ryzen AI Software](#12-安装-ryzen-ai-software-171) |
+| Ryzen AI 笔记本，运行通用或自定义 ONNX 模型，Windows | [§12 安装 Ryzen AI Software](#12-安装-ryzen-ai-software-180) |
 | Ryzen AI 笔记本，运行通用或自定义 ONNX 模型，Ubuntu | [§15 安装 Linux NPU 驱动](#15-安装-ubuntu-npu-驱动与-ryzen-ai) |
 | 面向 Zynq/Versal 开发板 | [§16 嵌入式 Linux 目标](#16-嵌入式-linux-目标) |
 | 想搞清楚"节点为什么落到了 CPU" | [§19 验证流程](#19-验证流程) + [§21 故障排查](#21-故障排查) |
@@ -51,7 +51,7 @@ FastFlowLM 是面向 XDNA2 Ryzen AI NPU、运行其自身已支持模型目录�
     - [1.1 FastFlowLM：原生 XDNA2 本地模型运行时](#11-fastflowlm原生-xdna2-本地模型运行时)
   - [2. 基础概念](#2-基础概念)
   - [3. 版本与支持矩阵](#3-版本与支持矩阵)
-    - [3.1 2026-07-17 版本快照](#31-2026-07-17-版本快照)
+    - [3.1 2026-08-31 版本快照](#31-2026-08-31-版本快照)
     - [3.2 文档版本差异](#32-文档版本差异)
     - [3.3 已核验的软件包指纹](#33-已核验的软件包指纹)
   - [4. 开始前检查](#4-开始前检查)
@@ -60,10 +60,11 @@ FastFlowLM 是面向 XDNA2 Ryzen AI NPU、运行其自身已支持模型目录�
   - [A 部分：Ubuntu AMD GPU（ROCm + MIGraphX）](#a-部分ubuntu-amd-gpurocm--migraphx)
   - [5. 硬件和操作系统要求](#5-硬件和操作系统要求)
   - [6. 安装匹配的 ROCm 方案](#6-安装匹配的-rocm-方案)
-    - [6.1 当前 ROCm 7.14.0 ONNX 方案——Ubuntu 24.04，仅 `gfx950/gfx942`](#61-当前-rocm-7140-onnx-方案ubuntu-2404仅-gfx950gfx942)
-    - [6.2 保留的 ROCm 7.2.4 方案——Ubuntu 24.04](#62-保留的-rocm-724-方案ubuntu-2404)
-    - [6.3 保留的 ROCm 7.2.4 方案——Ubuntu 22.04](#63-保留的-rocm-724-方案ubuntu-2204)
-    - [6.4 Radeon 专用 ONNX 方案——ROCm 7.2.1](#64-radeon-专用-onnx-方案rocm-721)
+    - [6.1 当前 ROCm 10.0.0 ONNX 方案](#61-当前-rocm-1000-onnx-方案)
+    - [6.2 保留的 ROCm 7.14.0 ONNX 方案——Ubuntu 24.04，仅 `gfx950/gfx942`](#62-保留的-rocm-7140-onnx-方案ubuntu-2404仅-gfx950gfx942)
+    - [6.3 保留的 ROCm 7.2.4 方案——Ubuntu 24.04](#63-保留的-rocm-724-方案ubuntu-2404)
+    - [6.4 保留的 ROCm 7.2.4 方案——Ubuntu 22.04](#64-保留的-rocm-724-方案ubuntu-2204)
+    - [6.5 保留的 Radeon 专用 ONNX 方案——ROCm 7.2.1](#65-保留的-radeon-专用-onnx-方案rocm-721)
   - [7. 安装 MIGraphX 与 ORT wheel](#7-安装-migraphx-与-ort-wheel)
     - [7.1 MIGraphX 运行时](#71-migraphx-运行时)
     - [7.2 创建隔离的 Python 环境](#72-创建隔离的-python-环境)
@@ -76,7 +77,7 @@ FastFlowLM 是面向 XDNA2 Ryzen AI NPU、运行其自身已支持模型目录�
     - [10.2 为什么原生 Windows ROCm 走不通这条路](#102-为什么原生-windows-rocm-走不通这条路)
   - [C 部分：Windows Ryzen AI NPU（Vitis AI）](#c-部分windows-ryzen-ai-npuvitis-ai)
   - [11. 支持范围](#11-支持范围)
-  - [12. 安装 Ryzen AI Software 1.7.1](#12-安装-ryzen-ai-software-171)
+  - [12. 安装 Ryzen AI Software 1.8.0](#12-安装-ryzen-ai-software-180)
     - [12.1 厂商 quicktest（STX/KRK）](#121-厂商-quickteststxkrk)
     - [12.2 自动化性能分析验证](#122-自动化性能分析验证)
   - [13. 按代际配置 Vitis AI Provider](#13-按代际配置-vitis-ai-provider)
@@ -85,7 +86,7 @@ FastFlowLM 是面向 XDNA2 Ryzen AI NPU、运行其自身已支持模型目录�
   - [15. 安装 Ubuntu NPU 驱动与 Ryzen AI](#15-安装-ubuntu-npu-驱动与-ryzen-ai)
     - [15.1 基础软件包](#151-基础软件包)
     - [15.2 下载并安装 XRT/NPU 软件包](#152-下载并安装-xrtnpu-软件包)
-    - [15.3 安装 Ryzen AI 1.7.1 软件包](#153-安装-ryzen-ai-171-软件包)
+    - [15.3 安装 Ryzen AI 1.8.0 软件包](#153-安装-ryzen-ai-180-软件包)
     - [15.4 Quicktest 与一键验证](#154-quicktest-与一键验证)
   - [E 部分：AMD Adaptive SoC 上的 Vitis AI](#e-部分amd-adaptive-soc-上的-vitis-ai)
   - [16. 嵌入式 Linux 目标](#16-嵌入式-linux-目标)
@@ -117,8 +118,8 @@ mindmap
     GPU
       Windows DirectML
       Windows ML MIGraphX
-      Ubuntu ROCm 7.14，gfx950 或 gfx942
-      Ubuntu ROCm 7.2.4 或 7.2.1
+      Ubuntu ROCm 10.0，已验证的 Instinct 或 Radeon GPU
+      保留的 ROCm 7.14、7.2.4 或 7.2.1
     Ryzen AI NPU
       FastFlowLM 原生运行时，XDNA2 目录模型
       Windows 直接安装 SDK 与 VitisAI
@@ -173,15 +174,15 @@ flowchart TD
 | Windows 11 24H2+，受支持 AMD GPU | 通过 Windows ML 动态获取 AMD MIGraphX | `MIGraphXExecutionProvider` | Catalog 已提供；`--windows-ml` 支持该路径 |
 | Ubuntu，AMD GPU 在 ONNX 矩阵内 | ROCm + MIGraphX + AMD wheel | `MIGraphXExecutionProvider` | **Linux GPU 首选方案**；GPU/ROCm/Python/wheel 需精确匹配 |
 | Windows 或 Linux，XDNA2 Ryzen AI PC，FastFlowLM 已支持模型 | FastFlowLM 原生运行时 | 无——不是 ORT EP | **仅目录模型路径**；使用自己的 XRT/HRX 运行时与模型引擎；见 §1.1 |
-| Windows，Ryzen AI NPU，通用/自定义 ONNX | Ryzen AI Software 1.7.1；Windows ML catalog 也可用 | `VitisAIExecutionProvider` | 支持 PHX/HPT/STX/KRK；`--windows-ml` 仅用于 GPU，NPU 请用厂商环境 |
-| Ubuntu 24.04，Ryzen AI NPU，通用/自定义 ONNX | Ryzen AI for Linux 1.7.1 | `VitisAIExecutionProvider` | **仅 STX/KRK，内核 >= 6.10，Python 3.12** |
+| Windows，Ryzen AI NPU，通用/自定义 ONNX | Ryzen AI Software 1.8.0；Windows ML catalog 也可用 | `VitisAIExecutionProvider` | 支持 PHX/HPT/STX/KRK；`--windows-ml` 仅用于 GPU，NPU 请用厂商环境 |
+| Ubuntu 24.04，Ryzen AI NPU，通用/自定义 ONNX | Ryzen AI for Linux 1.8.0 | `VitisAIExecutionProvider` | **仅 STX/KRK，Python 3.12**；当前 XRT 2.25 软件包组合 |
 | Linux，AMD/Xilinx Adaptive SoC | Vitis AI 目标镜像与运行时 | `VitisAIExecutionProvider` | 面向 Zynq、Versal 的嵌入式 Linux 路径 |
 | Windows 原生 ROCm Core SDK | 目前不是 ORT MIGraphX 的 Python 路径 | 无 | ROCm 7.14 扩展了 Windows core 支持，但已验证的 MIGraphX/ORT 组合仍仅限 Linux |
 
 <a id="fastflowlm-xdna2"></a>
 ### 1.1 FastFlowLM：原生 XDNA2 本地模型运行时
 
-本次审查的 `v1.0.1` 中，[FastFlowLM](https://fastflowlm.com/docs/) 是 AMD ROCm 托管的原生 NPU 运行时，不是 ONNX Runtime Provider。其源码默认选择 XRT，也可通过可选构建开关选择 HRX，然后加载原生模型引擎。它使用自己的已支持模型目录与 `flm pull`/`flm run` 工作流；文档并未把它定位为任意 `.onnx` 文件的通用运行器。
+本次审查的 `v1.0.3` 中，[FastFlowLM](https://fastflowlm.com/docs/) 是 AMD ROCm 托管的原生 NPU 运行时，不是 ONNX Runtime Provider。其源码默认选择 XRT，也可通过可选构建开关选择 HRX，然后加载原生模型引擎。它使用自己的已支持模型目录与 `flm pull`/`flm run` 工作流；文档并未把它定位为任意 `.onnx` 文件的通用运行器。1.0.3 将 Qwen3.5 与 Qwen3.6-MoE 权重从 Q4_1 改为 Q4_K，升级这些模型的用户必须重新拉取权重。
 
 | 工作负载或设备 | 选择 | 原因 |
 |---|---|---|
@@ -252,39 +253,40 @@ providers = [
 
 ## 3. 版本与支持矩阵
 
-### 3.1 2026-07-17 版本快照
+### 3.1 2026-08-31 版本快照
 
 | 组件 | 已核验版本 | 说明 |
 |---|---:|---|
-| 当前 ROCm Core SDK | 7.14.0 | 2026-07-15 发布的生产版本；TheRock 版本号调整后的首个生产版本 |
-| ROCm 7.14 已验证的 ONNX 组合 | ORT 1.23.2 + MIGraphX 2.16 | 仅 Linux、Python 3.12、`gfx950`/`gfx942`——不能直接套用下面 7.2.x 的方案 |
-| 已核验的 AMD 官方 MIGraphX wheel 方案 | ROCm 7.2.4 + ORT 1.23.2 | CPython 3.10/3.12；本指南强制执行的、覆盖面最广且可复现的方案 |
-| 官方 ROCm ORT Docker | ROCm 7.2.4 + ORT 1.23 + PyTorch 2.10.0 | 最新 `rocm/onnxruntime` 标签，支持 Ubuntu 22.04/24.04 |
+| 当前 ROCm Core SDK | 10.0.0 | 2026-08-26 发布的生产版本；基于 TheRock 的 Linux 与 Windows Core SDK |
+| 当前 ROCm ONNX 组合 | ORT 1.29.0 + MIGraphX EP 插件 1.0.0 + MIGraphX 2.17 | Linux；Python 3.12/3.14；仅 `gfx950`、`gfx942`、`gfx1200/1201`、`gfx1100/1101/1102` |
+| 保留的 ROCm 7.14 ONNX 组合 | 单体 ORT-MIGraphX 1.23.2 + MIGraphX 2.16 | 仅 Linux、Python 3.12、`gfx950`/`gfx942` |
+| 已核验的 AMD 官方旧版 wheel 方案 | ROCm 7.2.4 或 7.2.1 + ORT 1.23.2 | CPython 3.10/3.12；为对应版本的硬件矩阵保留 |
+| 官方 ROCm ORT Docker | ROCm 10.0 + ORT 1.29 + PyTorch 2.11.0 | Ubuntu 22.04/24.04 的 Python 3.11–3.14 精确标签；可变 `latest` 仍指向旧的 7.2.4 镜像 |
 | 消费级 Radeon 验证矩阵 | ROCm 7.2.1 + ORT 1.23.2 | Radeon/Ryzen 页面更新节奏与核心 ROCm 不同 |
 | 最新上游 ORT / PyPI MIGraphX 包 | 1.27.1 | 2026-07-12 发布；AMD 尚未给出匹配的 ROCm 组合，本指南仍沿用已核验方案 |
-| Ryzen AI Software 稳定版 | 1.7.1 | Windows + Ubuntu NPU；1.8.0 beta 不建议用于生产 |
-| Ryzen AI Windows NPU 最低驱动 | 32.0.203.280 | Ryzen AI EP 1.7 的兼容下限 |
-| FastFlowLM 原生 NPU 运行时 | 1.0.1 | 独立的、仅 XDNA2 的目录模型路径；其驱动/XRT/HRX 要求不属于 ORT artifact 验证器 |
+| Ryzen AI Software 稳定版 | 1.8.0 | 当前 Windows 与 Linux installer；Linux 支持 STX/KRK NPU-only 流程 |
+| Ryzen AI Windows NPU 驱动 | 32.0.203.376 | PHX/HPT/STX/STX Halo/KRK 的生产驱动；适用于直接 SDK 路径，不是 Windows ML catalog 要求 |
+| FastFlowLM 原生 NPU 运行时 | 1.0.3 | 独立的、仅 XDNA2 的目录模型路径；其驱动/XRT/HRX 要求不属于 ORT artifact 验证器 |
 | PyPI ONNX Runtime DirectML | 1.24.4 | 当前 x64 wheel；要求 Python >= 3.11 |
 | ORT 中的 DirectML 算子库 | DirectML 1.15.2，opset 最高 20 | 持续工程维护，部分 opset 20 配置例外 |
-| Python 打包 | pip 26.1.2；NumPy 锁定 1.26.4 | AMD Radeon 7.2.1 ORT wheel 明确记录与 NumPy 2.x 不兼容 |
-| 最新 PyPI Windows ML 组件 | `wasdk-*` 2.3.0 + `onnxruntime-windowsml` 1.27.1 | 两者独立发布——不要手工拼接各自的最新版本号 |
-| 本指南可复现的 Windows ML Python 组合 | `wasdk-*` 2.1.3 + `onnxruntime-windowsml` 1.24.6.202605042033 | 2.1.3 wheel 发布时精确声明的依赖；两者必须配套使用 |
+| Python 打包 | pip 26.2.1；ROCm 10 使用 NumPy 2.5.2，保留的 7.x 路径使用 1.26.4 | AMD 明确记录旧 Radeon ORT wheel 与 NumPy 2.x 不兼容 |
+| PyPI 独立 Windows ML 运行时 | `onnxruntime-windowsml` 1.28.0.202607272323 | 最新独立 wheel；不能替换下面的 projection 组合 |
+| 本指南可复现的 Windows ML Python 组合 | `wasdk-*` 2.3.0 + ORT 1.25.2.202605110140 + runtime 2.3.1 | 2.3.0 projection 精确声明的 ORT 依赖；整条发布线必须配套 |
 
 > [!IMPORTANT]
 > "最新"不等于兼容。ROCm、MIGraphX 和 ORT MIGraphX wheel 必须来自同一套厂商验证过的发布组合。Windows ML 的两个 `wasdk-*` 包与 Windows App Runtime 也必须属于同一发布线，且 machine-learning projection 声明的精确 ORT 依赖，优先级高于任何独立的"最新" ORT。切勿在同一环境中安装一个以上的 `onnxruntime-*` 发行包。
 
 > [!NOTE]
-> **为什么 Windows ML 锁定在 2.1.3：** 不指定版本时，PyPI 会解析到 2.3.0，而微软官方稳定版 Windows App SDK 下载页目前最高仍只到 runtime 2.2.0。本指南采用的 2.1.3 projection、其精确的 ORT 依赖，以及 2.1.3 runtime，三者均仍可公开获取，构成一套可复现的组合——不要用"最新"替换这些锁定版本。
+> **为什么 Windows ML 不使用独立 ORT 1.28：** 2.3.0 machine-learning projection 精确声明 ORT `1.25.2.202605110140`，而微软将匹配的 Windows App Runtime 服务到 patch 2.3.1。这三个值构成受支持组合；独立发布的更新 wheel 不能互换。
 
 ### 3.2 文档版本差异
 
-ONNX Runtime 的通用 Vitis AI 页面仍把 Ryzen AI 描述为仅支持 Windows，Linux 仅限 Adaptive SoC。而 Ryzen AI Software 1.7.1 自己的产品文档已经为 STX/KRK 增加了 Ubuntu 24.04 NPU 支持。FastFlowLM 另外记录了一条 XDNA2 原生运行时路径，覆盖 Windows 与 Linux。这个较新的路径不会改变 Vitis AI 的 ONNX 矩阵，也不会让 FastFlowLM 变成 ORT EP：对 Ryzen AI PC 请以对应产品版本的文档为准；对 Zynq/Versal 请以 Vitis AI 目标端文档为准。
+ONNX Runtime 的通用 Vitis AI 页面与 AMD 各产品版本页面并非同步更新。对 Ryzen PC 应以 AMD Ryzen AI 1.8 产品文档为准；该文档分别提供原生 Windows 与原生 Linux installer。1.8 release notes 明确说明 Linux 不支持模型生成，但 Windows 生成的模型可在 Linux 使用。FastFlowLM 另有覆盖两套系统的 XDNA2 原生运行时路径，但它不会改变 Vitis AI ONNX 矩阵，也不会让 FastFlowLM 变成 ORT EP。
 
 ### 3.3 已核验的软件包指纹
 
 > [!WARNING]
-> 验证脚本会强制检查下列 SHA-256（于 2026-07-17 从对应 Microsoft PyPI 或 AMD HTTPS 来源下载并重新计算）。哈希不匹配时脚本直接失败——这不是绕过检查的许可。采用新的厂商软件包前，必须重新核验并同步更新代码与文档。
+> 验证脚本会强制检查下列 SHA-256。旧版 wheel 行于 2026-07-17 下载并重新计算；ROCm 10 插件行于 2026-08-31 从 AMD stable 仓库下载并重新计算。哈希不匹配时脚本直接失败——这不是绕过检查的许可。厂商 artifact 变化后，必须重新核验并同步更新代码与文档。
 
 | Artifact | SHA-256 |
 |---|---|
@@ -298,6 +300,10 @@ ONNX Runtime 的通用 Vitis AI 页面仍把 Ryzen AI 描述为仅支持 Windows
 | 两个 7.2.4 wheel 内的 MIGraphX provider SO | `f3fb0b10996b2a2f94afc59edf6fab421bfa12842f09518339d1e0d8f3bd86c7` |
 | AMD ROCm 7.14.0 MIGraphX 1.23.2 CPython 3.12 wheel | `67c32a5d8396c28da5efd3643c1ebcb55a03581aad089f7d99922ed5a51bc58b` |
 | 7.14.0 wheel 内的 MIGraphX provider SO | `447bb405de55dd7872a8e01a90405ff0f0397d5d562acc6f48711312971537c0` |
+| ROCm 10 MIGraphX 插件 1.0.0 CPython 3.12 wheel | `ba6942b0cb362a69579ad2e74da0430c4c842b965c6107225bb1a1a50b04d8e1` |
+| CPython 3.12 插件 wheel 内的 `libmigraphx-ep.so` | `28fa542ddc3871be7ac6e5648951b8690a4da857595a237a38d1c554af89bb5a` |
+| ROCm 10 MIGraphX 插件 1.0.0 CPython 3.14 wheel | `67c00393988f020dbd32d1037013b8029c065eaab9fe967d709bfb28882ba7e6` |
+| CPython 3.14 插件 wheel 内的 `libmigraphx-ep.so` | `2d5933c6a67353a11b4d76882fd9e1d3c52bd4f7d6663a59c1651ace15faeef0` |
 
 Windows ML 采用动态服务，因此验证脚本改为要求 catalog 状态为 Certified、当前 MSIX 版本精确等于 `1.8.57.0`、Python 发行包版本锁定，且 Windows App Runtime 安装器带有效的 Microsoft Authenticode 签名。
 
@@ -345,19 +351,19 @@ ls -l /dev/kfd /dev/dri 2>/dev/null || true
 
 ## 5. 硬件和操作系统要求
 
-AMD 目前提供三种不同的 ONNX Runtime 方案。最新的 ROCm Core SDK 不一定是每款 GPU 对应的 ONNX 软件包：
+AMD 目前提供一条当前 ONNX Runtime 方案以及多条按版本配套保留的方案。核心 ROCm 的硬件范围比预编译 ONNX/MIGraphX 更广，因此必须查看推理矩阵，不能仅凭 SDK 支持推断：
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"fontSize":"14px","lineColor":"#94a3b8","edgeLabelBackground":"#e2e8f0","primaryTextColor":"#1e293b"}}}%%
 flowchart TD
     A["Ubuntu AMD GPU"] --> B{"具体 GPU 型号？"}
-    B -->|"Instinct MI350X / MI355X / MI300X / MI325X"| C{"rocminfo 确认为<br/>gfx950 或 gfx942？"}
-    C -->|是| D["ROCm 7.14.0 方案<br/>ORT 1.23.2 + MIGraphX 2.16<br/>Ubuntu 24.04，仅 Python 3.12"]
-    B -->|"其他 Instinct：MI300A、MI200、MI100"| E["不在 7.14 ONNX 条目内"]
+    B -->|"gfx950 或 gfx942 Instinct"| C{"rocminfo 已确认<br/>精确 target？"}
+    C -->|是| D["当前 ROCm 10.0 方案<br/>ORT 1.29 + 插件 1.0 + MIGraphX 2.17<br/>Python 3.12 或 3.14"]
+    B -->|"gfx1200/1201 或 gfx1100/1101/1102 Radeon"| G["当前 ROCm 10.0 方案<br/>还需匹配精确 SKU 与 OS"]
+    B -->|"其他 Instinct：gfx90a 或 gfx908"| E["核心 ROCm 支持，<br/>但不在当前 ONNX 条目内"]
     E --> F["只能用明确支持的归档方案<br/>或单独验证过的源码构建"]
-    B -->|"Radeon / Radeon PRO，在 AMD Radeon ONNX 矩阵中"| G["ROCm 7.2.1 方案<br/>Radeon 专用，需要精确的 HWE 内核"]
-    B -->|"仍在归档矩阵中的旧 Instinct"| H["ROCm 7.2.4 方案<br/>保留方案，非当前生产版本"]
-    B -->|"Ryzen APU 核显或未列出的 GPU"| I["停止——尚无 ONNX 条目<br/>改用 DirectML 或 Vitis AI NPU"]
+    B -->|"旧版配套部署"| H["保留的 ROCm 7.14 / 7.2.x 方案<br/>只使用其原始矩阵"]
+    B -->|"Ryzen APU 核显或未列出的 target"| I["当前无预编译 ONNX 条目<br/>改用 DirectML 或 Vitis AI NPU"]
 
     classDef step fill:#e0f2fe,stroke:#0ea5e9,color:#0c2a3d;
     classDef dec fill:#fef3c7,stroke:#f59e0b,color:#713f12;
@@ -373,17 +379,16 @@ flowchart TD
 
 | 类别 | 代表型号 | 必须核对 |
 |---|---|---|
-| Instinct `gfx950` / `gfx942` | MI355X、MI350X、MI325X、MI300X | 当前 ROCm 7.14 AI Ecosystem ONNX 矩阵；以 `rocminfo` 报告的精确 target 为准 |
-| 其他 Instinct | MI300A、MI200 系列、MI100 | 不在当前 7.14 ONNX 条目内；只能用明确支持的归档方案，或单独验证的源码构建 |
-| Radeon PRO | AI PRO R9700/R9600D、W7900/W7800/W7700 系列 | 必须出现在 Radeon 专用 ONNX 矩阵中——仅在核心 ROCm 列表中不够 |
-| Radeon RDNA4 | RX 9070/9060 系列 | 通常仅限特定 Ubuntu/RHEL 版本 |
-| Radeon RDNA3 | RX 7900/7800/7700 系列 | 仅使用 AMD 明确列出的 SKU |
+| Instinct `gfx950` / `gfx942` | MI355X、MI350X、MI325X、MI300X | 当前 ROCm 10 ONNX 矩阵；以 `rocminfo` 报告的精确 target 为准 |
+| 其他 Instinct | MI350P、MI300A、MI200 系列、MI100 | 核心 SDK 支持不代表进入当前预编译 ONNX 条目；只能使用明确的保留方案或单独验证的源码构建 |
+| Radeon `gfx1200` / `gfx1201` | 矩阵列出的 RX 9000 与 Radeon AI PRO R9000 SKU | 当前 ROCm 10 ONNX 矩阵；还必须匹配精确 SKU 与 OS |
+| Radeon `gfx1100` / `gfx1101` / `gfx1102` | 矩阵列出的 RX 7000 与 Radeon PRO W7000 SKU | 当前 ROCm 10 ONNX 矩阵；还必须匹配精确 SKU 与 OS |
 | 未列出的 GPU | 较旧的 Polaris/Vega/RDNA2 或其他型号 | 可能可以运行，但非官方支持，不能用于生产承诺 |
 
 > [!NOTE]
 > `rocminfo` 能看到某个未列出的 GPU，不代表所有预编译 ROCm/MIGraphX 库都支持它——枚举可以成功，但内核启动可能失败。
 >
-> **Ryzen APU 核显：** ROCm 7.14 为多款 `gfx115x` Ryzen APU 增加了核心 GPU 支持，但其 AI Ecosystem ONNX 条目仍仅限 `gfx950/gfx942`；Radeon 7.2.1 矩阵也未覆盖 Ryzen APU。Ryzen AI 笔记本的 GPU 请用 DirectML，NPU 请用文档明确支持的 STX/KRK Vitis AI 路径。
+> **Ryzen APU 核显：** ROCm 10 为多款 `gfx115x` Ryzen APU 增加了核心支持，但当前预编译 ONNX 条目没有列出 `gfx115x`。除非 AMD 将精确 iGPU 加入 ONNX 矩阵，否则 Ryzen AI 笔记本的 GPU 使用 DirectML，NPU 使用 Vitis AI。
 
 ---
 
@@ -399,7 +404,33 @@ flowchart TD
 > [!WARNING]
 > 以下每条路径都会安装或替换 GPU 软件，并可能需要重启。只使用与你的硬件、发行版和 Ubuntu 版本完全匹配的路径。
 
-### 6.1 当前 ROCm 7.14.0 ONNX 方案——Ubuntu 24.04，仅 `gfx950/gfx942`
+### 6.1 当前 ROCm 10.0.0 ONNX 方案
+
+当前预编译 ONNX 路径支持 Linux、Python 3.12 或 3.14，以及 `gfx950`、`gfx942`、`gfx1200`、`gfx1201`、`gfx1100`、`gfx1101`、`gfx1102`。先使用 AMD 的 [ROCm 10 安装选择器](https://rocm.docs.amd.com/en/docs-10.0.0/install/rocm.html)与[兼容矩阵](https://rocm.docs.amd.com/en/docs-10.0.0/compatibility/compatibility-matrix.html)，为精确 OS 安装受支持的 31.50 系列内核驱动并注册软件源。然后只安装一个匹配架构的软件包，例如：
+
+```bash
+# 仅在 rocminfo 或精确 GPU 规格确认后设置。
+GFX_TARGET=gfx950  # 允许的 ONNX target：gfx950 gfx942 gfx1200 gfx1201 gfx1100 gfx1101 gfx1102
+case "$GFX_TARGET" in
+  gfx950|gfx942|gfx1200|gfx1201|gfx1100|gfx1101|gfx1102) ;;
+  *) echo "Target is not in the ROCm 10 prebuilt ONNX matrix: $GFX_TARGET" >&2; exit 1 ;;
+esac
+sudo apt install "amdrocm10.0-${GFX_TARGET}"
+sudo usermod -a -G render,video "$LOGNAME"
+sudo reboot
+```
+
+重启后确认已安装版本与 target：
+
+```bash
+/opt/rocm/bin/hipconfig --version
+/opt/rocm/bin/rocminfo | grep -E '^[[:space:]]*Name:[[:space:]]*gfx(950|942|1200|1201|1100|1101|1102)$'
+/opt/rocm/bin/amd-smi version
+```
+
+target 必须属于上述七项之一，并且必须对应 AMD 矩阵中的精确 GPU/OS 组合。
+
+### 6.2 保留的 ROCm 7.14.0 ONNX 方案——Ubuntu 24.04，仅 `gfx950/gfx942`
 
 ROCm 7.14 使用新的 TheRock 打包方式——不要套用下面旧版的 `amdgpu-install_7.2.x` 命令。打开 AMD 当前的 [ROCm 安装选择器](https://rocm.docs.amd.com/en/latest/install/rocm.html)，选择你的 GPU 和 Ubuntu 24.04，完成其驱动/软件源准备步骤，然后只安装**一个**架构包：
 
@@ -424,7 +455,7 @@ sudo reboot
 
 `rocminfo` 必须打印与你 GPU 匹配的 target。即使核心 ROCm 支持其他 `gfx` target，也不能用于 7.14 ONNX wheel。
 
-### 6.2 保留的 ROCm 7.2.4 方案——Ubuntu 24.04
+### 6.3 保留的 ROCm 7.2.4 方案——Ubuntu 24.04
 
 此旧版命令块仅为 AMD 匹配版本的 7.2.4 ORT artifact 保留，**不是**当前 ROCm 版本。
 
@@ -443,7 +474,7 @@ sudo apt install rocm
 sudo reboot
 ```
 
-### 6.3 保留的 ROCm 7.2.4 方案——Ubuntu 22.04
+### 6.4 保留的 ROCm 7.2.4 方案——Ubuntu 22.04
 
 ```bash
 wget --https-only -O amdgpu-install_7.2.4.70204-1_all.deb \
@@ -460,7 +491,7 @@ sudo apt install rocm
 sudo reboot
 ```
 
-### 6.4 Radeon 专用 ONNX 方案——ROCm 7.2.1
+### 6.5 保留的 Radeon 专用 ONNX 方案——ROCm 7.2.1
 
 面向 AMD Radeon ONNX 页面所列独立 Radeon/Radeon PRO 产品的保守、完整矩阵验证方案。先安装矩阵要求的 HWE 内核，重启并确认内核版本后再继续。
 
@@ -528,7 +559,9 @@ cat /opt/rocm/.info/version
 
 ### 7.1 MIGraphX 运行时
 
-**ROCm 7.14** 需安装 AMD 指定版本的 MIGraphX 2.16 软件包：
+**ROCm 10** 使用 §7.2 中 AMD stable Python 索引提供的软件包。该路径会在 venv 中同时安装 MIGraphX 2.17、其运行时库以及 ONNX Runtime EP 插件；不要与下面保留的系统级 MIGraphX 2.16/7.x 软件包混用。
+
+保留的 **ROCm 7.14** 需安装 AMD 指定版本的 MIGraphX 2.16 软件包：
 
 ```bash
 wget --https-only \
@@ -559,10 +592,10 @@ dpkg-query -W -f='${Package} ${Version}\n' migraphx half
 
 ### 7.2 创建隔离的 Python 环境
 
-本指南使用三套与版本匹配的 `onnxruntime_migraphx-1.23.2` 方案：**7.14.0** 仅支持 CPython 3.12，且仅限 `gfx950/gfx942`；保留的 **7.2.4** 和 **Radeon 7.2.1** 仓库提供 CPython 3.10 和 3.12。使用 Ubuntu 自带的 Python——不要为本演示添加非官方 Python 源。
+当前 **ROCm 10** 路径将 `onnxruntime==1.29.0`、`onnxruntime-ep-migraphx==1.0.0+rocm10.0.0` 与 MIGraphX 2.17 作为独立软件包。AMD 验证 Python 3.12 和 3.14。保留的 **7.14.0**、**7.2.4**、**7.2.1** 路径使用单体 `onnxruntime_migraphx-1.23.2` wheel。使用所选受支持 OS 自带的 Python——不要为本演示添加非官方 Python 源。
 
 ```bash
-# Ubuntu 24.04
+# Ubuntu 24.04（ROCm 10 或保留的 7.x）
 sudo apt install -y python3.12 python3.12-venv
 python3.12 -m venv .venv-amd-ort
 
@@ -573,12 +606,38 @@ python3.10 -m venv .venv-amd-ort
 
 激活环境后，根据已安装的 ROCm 版本选择完全匹配的来源。
 
-**当前 ROCm 7.14.0**（`gfx950/gfx942`，仅 Python 3.12）：
+**当前 ROCm 10.0.0**（§6.1 所列七个 target；下例使用 Python 3.12）：
+
+```bash
+source .venv-amd-ort/bin/activate
+/opt/rocm/bin/hipconfig --version 2>&1 | grep -Eq '(^|[^0-9])10\.0(\.0)?([^0-9]|$)' || { echo "Installed ROCm is not 10.0.0" >&2; exit 1; }
+python -m pip install --index-url https://pypi.org/simple "pip==26.2.1"
+python -m pip install --index-url https://pypi.org/simple \
+  --extra-index-url https://stable.repo.amd.com/rocm/onnxruntime/whl-next/ \
+  --extra-index-url https://stable.repo.amd.com/rocm/migraphx/whl-next/ \
+  "numpy==2.5.2" \
+  "migraphx==2.17.0+rocm10.0.0" \
+  "migraphx-libs==2.17.0+rocm10.0.0" \
+  "onnxruntime==1.29.0" \
+  "onnxruntime-ep-migraphx==1.0.0+rocm10.0.0"
+
+# AMD 记录的打包 workaround：添加 ORT SONAME 链接与 loader 路径。
+SP="$(python -c 'import site; print(site.getsitepackages()[0])')"
+ln -sf "$SP/onnxruntime/capi/libonnxruntime.so.1.29.0" \
+  "$SP/onnxruntime/capi/libonnxruntime.so.1"
+export LD_LIBRARY_PATH="$SP/onnxruntime/capi:$SP/migraphx_libs:${LD_LIBRARY_PATH:-}"
+
+python -c "import migraphx, onnxruntime as ort, onnxruntime_ep_migraphx as ep; [ort.register_execution_provider_library(n, p) for n, p in zip(ep.get_ep_names(), ep.get_library_paths())]; print(ort.__version__); print(ort.get_available_providers())"
+```
+
+输出必须显示 ORT 1.29.0，并同时包含 `MIGraphXExecutionProvider` 与 `CPUExecutionProvider`。插件包必须显式注册。`provider_test.py` 会自动执行相同的注册、SONAME 配置、版本检查和插件二进制哈希检查。
+
+**保留的 ROCm 7.14.0**（`gfx950/gfx942`，仅 Python 3.12）：
 
 ```bash
 source .venv-amd-ort/bin/activate
 /opt/rocm/bin/hipconfig --version 2>&1 | grep -Eq '(^|[^0-9])7\.14(\.0)?([^0-9]|$)' || { echo "Installed ROCm is not 7.14.0" >&2; exit 1; }
-python -m pip install --index-url https://pypi.org/simple "pip==26.1.2"
+python -m pip install --index-url https://pypi.org/simple "pip==26.2.1"
 python -m pip install --index-url https://pypi.org/simple "numpy==1.26.4"
 python -m pip install --index-url https://pypi.org/simple \
   "https://rocm.frameworks.amd.com/whl-multi-arch/onnxruntime-migraphx/onnxruntime_migraphx-1.23.2%2Brocm7.14.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
@@ -589,7 +648,7 @@ python -m pip install --index-url https://pypi.org/simple \
 ```bash
 source .venv-amd-ort/bin/activate
 grep -Eq '(^|[^0-9])7\.2\.4([^0-9]|$)' /opt/rocm/.info/version || { echo "Installed ROCm is not 7.2.4" >&2; exit 1; }
-python -m pip install --index-url https://pypi.org/simple "pip==26.1.2"
+python -m pip install --index-url https://pypi.org/simple "pip==26.2.1"
 python -m pip install --index-url https://pypi.org/simple "numpy==1.26.4"
 PYTAG="$(python -c 'import sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}")')"
 case "$PYTAG" in cp310|cp312) ;; *) echo "Unsupported Python ABI: $PYTAG" >&2; exit 1;; esac
@@ -602,7 +661,7 @@ python -m pip install --index-url https://pypi.org/simple \
 ```bash
 source .venv-amd-ort/bin/activate
 grep -Eq '(^|[^0-9])7\.2\.1([^0-9]|$)' /opt/rocm/.info/version || { echo "Installed ROCm is not 7.2.1" >&2; exit 1; }
-python -m pip install --index-url https://pypi.org/simple "pip==26.1.2"
+python -m pip install --index-url https://pypi.org/simple "pip==26.2.1"
 python -m pip install --index-url https://pypi.org/simple "numpy==1.26.4"
 PYTAG="$(python -c 'import sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}")')"
 case "$PYTAG" in cp310|cp312) ;; *) echo "Unsupported Python ABI: $PYTAG" >&2; exit 1;; esac
@@ -613,19 +672,21 @@ python -m pip install --index-url https://pypi.org/simple \
 > [!NOTE]
 > 这是刚创建、可随时丢弃的 venv。如果安装前 `python -m pip list` 已显示任何 `onnxruntime-*` 包，请删除并重建 venv——不要原地卸载修复。
 >
-> 这里刻意使用 AMD wheel 的直接链接：7.14 来自 `rocm.frameworks.amd.com`，7.2.x 来自各自精确的 `repo.radeon.com` 发布目录。PyPI 现有独立发布的同名 wheel（包括 1.27.1），但 AMD 尚未把它们对应到这些方案，因此 `--bootstrap` 会在安装前，对照 [§3.3](#33-已核验的软件包指纹) 校验所选 wheel 的哈希。
+> 软件包来源经过明确区分：ROCm 10 使用 AMD 的 `stable.repo.amd.com` 插件与 MIGraphX 索引；7.14 使用 `rocm.frameworks.amd.com`；7.2.x 使用精确的 `repo.radeon.com` 发布目录。PyPI 独立发布的 `onnxruntime-migraphx` 1.27.1 不能替换这些配套软件栈。`--bootstrap` 会在安装前，对照 [§3.3](#33-已核验的软件包指纹) 校验所选 ORT artifact 的哈希。
 >
-> NumPy 锁定为 `1.26.4`，是因为 AMD Radeon 7.2.1 ORT 页面明确记录了与 NumPy 2.x 的不兼容；本指南在全部三条 ORT 1.23.2 路径上共用同一套保守基线。
+> ROCm 10 使用 NumPy 2.5.2。三条保留的 ORT 1.23.2 路径继续锁定 `1.26.4`，因为 AMD Radeon 7.2.1 页面明确记录该旧 wheel 与 NumPy 2.x 不兼容。
 
-验证 wheel：
+验证保留的单体 wheel：
 
 ```bash
 python -c "import onnxruntime as ort; print(ort.__version__); print(ort.get_available_providers())"
 ```
 
-预期：`['MIGraphXExecutionProvider', 'CPUExecutionProvider']`
+预期：列表同时包含 `MIGraphXExecutionProvider` 与 `CPUExecutionProvider`。
 
 ### 7.3 一键运行 GPU 验证
+
+在仓库根目录中，并确认所选虚拟环境已经激活，然后运行：
 
 ```bash
 python AMD/provider_test.py --target migraphx --strict-all
@@ -638,7 +699,7 @@ python AMD/provider_test.py --target migraphx --bootstrap --strict-all
 ```
 
 > [!NOTE]
-> `--bootstrap` 永远不会安装内核驱动——只管理当前环境中的 Python 包。它要求已激活 venv 或非 base 的 Conda 环境，拒绝修改 Ryzen AI/Windows ML 厂商环境，检查 x86-64 与版本对应的 Python ABI，核验 MIGraphX 和已安装的 ROCm（只接受 7.2.1、7.2.4 或 7.14.0），并且从不卸载已有 ORT。7.14 路径还会读取 `rocminfo`，在下载前拒绝任何不是 `gfx942/gfx950` 的 `--device-id`。
+> `--bootstrap` 永远不会安装内核驱动——只管理当前环境中的 Python 包。它要求已激活 venv 或非 base 的 Conda 环境，拒绝修改 Ryzen AI/Windows ML 厂商环境，检查 x86-64 与对应版本的 Python ABI，核验检测到的 ROCm，并且从不卸载已有 ORT。ROCm 10 接受 Python 3.12/3.14 与 §6.1 的七个 target；ROCm 7.14 接受 Python 3.12 与 `gfx942/gfx950`；保留的 7.2.x 仅接受已映射的 CPython 3.10/3.12 artifact。
 
 ---
 
@@ -646,14 +707,16 @@ python AMD/provider_test.py --target migraphx --bootstrap --strict-all
 
 主机前提：AMD 内核驱动、`/dev/kfd`、`/dev/dri`、Docker Engine 与正确的用户权限。容器内已包含 ROCm 用户态库、MIGraphX 和 ORT。
 
-> [!WARNING]
-> 截至 2026-07-17，AMD 尚未发布 ROCm 7.14 的 `rocm/onnxruntime` 镜像——最新官方标签仍是 7.2.4。此快速方案只覆盖 7.2.x；7.14 请使用 [§6.1](#61-当前-rocm-7140-onnx-方案ubuntu-2404仅-gfx950gfx942) 和 [§7](#7-安装-migraphx-与-ort-wheel)。
+> [!IMPORTANT]
+> 使用精确标签。Docker Hub 的可变 `latest` 仍解析到旧的 7.2.4 镜像，尽管 AMD 后来已经发布 ROCm 7.14 与 ROCm 10 标签。
 
 ```bash
-# ROCm core 7.2.4，Ubuntu 24.04：
-IMAGE=rocm/onnxruntime:rocm7.2.4_ub24.04_ort1.23_torch2.10.0
-# Radeon 专用 ROCm 7.2.1，Ubuntu 24.04（该方案改用此镜像）：
-# IMAGE=rocm/onnxruntime:rocm7.2.1_ub24.04_ort1.23_torch2.9.1
+# 当前 ROCm 10，Ubuntu 24.04，Python 3.12：
+IMAGE=rocm/onnxruntime:rocm10.0.0_ub24.04_ort1.29_torch2.11.0_py3.12
+# 保留的 ROCm 7.14，Ubuntu 24.04，Python 3.12：
+# IMAGE=rocm/onnxruntime:rocm7.14.0_ub24.04_ort1.23_torch2.10.0_py3.12
+# 保留的 ROCm 7.2.4，Ubuntu 24.04：
+# IMAGE=rocm/onnxruntime:rocm7.2.4_ub24.04_ort1.23_torch2.10.0
 
 docker pull "$IMAGE"
 
@@ -667,7 +730,7 @@ docker run --rm -it \
   python3 AMD/provider_test.py --target migraphx --strict-all
 ```
 
-Ubuntu 22.04 标签：`rocm7.2.4_ub22.04_ort1.23_torch2.10.0`（core）和 `rocm7.2.1_ub22.04_ort1.23_torch2.9.1`（Radeon）。容器内用 `rocminfo` 和 `/opt/rocm/bin/amd-smi list` 验证。
+ROCm 10、7.14 和 7.2.4 都有对应的 Ubuntu 22.04 标签。ROCm 10/7.14 发布了多个 Python 版本的标签，但本验证器遵循 AMD 的 ONNX 兼容矩阵：ROCm 10 使用 Python 3.12 或 3.14，7.14 使用 Python 3.12。容器内用 `rocminfo` 和 `/opt/rocm/bin/amd-smi list` 验证。
 
 ---
 
@@ -714,7 +777,7 @@ py -3.12 -m venv .venv-amd-dml
 Set-ExecutionPolicy -Scope Process Bypass -Force
 .\.venv-amd-dml\Scripts\Activate.ps1
 
-python -m pip install --index-url https://pypi.org/simple "pip==26.1.2"
+python -m pip install --index-url https://pypi.org/simple "pip==26.2.1"
 python -m pip install --index-url https://pypi.org/simple "numpy==1.26.4" "onnxruntime-directml==1.24.4"
 
 python -c "import onnxruntime as ort; print(ort.get_available_providers())"
@@ -729,7 +792,7 @@ python AMD/provider_test.py --target dml --strict-all
 python AMD/provider_test.py --target dml --device-id 1 --strict-all
 ```
 
-请从仓库根目录运行。演示脚本按 DirectML 使用的**相同顺序**枚举 DXGI adapter，并在所选 `--device-id` 的 AMD PCI vendor ID 不是 `0x1002` 时失败。
+演示脚本按 DirectML 使用的**相同顺序**枚举 DXGI adapter，并在所选 `--device-id` 的 AMD PCI vendor ID 不是 `0x1002` 时失败。
 
 必需的 session 设置（DirectML 不支持 ORT 并行执行或内存模式优化——并发时请使用不同 session）：
 
@@ -774,19 +837,19 @@ py -3.12 -m venv .venv-winml
 Set-ExecutionPolicy -Scope Process Bypass -Force
 .\.venv-winml\Scripts\Activate.ps1
 
-python -m pip install --index-url https://pypi.org/simple "pip==26.1.2"
+python -m pip install --index-url https://pypi.org/simple "pip==26.2.1"
 python -m pip install --index-url https://pypi.org/simple `
-  "numpy==1.26.4" `
-  "wasdk-Microsoft.Windows.AI.MachineLearning[all]==2.1.3" `
-  "wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.1.3" `
-  "onnxruntime-windowsml==1.24.6.202605042033"
+  "numpy==2.5.2" `
+  "wasdk-Microsoft.Windows.AI.MachineLearning[all]==2.3.0" `
+  "wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.3.0" `
+  "onnxruntime-windowsml==1.25.2.202605110140"
 
 winget install --id "Microsoft.VCRedist.2015+.x64" -e `
   --accept-package-agreements --accept-source-agreements
 
-$runtimeInstaller = "$env:TEMP\windowsappruntimeinstall-2.1.3-x64.exe"
+$runtimeInstaller = "$env:TEMP\windowsappruntimeinstall-2.3.1-x64.exe"
 Invoke-WebRequest `
-  https://aka.ms/windowsappsdk/2.1/2.1.3/windowsappruntimeinstall-x64.exe `
+  https://aka.ms/windowsappsdk/2.3/2.3.1/windowsappruntimeinstall-x64.exe `
   -OutFile $runtimeInstaller
 
 $signature = Get-AuthenticodeSignature -LiteralPath $runtimeInstaller
@@ -805,7 +868,7 @@ try {
 }
 ```
 
-运行前验证（两个 `wasdk-*` 都应为 `2.1.3`，ORT 为 `1.24.6.202605042033`；不匹配时停止并重建 venv）：
+运行前验证（两个 `wasdk-*` 都应为 `2.3.0`，ORT 为 `1.25.2.202605110140`；不匹配时停止并重建 venv）：
 
 ```powershell
 python -m pip list | findstr /i "wasdk onnxruntime-windowsml winrt-runtime"
@@ -855,19 +918,19 @@ sequenceDiagram
 | 插件 | 当前 catalog 版本 | 驱动要求 |
 |---|---|---|
 | MIGraphX | MSIX 1.8.57.0 / GPU EP 7.2.2606.20 | AMD GPU 驱动必须**精确为 25.10.13.09**；当前不支持 GenAI 场景 |
-| VitisAI | MSIX 1.8.63.0 / EP 2858 | 最低 Adrenalin 25.6.3 + NPU 32.00.0203.280；最高 Adrenalin 25.9.1 + NPU 32.00.0203.297 |
+| VitisAI | MSIX 1.8.68.0 / EP 6059 | 最低 Adrenalin 25.6.3 + NPU 32.00.0203.280；最高 Adrenalin 25.9.1 + NPU 32.00.0203.297 |
 
 > [!WARNING]
 > 这些 catalog 数值会随 Windows Update D-week 版本变化——安装或冻结镜像前请重新核对实时表格。驱动版本号更大**不代表一定兼容**。
 >
-> **不要混用两条 NPU 路径。** AMD 直接安装的 Ryzen AI 1.7.1 页面提供 NPU 驱动 `32.0.203.280` 和 `32.0.203.314`，但 Windows ML VitisAI catalog 的上限是 `32.00.0203.297`。驱动 `.314` 对直接安装的 1.7.1 SDK 有效，却超出 Windows ML VitisAI 的兼容范围。本指南中的 NPU 命令使用的是 Ryzen AI 厂商环境，不是 `--windows-ml`。
+> **不要混用两条 NPU 路径。** 直接安装的 Ryzen AI 1.8 将 `32.0.203.376` 列为生产 NPU 驱动，但 Windows ML VitisAI catalog 仍将上限设为 `32.00.0203.297`。`.376` 属于直接 1.8 SDK 路径，超出 catalog 要求。本指南中的 NPU 命令使用 Ryzen AI 厂商环境，不是 `--windows-ml`。
 
 ### 10.2 为什么原生 Windows ROCm 走不通这条路
 
-ROCm 7.14 大幅扩展了 Windows Core SDK 支持，但 AMD 的 MIGraphX 2.16 与 ONNX Runtime 1.23.2 AI Ecosystem 页面仍然只验证 Linux x86-64 的 `gfx950/gfx942`，AMD ORT wheel 也是 manylinux artifact。因此原生 Windows ROCm 不会让普通 Windows ORT Python wheel 出现 `MIGraphXExecutionProvider`。当前 Windows 的可选方案仍是：DirectML、Windows ML（获取 MIGraphX 插件），或原生 Ubuntu ROCm/MIGraphX。
+ROCm 10 大幅扩展了 Windows Core SDK 支持，但 AMD 当前 MIGraphX 2.17 与 ONNX Runtime 1.29 的 AI Ecosystem 条目仍将预编译推理软件栈列为 Linux，EP 插件 wheel 也是 manylinux artifact。因此原生 Windows ROCm 不会让普通 Windows ORT Python 环境出现 `MIGraphXExecutionProvider`。Windows 当前应使用 DirectML 或 Windows ML；ROCm/MIGraphX 插件路径使用原生 Linux。
 
 > [!WARNING]
-> **WSL2 不能用于 MIGraphX。** AMD 当前的 ROCDXG WSL 指南（Adrenalin 26.2.2 + ROCm 7.2.1）明确说明 MIGraphX 在 WSL 上**不受支持**。一份较旧、现已归入 legacy 的 7.2 兼容页面曾列出 ONNX Runtime 1.23.2，但并不能推翻这一限制——验证脚本会拒绝在 WSL 内核上运行 MIGraphX。请改用原生 Ubuntu、原生 Windows DirectML，或 Windows ML MIGraphX。Ryzen AI 1.7.1 NPU 文档同样只覆盖原生 Windows 与原生 Ubuntu 24.04 STX/KRK，不含 WSL 直通。
+> **WSL2 不能用于 MIGraphX。** AMD 当前的 ROCDXG WSL 指南明确说明 MIGraphX 在 WSL 上**不受支持**。一份较旧、现已归入 legacy 的 7.2 兼容页面曾列出 ONNX Runtime 1.23.2，但并不能推翻这一限制——验证脚本会拒绝在 WSL 内核上运行 MIGraphX。请改用原生 Linux、原生 Windows DirectML，或 Windows ML MIGraphX。Ryzen AI 1.8 NPU 路径用于原生 Windows 与原生 Ubuntu，不是 WSL 直通。
 
 ---
 
@@ -875,7 +938,7 @@ ROCm 7.14 大幅扩展了 Windows Core SDK 支持，但 AMD 的 MIGraphX 2.16 �
 
 ## 11. 支持范围
 
-Ryzen AI Software 1.7 支持 Phoenix（PHX）、Hawk Point（HPT）、Strix/Strix Halo（STX）和 Krackan Point（KRK）。
+Ryzen AI Software 1.8 支持 Phoenix（PHX）、Hawk Point（HPT）、Strix/Strix Halo（STX）和 Krackan Point（KRK）。
 
 | 模型类型 | PHX/HPT | STX/KRK |
 |---|---:|---:|
@@ -886,12 +949,12 @@ Ryzen AI Software 1.7 支持 Phoenix（PHX）、Hawk Point（HPT）、Strix/Stri
 
 推荐 opset：**17**。不受支持的节点会自动划分到 CPU，除非明确要求并核实严格分配。
 
-## 12. 安装 Ryzen AI Software 1.7.1
+## 12. 安装 Ryzen AI Software 1.8.0
 
 | 依赖 | 要求 |
 |---|---|
-| Windows | 直接安装 1.7.1 需要 build >= 22621.3527 |
-| NPU 驱动 | 32.0.203.280 及以上；仍需对照具体 EP 版本核实 |
+| Windows | 直接安装 1.8.0 需要 build >= 22621.3527 |
+| NPU 驱动 | PHX/HPT/STX/STX Halo/KRK 使用生产驱动 32.0.203.376 |
 | Visual Studio | 构建/自定义算子需要 VS 2022 + Desktop Development with C++；基础 quicktest 可不装 |
 | CMake | >= 3.26 |
 | 环境管理器 | 推荐 Miniforge |
@@ -914,26 +977,30 @@ cmake --version   # 重新打开 Miniforge Prompt 后应 >= 3.26
 .\npu_sw_installer.exe
 ```
 
-3. 按提示重启；确认 **Task Manager → Performance → NPU 0**。使用官方链接的生产驱动（`32.0.203.280` 或 `32.0.203.314`）——不要把 Ryzen AI 1.8 beta 驱动和这套 1.7.1 环境混用。
-4. 下载并运行 `ryzen-ai-lt-1.7.1.exe`，保留默认路径，让安装器创建 Conda 环境 `ryzen-ai-1.7.1`。
+3. 按提示重启；确认 **Task Manager → Performance → NPU 0**，并确认驱动为 `32.0.203.376`。此直接 SDK 驱动不适用于 §10 中另有上限的 Windows ML VitisAI catalog 路径。
+4. 下载并运行 `ryzen-ai-1.8.0.exe`，保留默认路径 `C:\Program Files\RyzenAI\1.8.0`，让安装器创建 Conda 环境 `ryzen-ai-1.8.0`。
 
 ### 12.1 厂商 quicktest（STX/KRK）
 
-打开 **Miniforge Prompt**（Command Prompt 快捷方式，不是 PowerShell）：
+打开 **Miniforge Prompt**（Command Prompt 快捷方式，不是 PowerShell），进入仓库根目录，并把下面的示例路径替换为实际位置：
 
 ```bat
-conda activate ryzen-ai-1.7.1
+cd /d "C:\path\to\Tutorial-ONNX-Runtime-Execution-Providers-main"
+conda activate ryzen-ai-1.8.0
 python -c "import onnxruntime as ort; print(ort.__version__); print(ort.get_available_providers())"
-cd /d "%RYZEN_AI_INSTALLATION_PATH%\quicktest"
+pushd "%RYZEN_AI_INSTALLATION_PATH%\quicktest"
 python quicktest.py
+popd
 ```
 
-预期最后一行：`Test Finished`。若没有 `VitisAIExecutionProvider` 必须停止——禁止用 pip 修复厂商环境。
+预期最后一行：`Test Finished`。`popd` 会返回仓库根目录，以便继续执行 §12.2。若没有 `VitisAIExecutionProvider` 必须停止——禁止用 pip 修复厂商环境。
 
 > [!NOTE]
 > **PHX/HPT：** 不要直接运行未经修改的 `quicktest.py`。AMD 要求设置 `target=X1`、`xlnx_enable_py3_round=0` 和 Phoenix `4x4.xclbin`。请直接跳到 [§12.2](#122-自动化性能分析验证)——仓库验证脚本会自动应用这些选项，无需修改厂商文件。
 
 ### 12.2 自动化性能分析验证
+
+继续使用同一个 Miniforge Prompt；此时当前目录已经回到仓库根目录：
 
 ```powershell
 python AMD/provider_test.py --target npu --strict-all
@@ -1044,20 +1111,19 @@ python your_inference.py
 
 ## 14. 当前 Linux 支持要求
 
-Ryzen AI 1.7.1 是本指南中第一个明确支持 Linux 上 Ryzen NPU 推理的产品文档。
+Ryzen AI 1.8.0 支持 STX 与 KRK 上的原生 Linux NPU 推理。
 
-| 要求 | 当前 1.7.1 条件 |
+| 要求 | 当前 1.8.0 条件 |
 |---|---|
 | 支持的 NPU 系列 | STX 和 KRK |
 | 发行版 | Ubuntu 24.04 LTS |
-| 内核 | >= 6.10 |
 | Python | 3.12.x |
-| 内存 | 推荐 64 GB |
 | 模型 | CNN INT8/BF16、encoder NLP BF16、NPU-only LLM 流程 |
 | EP | `VitisAIExecutionProvider` |
+| 驱动组合 | XRT 2.25.37 + amdxdna plugin 2.25.260102.56 |
 
 > [!NOTE]
-> PHX/HPT **不在**当前 Linux 支持声明之列。不要用 Windows 矩阵推断 Linux 也支持。
+> PHX/HPT **不在**当前 Linux 支持声明之列。不要用 Windows 矩阵推断 Linux 也支持。Ryzen AI 1.8 也不支持在 Linux 上生成模型；请在 Windows 生成模型，再把输出部署到 Linux。
 
 ## 15. 安装 Ubuntu NPU 驱动与 Ryzen AI
 
@@ -1068,29 +1134,21 @@ sudo apt update
 sudo apt install -y software-properties-common
 sudo add-apt-repository -y universe
 sudo apt update
-sudo apt install -y python3.12 python3.12-venv libboost-filesystem1.74.0 pciutils
+sudo apt install -y python3.12 python3.12-venv libboost-filesystem1.74.0 dkms pciutils
 uname -r
 ```
 
-`libboost-filesystem1.74.0` 位于 Ubuntu 24.04 的 `universe` 组件中，上面的命令已启用它。若 GA 内核低于 6.10，需先升级到受支持的 HWE/OEM 内核并重启，再安装 XRT：
-
-```bash
-sudo apt-get update
-sudo apt-get install --install-recommends linux-generic-hwe-24.04
-sudo reboot
-```
-
-重启后 `uname -r` 必须 >= 6.10。若 `ubuntu-drivers list-oem` 显示 OEM 内核 track，请保持该节奏并参照厂商/Ubuntu 文档，不要自行切换 track。
+`libboost-filesystem1.74.0` 位于 Ubuntu 24.04 的 `universe` 组件中，上面的命令已启用它。AMD 1.8 页面没有声明最低内核版本；请使用完整更新且受支持的 Ubuntu 24.04 内核，让 DKMS 构建随包驱动，不要继续传播已移除的旧限制。
 
 ### 15.2 下载并安装 XRT/NPU 软件包
 
-从 AMD Ryzen AI 官方下载页获取 `RAI_1.7.1_Linux_NPU_XRT.zip`，解压后在该目录下执行：
+下载 AMD 官方 [`RAI_1.8_Linux_NPU_XRT.zip`](https://download.amd.com/opendownload/RyzenAI/Driver/RAI_1.8_Linux_NPU_XRT.zip)，解压后在该目录下执行：
 
 ```bash
-sudo apt install --fix-broken -y ./xrt_202610.2.21.75_24.04-amd64-base.deb
-sudo apt install --fix-broken -y ./xrt_202610.2.21.75_24.04-amd64-base-dev.deb
-sudo apt install --fix-broken -y ./xrt_202610.2.21.75_24.04-amd64-npu.deb
-sudo apt install --fix-broken -y ./xrt_plugin.2.21.260102.53.release_24.04-amd64-amdxdna.deb
+sudo apt install --fix-broken -y ./xrt_202620.2.25.37_24.04-amd64-base.deb
+sudo apt install --fix-broken -y ./xrt_202620.2.25.37_24.04-amd64-base-dev.deb
+sudo apt install --fix-broken -y ./xrt_202620.2.25.37_24.04-amd64-npu.deb
+sudo apt install --fix-broken -y ./xrt_plugin.2.25.260102.56.release_24.04-amd64-amdxdna.deb
 
 export LD_LIBRARY_PATH=/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}
 source /opt/xilinx/xrt/setup.sh
@@ -1099,17 +1157,18 @@ xrt-smi examine
 
 预期设备名称类似 `NPU Strix`（具体 BDF/名称因机器而异）。
 
-### 15.3 安装 Ryzen AI 1.7.1 软件包
+### 15.3 安装 Ryzen AI 1.8.0 软件包
 
 ```bash
-mkdir -p ryzen_ai-1.7.1
-cp ryzen_ai-1.7.1.tgz ryzen_ai-1.7.1/
-cd ryzen_ai-1.7.1
-tar -xvzf ryzen_ai-1.7.1.tgz
+mkdir -p ryzen_ai-1.8.0
+cp ryzen_ai-1.8.0.tgz ryzen_ai-1.8.0/
+cd ryzen_ai-1.8.0
+tar -xvzf ryzen_ai-1.8.0.tgz
 
-./install_ryzen_ai.sh -a yes -p "$HOME/ryzen-ai-1.7.1/venv"
-source "$HOME/ryzen-ai-1.7.1/venv/bin/activate"
+./install_ryzen_ai.sh -a yes -p "$HOME/ryzen-ai-1.8.0/venv"
+source "$HOME/ryzen-ai-1.8.0/venv/bin/activate"
 echo "$RYZEN_AI_INSTALLATION_PATH"
+export LD_LIBRARY_PATH="/lib/x86_64-linux-gnu:${RYZEN_AI_INSTALLATION_PATH}/onnxruntime/lib/:${LD_LIBRARY_PATH:-}"
 python -c "import sys; assert sys.version_info[:2] == (3, 12), sys.version; print(sys.version)"
 python -c "import onnxruntime as ort; print(ort.__version__); print(ort.get_available_providers())"
 ```
@@ -1121,8 +1180,9 @@ Linux 使用安装器创建的 venv——跳过示例中 Windows-only 的 Conda 
 ```bash
 export LD_LIBRARY_PATH=/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}
 source /opt/xilinx/xrt/setup.sh
-source "$HOME/ryzen-ai-1.7.1/venv/bin/activate"
-cd "$HOME/ryzen-ai-1.7.1/venv/quicktest"
+source "$HOME/ryzen-ai-1.8.0/venv/bin/activate"
+export LD_LIBRARY_PATH="/lib/x86_64-linux-gnu:${RYZEN_AI_INSTALLATION_PATH}/onnxruntime/lib/:${LD_LIBRARY_PATH:-}"
+cd "$HOME/ryzen-ai-1.8.0/venv/quicktest"
 python quicktest.py
 
 # 替换为本仓库的绝对路径。
@@ -1477,26 +1537,26 @@ flowchart TD
 
 | 现象或错误 | 可能原因 | 处理方法 |
 |---|---|---|
-| 只出现 `CPUExecutionProvider` | ORT 发行版错误或厂商环境未激活 | 新建干净 venv；安装精确的 DML/MIGraphX wheel，或激活 Ryzen AI 环境 |
-| 报告存在多个 `onnxruntime-*` 发行包 | 多个 wheel 共享同一批模块文件 | 删除环境并重建，只保留一个 runtime 包 |
+| 只出现 `CPUExecutionProvider` | ORT 发行包/插件错误或厂商环境未激活 | 新建干净 venv；安装精确的 DirectML 包、ROCm 10 插件栈或保留的 7.x wheel；否则激活 Ryzen AI 环境 |
+| 报告存在多个相互竞争的 ORT runtime 发行包 | 多个基础运行时共享同一批模块文件 | 重建环境，只保留一个基础 runtime；ROCm 10 的 `onnxruntime-ep-migraphx` 是配套插件，不是第二个基础 runtime |
 | `--bootstrap` 拒绝当前环境 | Base/系统 Python、厂商环境、已有 ORT，或 ROCm 无法核验/不匹配 | 删除并重建专用的可丢弃 venv；bootstrap 从不原地修复/卸载 ORT |
 | 报告未经核验的发行版或哈希 | 同名 PyPI wheel、被修改的二进制、不同发行版或自定义源码构建 | 用官方直链或 `--bootstrap` 重建；有意的源码构建请单独验证 |
 | ORT 1.23+ 缺少 `ROCMExecutionProvider` | 预期内的移除 | 迁移到 `MIGraphXExecutionProvider` |
-| MIGraphX provider 库无法加载 | ROCm/MIGraphX 版本不匹配或缺少运行时库 | `sudo apt install migraphx`；用 `ldd` 检查 provider `.so`；对齐 wheel 仓库 |
+| MIGraphX provider 库无法加载 | ROCm/MIGraphX 版本不匹配或缺少运行时库 | ROCm 10 对齐两个 AMD 索引与 loader 路径；保留的 7.x 安装其匹配 MIGraphX 包；用 `ldd` 检查 provider `.so` |
 | `/dev/kfd` 报 `Permission denied` | 用户不在 `render,video` 组 | `sudo usermod -a -G render,video $LOGNAME`，然后注销或重启 |
 | `hipErrorNoBinaryForGpu` / 无效设备函数 | GPU 架构缺失或不受支持 | 查官方 GPU 矩阵；不要只依赖 `rocminfo` 可见性 |
-| NumPy 升级后导入失败 | AMD wheel ABI 不匹配 | 用干净 venv 并锁定当前 wheel 对应的 `numpy==1.26.4` |
+| NumPy 升级后导入失败 | AMD wheel ABI 不匹配 | ROCm 10 使用 NumPy 2.5.2；仅保留的 ORT 1.23.2 wheel 使用 1.26.4 |
 | DirectML 用错了 GPU | `device_id=0` 映射到另一个 DXGI adapter | 检查 Task Manager；尝试 `--device-id 1`；分别测试 |
 | DirectML 测试拒绝非 `0x1002` 的 PCI vendor | 所选 DXGI 索引是 Intel/NVIDIA/Microsoft，不是 AMD | 用打印出的 adapter 列表，通过 `--device-id` 传入 AMD 索引 |
 | DirectML session 拒绝选项 | 启用了并行模式或内存模式 | 设为顺序模式；关闭内存模式 |
 | Windows ML 在 Python 3.10 上 pip 安装失败 | 锁定的 `onnxruntime-windowsml` 要求 Python >= 3.11 | 使用本指南的 Python 3.12 环境 |
-| Windows ML bootstrap 失败 / 无 MIGraphX catalog 条目 | `wasdk-*`/运行时不匹配、Store Python、系统低于 24H2，或驱动不兼容 | 使用精确的 2.1.3/1.24.6.202605042033 组合、python.org/winget Python、build >=26100、精确的实时驱动版本 |
+| Windows ML bootstrap 失败 / 无 MIGraphX catalog 条目 | `wasdk-*`/运行时不匹配、Store Python、系统低于 24H2，或驱动不兼容 | 使用精确的 2.3.0/1.25.2.202605110140/runtime-2.3.1 组合、python.org/winget Python、build >=26100、精确的实时驱动版本 |
 | Vitis AI EP 存在但所有节点都在 CPU | 算子/形状/精度不支持，或模型代际错误 | 用 opset 17；检查支持算子表和分配报告；正确量化/编译 |
 | PHX/HPT 上 Vitis session 失败 | 缺少 `target=X1` 或 `4x4.xclbin` | 使用对应代际的选项和厂商安装路径 |
 | STX/KRK 报错提到 xclbin | 沿用了旧选项 | 当前 X2 流程应移除 `xclbin` |
 | 首次 NPU 加载耗时数分钟 | 属于正常编译 | 启用缓存；分开衡量编译时间与推理时间 |
 | 更新后 NPU 缓存失效 | 缓存/驱动/EP 不兼容 | 删除或更换缓存版本；重新生成 EP Context |
-| Ubuntu 看不到 NPU | 内核 < 6.10、缺少 XRT/amdxdna，或用了不支持的 PHX/HPT | 满足精确的 1.7.1 Linux 要求；运行 `xrt-smi examine` |
+| Ubuntu 看不到 NPU | OS/平台错误、缺少 DKMS/XRT/amdxdna 软件包，或用了不支持的 PHX/HPT | 使用精确的 Ryzen AI 1.8 Ubuntu 软件包组合；source XRT；运行 `xrt-smi examine` |
 | FastFlowLM 的 `flm validate` 通过，但 `flm run` 无法打开 NPU 设备 `0` | 内核侧探测通过，但 XRT 或其 AMD XDNA 插件无法打开 NPU | 运行 `xrt-smi examine`；为该发行版安装/修复 FastFlowLM 所需的 XRT 与 XDNA 插件，确认设备后再运行目录模型 |
 | Docker 看不到 GPU | 缺少设备直通 | 添加 `--device /dev/kfd --device /dev/dri`；核实主机驱动 |
 | EP 已注册但脚本以退出码 5 结束 | 无目标 provider profile 事件，也无新生成的 Vitis NPU 证据 | 属于设计上的失败——检查不支持的节点、当次报告和日志 |
@@ -1504,7 +1564,7 @@ flowchart TD
 **高级 Linux 库检查**——查找并检查 MIGraphX provider 库，不要复制到全局系统目录：
 
 ```bash
-provider_so="$(find "$VIRTUAL_ENV" -name 'libonnxruntime_providers_migraphx.so' -print -quit)"
+provider_so="$(find "$VIRTUAL_ENV" \( -name 'libmigraphx-ep.so' -o -name 'libonnxruntime_providers_migraphx.so' \) -print -quit)"
 if [[ -z "$provider_so" ]]; then
   echo "MIGraphX provider library was not found in $VIRTUAL_ENV" >&2
 else
@@ -1522,7 +1582,7 @@ ORT 建议把 provider 共享库与匹配的 ORT 库放在一起——不要在�
 - [ ] 硬件 SKU 明确列在对应的 AMD 支持矩阵中。
 - [ ] OS build/内核版本精确受支持。
 - [ ] 驱动、ROCm/XRT、MIGraphX/Vitis AI、ORT 与 Python ABI 已锁定为同一套经测试的组合。
-- [ ] 环境中只安装了一个 `onnxruntime-*` 发行包。
+- [ ] 环境中只安装一个基础 ONNX Runtime 发行包；EP 插件必须属于匹配的配套版本，而不是另一个基础 runtime。
 - [ ] 目标 EP 排在首位，CPU 回退策略是有意为之。
 - [ ] Profile/分配报告证明目标设备确实执行了节点。
 - [ ] 启用低精度前已与 CPU/参考数据比对准确率。
@@ -1558,9 +1618,9 @@ ORT 建议把 provider 共享库与匹配的 ORT 库放在一起——不要在�
 | Radeon 原生 Linux 支持与 ONNX 矩阵 | <https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/native_linux/native_linux_compatibility.html> |
 | Radeon 7.2.1 驱动/ROCm 安装 | <https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/native_linux/install-radeon.html> |
 | Radeon MIGraphX + ONNX 安装 | <https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/native_linux/install-onnx.html> |
-| ROCm 7.14 release notes 与兼容矩阵 | <https://rocm.docs.amd.com/en/latest/about/release-notes.html> · <https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html> |
-| ROCm 7.14 ONNX Runtime / MIGraphX 安装 | <https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/inference/onnxruntime.html> · <https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/inference/migraphx.html> |
-| Ryzen AI 1.7.1 文档 | <https://ryzenai.docs.amd.com/en/latest/> |
+| ROCm 10 release notes 与兼容矩阵 | <https://rocm.docs.amd.com/en/docs-10.0.0/about/release-notes.html> · <https://rocm.docs.amd.com/en/docs-10.0.0/compatibility/compatibility-matrix.html> |
+| ROCm 10/7.14 ONNX Runtime 与 MIGraphX 选择器 | <https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/inference/onnxruntime.html> · <https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/inference/migraphx.html> |
+| Ryzen AI 1.8.0 文档 | <https://ryzenai.docs.amd.com/en/latest/> |
 | Ryzen AI Windows 安装 | <https://ryzenai.docs.amd.com/en/latest/inst.html> |
 | Ryzen AI Linux 安装 | <https://ryzenai.docs.amd.com/en/latest/linux.html> |
 | Ryzen AI 模型部署与选项 | <https://ryzenai.docs.amd.com/en/latest/modelrun.html> |

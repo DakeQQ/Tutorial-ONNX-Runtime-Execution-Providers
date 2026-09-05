@@ -1,6 +1,6 @@
 "use strict";
 
-const ORT_VERSION = "1.27.0";
+const ORT_VERSION = "1.29.0";
 const MODEL_PATH = "./execution_provider_demo.onnx";
 const MODEL_DIMS = Object.freeze([1, 4, 128, 128]);
 const MATRIX_SIZE = 128;
@@ -141,7 +141,7 @@ async function synchronizeWebGpu(enabled) {
 
 async function createWebGpuDevice(enableProfiling) {
   if (!globalThis.isSecureContext) {
-    throw new Error("WebGPU requires HTTPS or http://localhost; file:// and ordinary HTTP are not secure contexts.");
+    throw new Error("WebGPU requires a secure context. Use this demo's localhost server or deploy it over HTTPS; direct file:// loading is unsupported.");
   }
   if (!navigator.gpu) {
     throw new Error("navigator.gpu is unavailable. Update/enable a WebGPU-capable browser and inspect chrome://gpu.");
@@ -168,7 +168,7 @@ async function createWebGpuDevice(enableProfiling) {
   if (enableProfiling && !requiredFeatures.some(feature => feature.includes("timestamp-query"))) {
     log("[Preflight] timestamp-query is unavailable; WebGPU profiling events may be absent.");
   }
-  // Match the descriptor ORT 1.27 uses when it creates its own device. This
+  // Match the descriptor ORT 1.29 uses when it creates its own device. This
   // keeps the adapter's supported limits and optional optimized features while
   // still guaranteeing that the inspected adapter is the one used by ORT.
   const requiredLimits = {
@@ -350,8 +350,9 @@ async function runDemo() {
       primaryProvider = { name: "webgpu", device, validationMode: "basic" };
     } else if (provider === "webnn") {
       const context = await createWebNnContext(deviceType);
-      // ORT 1.27 requires deviceType even when a pre-created MLContext is
-      // supplied, because it uses the value to select the preferred layout.
+      // ORT 1.29 requires deviceType even when a pre-created MLContext is
+      // supplied, to select the device-specific capability set and satisfy
+      // the ORT Web execution-provider option contract.
       primaryProvider = { name: "webnn", deviceType, context };
     }
 

@@ -1,8 +1,8 @@
 # ONNX Runtime 执行提供程序教程
 
-本仓库提供可复现的配置指南和**严格**的冒烟测试，帮助你确认 ONNX 模型确实运行在 **Apple、AMD、Intel、NVIDIA、Qualcomm、Web、Windows 或 XNNPACK CPU** 后端上，而不只是某个执行提供程序（EP）能够加载。
+本仓库提供可复现的配置指南和**严格**的冒烟测试，用于判断 ONNX 模型是否确实运行在 **Apple、AMD、Intel、NVIDIA、Qualcomm、Web、Windows 或 XNNPACK CPU** 后端上，而不只是某个执行提供程序（EP）能够加载。只有在匹配的硬件上成功运行测试后，才能得到这项证据；每份指南都会明确记录仓库审查实际执行和未执行的内容。
 
-[English](README.md)  ·  **最近验证：2026-07-17。** 每份平台指南都单独列出锁定的软件版本、硬件要求、已测试环境和验证范围。
+[English](README.md)  ·  **仓库基线：2026-09-01。** 每份平台指南都单独列出锁定的软件版本、硬件要求、已测试环境和验证范围。
 
 ---
 
@@ -86,16 +86,16 @@ flowchart LR
 ## 必须记住的一件事
 
 > [!IMPORTANT]
-> 某个 EP 出现在 `get_available_providers()` 中，只能说明 ONNX Runtime **能够加载**它，并不代表模型已经**在 GPU 或 NPU 上执行**。
+> 某个 EP 出现在 `get_available_providers()` 中，只能说明 ONNX Runtime **能够加载**它，并不代表模型节点已经**通过该 EP 执行**。
 
-很多看似“能运行”的示例会在没有明显提示的情况下回退到 CPU。为避免这种误判，本仓库的测试会同时执行以下四项相互独立的检查：
+很多看似“能运行”的示例会在没有明显提示的情况下回退到 CPU。每份平台指南都会说明自己的证据边界。证据最完整的严格测试会组合以下四项检查；如果某条路线无法提供其中一项，指南会写明替代证据或剩余限制：
 
 ```mermaid
 flowchart TD
     Q["get_available_providers()<br/>列出了我的 EP"]
         Q -->|只能说明| A["Runtime 能加载它"]
-        Q -.->|不能说明| B["节点已经在目标设备上执行"]
-        subgraph Need["确认硬件执行：四项缺一不可"]
+        Q -.->|不能说明| B["节点已经通过目标 EP 执行"]
+        subgraph Need["有力证据由四类检查组成"]
       direction LR
       M["确定性<br/>冒烟模型"] --> R["独立<br/>参考结果"]
             R --> G["节点分配 /<br/>性能分析记录"]
@@ -107,9 +107,9 @@ flowchart TD
 | 检查 | 可以确认 | 可以排除 |
 |---|---|---|
 | 确定性冒烟模型 | 每次都使用相同输入 | 结果不稳定或无法复现 |
-| 独立参考结果 | 输出数值正确 | 运行成功但计算结果有误 |
+| 独立参考结果 | 在指南提供该检查时，输出与另一种实现或 CPU 路线一致 | 运行成功但计算结果有误 |
 | 节点分配 / 性能分析记录 | 节点由目标 EP 执行 | 计算实际落在 CPU 却未被发现 |
-| 无 CPU 回退 | 计算由加速器完成 | 回退到 CPU 后仍被误判为成功 |
+| 无 ORT CPU EP 回退 | ORT 没有把不受支持的计算图工作转交给通用 `CPUExecutionProvider` | ORT 静默回退后仍被误判为目标 EP 执行 |
 
 > [!NOTE]
 > 某些 EP 内部还有自己的调度器。例如，已分配给 `CoreMLExecutionProvider` 的分区仍可能在 CPU、GPU 或 ANE 上执行。ORT 的节点分配只能证明 EP 边界；当物理计算单元很重要时，还要使用该 Provider 的设备级分析工具。
@@ -137,7 +137,7 @@ flowchart LR
     PL --> RUN
 ```
 
-本仓库已经覆盖四条插件路线：Windows ML MIGraphX、QNN 2.x、独立 TensorRT RTX 和原生 WebGPU。仅完成注册或设备发现并不代表执行通过；每个平台测试仍要求同时提供输出、节点分配/性能分析和无回退证据。
+本仓库覆盖四条插件路线：Windows ML MIGraphX、QNN 2.x、独立 TensorRT RTX 和原生 WebGPU。仅完成注册或设备发现并不代表执行通过。每份指南都会说明其严格路线可以执行哪些输出、节点分配/性能分析和回退检查，以及还存在哪些设备层限制。
 
 请阅读 [Plugin EP 源码深度解析](PluginEP/README.zh-CN.md)，了解加载器调用链、`OrtEpFactory` / `OrtEp` 生命周期、编译与内核执行路径、ABI 演进、打包规则和固定版本源码链接。
 
@@ -145,7 +145,7 @@ flowchart LR
 
 ## 选择适合的方案
 
-先确认手头的硬件，再打开对应指南并运行其中的第一条命令。
+先确认手头的硬件，再打开对应指南、完成其中列出的前置要求，然后运行验证命令。
 
 ```mermaid
 flowchart TD
@@ -168,11 +168,11 @@ flowchart TD
     XNN --> G
 ```
 
-| 平台 | 适用硬件 | 支持的系统 | 起步命令 | 指南 |
+| 平台 | 适用硬件 | 支持的系统 | 完成指南配置后的验证命令 | 指南 |
 |---|---|---|---|---|
 | **Apple** | Apple Silicon Mac，或通过 CoreML 使用 iPhone/iPad | macOS · iOS | `python3 Apple/one_click.py`<br/><sub>当前 Python 路线：macOS 14+ arm64</sub> | [中文](Apple/README.zh-CN.md) · [EN](Apple/README.md) |
 | **Windows** | 任意受支持的 DirectX 12 GPU，或 Windows ML 目录中的 CPU/GPU/NPU | Windows 10/11；目录 EP：Windows 11 24H2+ | `py -3.12 DirectML\one_click.py directml`<br/><sub>Windows ML：把 `directml` 换成 `windowsml --allow-download`</sub> | [中文](DirectML/README.zh-CN.md) · [EN](DirectML/README.md) |
-| **AMD** | AMD GPU（DirectML / MIGraphX）或 Ryzen AI NPU（Vitis AI） | Windows · Ubuntu | `python AMD/provider_test.py --target dml`<br/><sub>按主机把 `dml` 换成 `migraphx` 或 `npu`</sub> | [中文](AMD/README.zh-CN.md) · [EN](AMD/README.md) |
+| **AMD** | AMD GPU（DirectML / MIGraphX）或 Ryzen AI NPU（Vitis AI） | Windows · Ubuntu | `python AMD/provider_test.py --target dml --bootstrap --strict-all`<br/><sub>这是 Windows DirectML 示例。Ubuntu MIGraphX 和 NPU 路线需要不同配置；请按 AMD 指南操作，不要只替换 target。</sub> | [中文](AMD/README.zh-CN.md) · [EN](AMD/README.md) |
 | **Intel** | Intel CPU、集成/独立 GPU 或 NPU（OpenVINO） | Windows 11 · Ubuntu x86-64 | `bash Intel/run_demo.sh --device CPU`<br/><sub>Windows：`Intel\run_demo.bat --device CPU`</sub> | [中文](Intel/README.zh-CN.md) · [EN](Intel/README.md) |
 | **NVIDIA** | NVIDIA GPU（CUDA / 传统 TensorRT / TensorRT RTX） | Windows 10/11 · Ubuntu x86-64 | `python NVIDIA/provider_test.py --provider cuda` | [中文](NVIDIA/README.zh-CN.md) · [EN](NVIDIA/README.md) |
 | **Qualcomm** | Snapdragon HTP/NPU 或 GPU（QNN） | Windows ARM64 · Android ARM64 | `python Qualcomm/one_click.py htp`<br/><sub>Android：`python Qualcomm/AndroidDemo/build_demo.py --install --backend htp`</sub> | [中文](Qualcomm/README.zh-CN.md) · [EN](Qualcomm/README.md) · [应用](Qualcomm/AndroidDemo/README.zh-CN.md) |
@@ -257,13 +257,13 @@ flowchart LR
 | [DirectML](DirectML/README.zh-CN.md) | 跨厂商 DirectML 和 Windows ML 配置、严格一键证明、EP 目录流程以及 DML/WinML 源码深度解析 |
 | [AMD](AMD/README.zh-CN.md) | DirectML、Windows ML MIGraphX、ROCm/MIGraphX 与 Ryzen AI/Vitis AI |
 | [Intel](Intel/README.zh-CN.md) | Intel CPU、GPU、NPU 与 Meta-device 的 OpenVINO EP |
-| [NVIDIA](NVIDIA/README.zh-CN.md) | CUDA、传统 TensorRT 与 TensorRT RTX 插件 |
+| [NVIDIA](NVIDIA/README.zh-CN.md) | CUDA、传统 TensorRT、独立 TensorRT RTX、严格 profiling 验证与跨 provider 伪 LLM 基准（RTX 5060 Ti 已验证） |
 | [Qualcomm](Qualcomm/README.zh-CN.md) | Snapdragon Windows 与 Android 的 QNN 2.x 插件 |
 | [Qualcomm/AndroidDemo](Qualcomm/AndroidDemo/README.zh-CN.md) | Kotlin CPU/GPU/HTP 应用与一键构建/安装脚本 |
 | [WebGPU](WebGPU/README.zh-CN.md) | 浏览器 WASM/WebGPU/WebNN 与原生 Python WebGPU |
 | [WebGPU/onnxruntime-web-demo](WebGPU/onnxruntime-web-demo/README.zh-CN.md) | 浏览器/原生跨 Provider 冒烟测试 |
 | [XNNPACK](XNNPACK/README.zh-CN.md) | XNNPACK EP 源码指南、移动端包、桌面源码构建、线程、算子限制和严格 CPU 路径证明 |
-| [PluginEP](PluginEP/README.zh-CN.md) | Plugin EP ABI、加载器、工厂/设备、执行路径、兼容性与打包的源码级指南 |
+| [PluginEP](PluginEP/README.zh-CN.md) | ORT 1.29 正式版 Plugin EP ABI、加载器、工厂/设备、执行路径、兼容性、打包，以及已验证的 TensorRT RTX 0.4 纯插件路线 |
 
 ---
 

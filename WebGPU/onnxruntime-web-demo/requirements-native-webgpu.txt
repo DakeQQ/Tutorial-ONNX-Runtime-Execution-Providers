@@ -1,7 +1,7 @@
-# Stable native WebGPU package pins rechecked on 2026-07-17.
-# This exact pair passed native hardware validation on 2026-07-16.
+# Current native WebGPU package pins rechecked on 2026-09-01.
+# Hardware evidence must record the exact runtime/plugin/device tuple separately.
 # The pinned ORT core publishes CPython 3.11-3.14 wheels. Transitive
 # dependencies are resolved by pip.
-onnxruntime==1.27.0
-onnxruntime-ep-webgpu==0.1.0
+onnxruntime==1.29.0
+onnxruntime-ep-webgpu==0.3.0
 numpy>=1.23.5,<3

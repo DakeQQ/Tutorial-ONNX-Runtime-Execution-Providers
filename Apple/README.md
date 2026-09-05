@@ -2,10 +2,11 @@
 
 [Simplified Chinese](README.zh-CN.md) | [Repository index](../README.md) | [One-click proof](one_click.py)
 
-**CoreML** is Apple's on-device inference engine. ONNX Runtime's **CoreML Execution Provider (EP)** converts the supported parts of an ONNX model into Apple's format so it can run on the **CPU, GPU, or Neural Engine (ANE)**. This folder *proves* that conversion really happens on a real Mac — not just that a provider *could* load.
+**CoreML** is Apple's on-device inference engine. ONNX Runtime's **CoreML Execution Provider (EP)** converts the supported parts of an ONNX model into Apple's format so it can run on the **CPU, GPU, or Neural Engine (ANE)**. The included strict test can prove that hand-off when it completes on a matching Mac; the validation boundary below records what the repository audit did and did not execute.
 
 ```bash
-# Apple Silicon Mac, macOS 14+  ->  60-second proof
+# From the repository root on an Apple Silicon Mac running macOS 14+
+# The first run creates a virtual environment and downloads pinned packages.
 python3 Apple/one_click.py
 ```
 
@@ -27,7 +28,7 @@ flowchart LR
     class F bad;
 ```
 
-**Last verified:** `2026-07-17`, against released [`v1.27.0`](https://github.com/microsoft/onnxruntime/tree/v1.27.0) and source [`main@bf6aa006`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml). Full version/hash pins are in [§14](#14-trace-the-source).
+**Last verified:** `2026-09-01`, against released [`v1.29.0`](https://github.com/microsoft/onnxruntime/tree/v1.29.0) and its immutable source commit [`2e2543f`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml). Full version/hash pins are in [§14](#14-trace-the-source).
 
 | You are… | Start at |
 |---|---|
@@ -161,13 +162,13 @@ Read the floor for the route you ship — they are not the same number.
 | Layer | Verified floor | Meaning |
 |---|---|---|
 | Public CoreML EP page | iOS 13 / macOS 10.15 | Historical Core ML 3 / NeuralNetwork text |
-| Provider constructor (v1.27 + `main`) | **Core ML 5: iOS 15 / macOS 12** | Real source gate: `MINIMUM_COREML_VERSION == 5` |
+| Provider constructor (v1.29.0) | **Core ML 5: iOS 15 / macOS 12** | Real source gate: `MINIMUM_COREML_VERSION == 5` |
 | MLProgram | Core ML 5: iOS 15 / macOS 12 | Minimum representation version |
-| `onnxruntime==1.27.0` wheel | macOS 14, arm64, CPython 3.11–3.14 | Floor for this folder's proof; **no Intel macOS file** |
+| `onnxruntime==1.29.0` wheel | macOS 14, arm64, CPython 3.11–3.14 | Floor for this folder's proof; **no Intel macOS file** |
 | `MLComputePlan` | macOS 14.4 / iOS 17.4 + SDK header | Per-op preferred-device + cost logging |
 | `FastPrediction` hint | Core ML 8: macOS 15 / iOS 18 + SDK header | Load-time specialization hint |
 
-> [`host_utils.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/model/host_utils.h) still has Core ML 3 comments, but [`CoreMLExecutionProvider`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/coreml_execution_provider.cc) rejects runtime versions below Core ML 5. **The constructor is the real gate.**
+> [`host_utils.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/model/host_utils.h) still has Core ML 3 comments, but [`CoreMLExecutionProvider`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/coreml_execution_provider.cc) rejects runtime versions below Core ML 5. **The constructor is the real gate.**
 
 **Python host checklist:**
 
@@ -448,9 +449,9 @@ Trivial markers (kept only if a partition has real compute; an all-trivial group
 | Dynamic empty input | Compile-time zero dim rejected; a runtime resolve to zero elements rejected too |
 
 Triage with the generated tables, then confirm in the builder + verbose log:
-[NeuralNetwork table](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/tools/ci_build/github/apple/coreml_supported_neuralnetwork_ops.md) ·
-[MLProgram table](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/tools/ci_build/github/apple/coreml_supported_mlprogram_ops.md) ·
-[Builder impls](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/builders/impl)
+[NeuralNetwork table](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/tools/ci_build/github/apple/coreml_supported_neuralnetwork_ops.md) ·
+[MLProgram table](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/tools/ci_build/github/apple/coreml_supported_mlprogram_ops.md) ·
+[Builder impls](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/builders/impl)
 
 ## 9. Use the cache safely
 
@@ -619,7 +620,7 @@ flowchart TD
 | Symptom | Likely cause | Action |
 |---|---|---|
 | Launcher rejects Linux/Windows | Core ML framework absent | Run on a Mac |
-| Launcher rejects `x86_64` | Intel/Rosetta; ORT 1.27 has no Intel macOS wheel | Use native Apple Silicon Python |
+| Launcher rejects `x86_64` | Intel/Rosetta; ORT 1.29.0 has no Intel macOS wheel | Use native Apple Silicon Python |
 | No matching wheel | Wrong OS/Python/arch/free-threaded build | Match the host checklist |
 | CoreML provider absent | Wrong or mixed ORT distribution | Use the isolated pinned venv |
 | Strict session fails | Unsupported node or all-trivial graph | Read verbose logs; inspect the builder |
@@ -636,10 +637,10 @@ This guide pins every layer below so each claim above stays checkable:
 
 | Evidence layer | Audited baseline | Qualifies |
 |---|---|---|
-| Runnable release | ONNX Runtime [`v1.27.0`](https://github.com/microsoft/onnxruntime/tree/v1.27.0) + [PyPI files](https://pypi.org/project/onnxruntime/1.27.0/) | Launcher + released CoreML behavior |
-| Source snapshot | `main` @ [`bf6aa006`](https://github.com/microsoft/onnxruntime/tree/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml) | Architecture, builders, options, tests |
-| Pinned stack | `onnxruntime==1.27.0`, `onnx==1.22.0`; NumPy `2.4.6` (3.11) / `2.5.1` (3.12–3.14) | Reproducible desktop setup |
-| Audit date | `2026-07-17` | Links, packages, source, CLI |
+| Runnable release | ONNX Runtime [`v1.29.0`](https://github.com/microsoft/onnxruntime/tree/v1.29.0) + [PyPI files](https://pypi.org/project/onnxruntime/1.29.0/) | Launcher + released CoreML behavior |
+| Release source | `v1.29.0` @ [`2e2543f`](https://github.com/microsoft/onnxruntime/tree/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml) | Architecture, builders, options, tests |
+| Pinned stack | `onnxruntime==1.29.0`, `onnx==1.22.0`; NumPy `2.4.6` (3.11) / `2.5.2` (3.12–3.14) | Reproducible desktop setup |
+| Audit date | `2026-09-01` | Links, packages, source, CLI |
 | Hardware boundary | Source/packages checked on Linux; Core ML **not** executed here | Final CPU/GPU/ANE proof needs an Apple device |
 
 ```mermaid
@@ -663,21 +664,21 @@ flowchart TD
 
 | Source | Ground truth |
 |---|---|
-| [`coreml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/include/onnxruntime/core/providers/coreml/coreml_provider_factory.h) | Public flags, option names, cache contract |
-| [`coreml_options.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/coreml_options.cc) | Accepted values + parser behavior |
-| [`coreml_options.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/coreml_options.h) | Option storage + accessors, incl. the `ProfileComputePlan` MLProgram-only gate |
-| [`coreml_execution_provider.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/coreml_execution_provider.cc) | Version gate, cache key, partitions, callbacks |
-| [`helper.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/builders/helper.cc) | Input/rank/shape checks + ANE detection |
-| [`op_builder_factory.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/builders/op_builder_factory.cc) | Operator-to-builder registry |
-| [`base_op_builder.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/builders/impl/base_op_builder.cc) | Common format/opset/input checks |
-| [`model_builder.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/builders/model_builder.cc) | Conversion, names, serialization, cache paths |
-| [`model.mm`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/model/model.mm) | Compile/load, options, profiling, prediction |
-| [`host_utils.h`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/core/providers/coreml/model/host_utils.h) | OS/Core ML mapping + minimum |
-| [`onnxruntime_providers_coreml.cmake`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/cmake/onnxruntime_providers_coreml.cmake) | Frameworks, stubs, minimal-build rule |
-| [`py-macos.yml`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/tools/ci_build/github/azure-pipelines/templates/py-macos.yml) | Wheel uses `--use_coreml`; deployment target 14 |
-| [`coreml_basic_test.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/test/providers/coreml/coreml_basic_test.cc) | Format, operator, partition, cache tests |
-| [`dynamic_input_test.cc`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/onnxruntime/test/providers/coreml/dynamic_input_test.cc) | Dynamic + empty-input tests |
-| [`ort_coreml_execution_provider.mm`](https://github.com/microsoft/onnxruntime/blob/bf6aa0063d1c178c4a4d33ed6770425834147e2a/objectivec/ort_coreml_execution_provider.mm) | Objective-C legacy + V2 bridges |
+| [`coreml_provider_factory.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/include/onnxruntime/core/providers/coreml/coreml_provider_factory.h) | Public flags, option names, cache contract |
+| [`coreml_options.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/coreml_options.cc) | Accepted values + parser behavior |
+| [`coreml_options.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/coreml_options.h) | Option storage + accessors, incl. the `ProfileComputePlan` MLProgram-only gate |
+| [`coreml_execution_provider.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/coreml_execution_provider.cc) | Version gate, cache key, partitions, callbacks |
+| [`helper.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/builders/helper.cc) | Input/rank/shape checks + ANE detection |
+| [`op_builder_factory.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/builders/op_builder_factory.cc) | Operator-to-builder registry |
+| [`base_op_builder.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/builders/impl/base_op_builder.cc) | Common format/opset/input checks |
+| [`model_builder.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/builders/model_builder.cc) | Conversion, names, serialization, cache paths |
+| [`model.mm`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/model/model.mm) | Compile/load, options, profiling, prediction |
+| [`host_utils.h`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/core/providers/coreml/model/host_utils.h) | OS/Core ML mapping + minimum |
+| [`onnxruntime_providers_coreml.cmake`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/cmake/onnxruntime_providers_coreml.cmake) | Frameworks, stubs, minimal-build rule |
+| [`py-macos.yml`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/tools/ci_build/github/azure-pipelines/templates/py-macos.yml) | Wheel uses `--use_coreml`; deployment target 14 |
+| [`coreml_basic_test.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/test/providers/coreml/coreml_basic_test.cc) | Format, operator, partition, cache tests |
+| [`dynamic_input_test.cc`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/onnxruntime/test/providers/coreml/dynamic_input_test.cc) | Dynamic + empty-input tests |
+| [`ort_coreml_execution_provider.mm`](https://github.com/microsoft/onnxruntime/blob/2e2543fbe9fae542f921d47a72d21d5a4ef0b710/objectivec/ort_coreml_execution_provider.mm) | Objective-C legacy + V2 bridges |
 
 **Official references:**
 [CoreML EP](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html) ·
